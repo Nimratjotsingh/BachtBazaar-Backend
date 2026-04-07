@@ -19,14 +19,14 @@ const router = express.Router();
 // auth
 router.post("/auth/send-otp", sendOtp);
 router.post("/auth/verify-otp", verifyOtp);
+router.post("/auth/set-password", protectUser, setPassword);
 router.post("/auth/login-password", loginWithPassword);
 router.post("/auth/login-otp", loginWithOtp);
-router.post("/auth/set-password", protectUser, setPassword);
 router.post("/auth/forgot-password", forgotPassword);
 
 // user
-router.put("/user/profile", protectUser, upload.single("profileImage"), updateProfile);
-router.put("/user/password", protectUser, updatePassword);
+router.put("/profile", protectUser, upload.single("profileImage"), updateProfile);
+router.put("/password", protectUser, updatePassword);
 
 export default router;
 
