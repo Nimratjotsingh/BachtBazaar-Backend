@@ -116,24 +116,47 @@ export const loginWithOtp = async (req, res) => {
     const { token } = req.body;
 
     const decoded = await admin.auth().verifyIdToken(token);
-    const phone = decoded.phone_number;
+
+    let phone = decoded.phone_number;
+
+    if (phone) {
+      phone = phone.trim();
+
+      if (!phone.startsWith("+91")) {
+        phone = "+91" + phone;
+      }
+    }
+
+    console.log("OTP phone:", phone);
 
     const user = await User.findOne({ phone });
 
     if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
+      const newUser = await User.create({
+        phone,
+        isVerified: true
+      });
 
+      const jwtToken = generateToken(newUser._id);
+
+      return res.json({
+        success: true,
+        token: jwtToken,
+        user: newUser,
+        isNewUser: true
+      });
+    }
     const jwtToken = generateToken(user._id);
 
     res.json({
       success: true,
       token: jwtToken,
-      user
+      user,
+      isNewUser: false
     });
 
   } catch (error) {
-    console.log("error login-otp", error.message)
+    console.log("error login-otp", error.message);
 
     res.status(401).json({ message: "OTP login failed" });
   }
