@@ -92,3 +92,13 @@ export const updateShopProfileSchema = z.object({
 
   openingHours: z.any().optional() 
 });
+
+export const forgotPasswordSchema = z.object({
+  token: z.string().min(1, "Token is required"),
+  newPassword: z.string().min(6, "Password must be at least 6 characters")
+});
+
+export const updatePasswordSchema = z.object({
+  oldPassword: z.string().min(6, "Old password is required"),
+  newPassword: z.string().min(6, "New password must be at least 6 characters")
+});

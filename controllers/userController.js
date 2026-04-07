@@ -7,6 +7,8 @@ import { passwordSchema } from "../validators/appValidator.js";
 import { loginPasswordSchema } from "../validators/appValidator.js";
 import { validate } from "../validators/validate.js";
 import { updateUserProfileSchema } from "../validators/appValidator.js";
+import { forgotPasswordSchema } from "../validators/appValidator.js";
+import { updatePasswordSchema } from "../validators/appValidator.js";
 
 
 // check user exists (before otp)
@@ -162,7 +164,7 @@ export const loginWithOtp = async (req, res) => {
   }
 };
 
-
+// update profile
 export const updateProfile = async (req, res) => {
   try {
     const validatedData = validate(updateUserProfileSchema, req.body);
@@ -193,5 +195,76 @@ export const updateProfile = async (req, res) => {
   } catch (error) {
     console.log("error update-profile", error.message)
     res.status(500).json({ message: "Profile update failed" });
+  }
+};
+
+// forget pass
+export const forgotPassword = async (req, res) => {
+  try {
+    const { token, newPassword } = validate(forgotPasswordSchema, req.body);
+
+    const decoded = await admin.auth().verifyIdToken(token);
+    let phone = decoded.phone_number;
+
+    if (phone && !phone.startsWith("+91")) {
+      phone = "+91" + phone;
+    }
+
+    const user = await User.findOne({ phone });
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+
+    const isSame = await bcrypt.compare(newPassword, user.password || "");
+    if (isSame) {
+      return res.status(400).json({ message: "New password must be different" });
+    }
+
+    user.password = await bcrypt.hash(newPassword, 10);
+    await user.save();
+
+    res.json({ success: true, message: "Password reset successful" });
+
+  } catch (error) {
+    console.log("error forgot-password", error.message);
+    res.status(500).json({ message: "Forgot password failed" });
+  }
+};
+
+// updatePassword
+export const updatePassword = async (req, res) => {
+  try {
+    const { oldPassword, newPassword } = validate(updatePasswordSchema, req.body);
+
+    const user = await User.findById(req.user._id);
+
+    if (!user || !user.password) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const isMatch = await bcrypt.compare(oldPassword, user.password);
+
+    if (!isMatch) {
+      return res.status(400).json({ message: "Old password is incorrect" });
+    }
+
+    const isSame = await bcrypt.compare(newPassword, user.password);
+    if (isSame) {
+      return res.status(400).json({ message: "New password must be different" });
+    }
+
+    user.password = await bcrypt.hash(newPassword, 10);
+    await user.save();
+
+    res.json({
+      success: true,
+      message: "Password updated successfully"
+    });
+
+  } catch (error) {
+    console.log("error update-password", error.message);
+    res.status(500).json({ message: "Update password failed" });
   }
 };
