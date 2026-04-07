@@ -8,7 +8,6 @@ export const phoneSchema = z.object({
 
 // password
 export const passwordSchema = z.object({
-  userId: z.string().min(1, "User ID is required"),
   password: z.string().min(6, "Password must be atleast 6 characters")
 });
 
