@@ -189,6 +189,9 @@ export const loginWithOtp = async (req, res) => {
 // update profile
 export const updateProfile = async (req, res) => {
   try {
+    console.log("REQ FILE:", req.file);
+    console.log("REQ BODY:", req.body);
+
     const validatedData = validate(updateUserProfileSchema, req.body);
 
     const user = await User.findById(req.user._id);
