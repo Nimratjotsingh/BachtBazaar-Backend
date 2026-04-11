@@ -18,7 +18,8 @@ router.get("/", getAllCategories);
 router.get("/:id", getCategoryById);
 
 // Add new category
-router.post("/", protectAny, requireSuperAdmin, addCategory);
+// router.post("/", protectAny, requireSuperAdmin, addCategory);
+router.post("/", protectAny, addCategory);
 
 // Update category
 router.put("/:id", protectAny, requireSuperAdmin, updateCategory);
