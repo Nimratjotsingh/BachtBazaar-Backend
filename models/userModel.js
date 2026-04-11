@@ -24,7 +24,8 @@ const userSchema=new mongoose.Schema({
     type: String
   },
   profileImage: {
-    type: String
+    data: Buffer,
+    contentType: String
   }
 }, { timestamps:true });
 

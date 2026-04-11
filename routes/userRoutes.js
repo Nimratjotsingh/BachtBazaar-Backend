@@ -9,6 +9,7 @@ loginWithOtp,
 forgotPassword,
 updatePassword
 } from "../controllers/userController.js";
+import { getProfileImage } from "../controllers/userController.js";
 
 import upload from "../middleware/upload.js";
 import { protectUser } from "../middleware/authMiddleware.js";
@@ -27,6 +28,7 @@ router.post("/auth/forgot-password", forgotPassword);
 // user
 router.put("/profile", protectUser, upload.single("profileImage"), updateProfile);
 router.put("/password", protectUser, updatePassword);
+router.get("/profile-image", protectUser, getProfileImage);
 
 export default router;
 

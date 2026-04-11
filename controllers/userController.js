@@ -29,11 +29,25 @@ const formatPhone = (phone) => {
 };
 
 
-// remove password from response
+// remove password and binary image data from response
+const stripBinaryData = (obj) => {
+  if (!obj || typeof obj !== "object") return obj;
+  if (obj.data && obj.contentType) {
+    const { data, ...rest } = obj;
+    return rest;
+  }
+  if (Array.isArray(obj)) {
+    return obj.map(stripBinaryData);
+  }
+  return Object.fromEntries(
+    Object.entries(obj).map(([key, value]) => [key, stripBinaryData(value)])
+  );
+};
+
 const sanitizeUser = (user) => {
   const userObj = user.toObject();
   delete userObj.password;
-  return userObj;
+  return stripBinaryData(userObj);
 };
 
 
@@ -41,6 +55,22 @@ const sanitizeUser = (user) => {
 export const sendOtp = async (req, res) => {
   try {
     const { phone } = validate(phoneSchema, req.body);
+
+// Get profile image
+export const getProfileImage = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    if (!user || !user.profileImage || !user.profileImage.data) {
+      return res.status(404).json({ message: "Profile image not found" });
+    }
+
+    res.set("Content-Type", user.profileImage.contentType);
+    res.send(user.profileImage.data);
+  } catch (error) {
+    console.log("error get-profile-image", error.message);
+    res.status(500).json({ message: "Failed to fetch profile image" });
+  }
+};
 
     const formattedPhone = formatPhone(phone);
     const user = await User.findOne({ phone: formattedPhone });
@@ -207,7 +237,10 @@ export const updateProfile = async (req, res) => {
     user.address = address || user.address;
 
     if (req.file) {
-      user.profileImage = `/uploads/${req.file.filename}`;
+      user.profileImage = {
+        data: req.file.buffer,
+        contentType: req.file.mimetype
+      };
     }
 
     const updatedUser = await user.save();

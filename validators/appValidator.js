@@ -56,22 +56,13 @@ export const updateShopProfileSchema = z.object({
     .min(2, { message: "Shop name must be at least 2 characters" })
     .optional(),
 
-  category: z.enum([
-    "restaurant",
-    "clothing",
-    "salon",
-    "grocery",
-    "electronics",
-    "pharmacy"
-  ]).optional(),
+  categoryId: z.string()
+    .regex(/^[0-9a-f]{24}$/, { message: "Invalid category ID" })
+    .optional(),
 
-  subCategory: z.enum([
-    "fast-food",
-    "fine-dining",
-    "cafe",
-    "bakery",
-    "takeaway"
-  ]).optional(),
+  subCategoryId: z.string()
+    .regex(/^[0-9a-f]{24}$/, { message: "Invalid subcategory ID" })
+    .optional(),
 
   address: z.string()
     .min(3, { message: "Address must be at least 3 characters" })

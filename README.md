@@ -1,7 +1,22 @@
 # BBackend API Documentation
 
-## Overview
-This is a Node.js Express backend server with user authentication and profile management features. The API supports OTP-based login, password-based authentication, and user profile updates.
+## Documentation Hub
+
+The API docs are now maintained in modular files under `api_docs`.
+
+- Main index: [api_docs/README.md](api_docs/README.md)
+- Conventions: [api_docs/conventions.md](api_docs/conventions.md)
+- User APIs: [api_docs/user.md](api_docs/user.md)
+- Merchant Auth APIs: [api_docs/merchant-auth.md](api_docs/merchant-auth.md)
+- Merchant Profile APIs: [api_docs/merchant-profile.md](api_docs/merchant-profile.md)
+- Merchant Personal Docs APIs: [api_docs/merchant-personal-docs.md](api_docs/merchant-personal-docs.md)
+- Merchant Business Docs APIs: [api_docs/merchant-business-docs.md](api_docs/merchant-business-docs.md)
+- Merchant Shop APIs: [api_docs/merchant-shop.md](api_docs/merchant-shop.md)
+- Category APIs: [api_docs/categories.md](api_docs/categories.md)
+
+## Legacy Notes
+
+The rest of this README contains older inline documentation. Prefer the files in `api_docs` for the latest routes and payloads.
 
 ---
 ## User Endpoints
