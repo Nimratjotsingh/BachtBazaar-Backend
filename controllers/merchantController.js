@@ -4,13 +4,28 @@ import admin from "../config/firebase.js";
 import { generateToken } from "../utils/generateToken.js";
 import {
   phoneSchema,
-  merchantPasswordSchema,
+  passwordSchema,
   updateMerchantProfileSchema,
   loginPasswordSchema,
   updateShopProfileSchema
 } from "../validators/appValidator.js";
-import { validate } from "../validators/validate.js";
+import { validate, ValidationError } from "../validators/validate.js";
 import axios from "axios";
+
+const sanitizeMerchant = (merchant) => {
+  const merchantObj = merchant.toObject();
+  delete merchantObj.password;
+  return merchantObj;
+};
+
+const handleValidation = (res, error, defaultMessage) => {
+  if (error instanceof ValidationError) {
+    return res.status(400).json({ message: error.message });
+  }
+
+  console.log(error);
+  return res.status(500).json({ message: defaultMessage });
+};
 
 
 //format phone
@@ -39,8 +54,7 @@ export const sendOtp = async (req, res) => {
       exists: !!merchant
     });
   } catch (error) {
-    console.log("error send-otp", error.message);
-    res.status(500).json({ message: "Error sending OTP" });
+    return handleValidation(res, error, "Error sending OTP");
   }
 };
 
@@ -67,7 +81,7 @@ export const verifyOtp = async (req, res) => {
     res.json({
       success: true,
       token: jwtToken,
-      merchant
+      merchant: sanitizeMerchant(merchant)
     });
   } catch (error) {
     console.log("error verify-otp", error.message);
@@ -79,19 +93,20 @@ export const verifyOtp = async (req, res) => {
 // set password
 export const setPassword = async (req, res) => {
   try {
-    const { merchantId, password } = validate(merchantPasswordSchema, req.body);
+    const { password } = validate(passwordSchema, req.body);
 
-    const hashed = await bcrypt.hash(password, 10);
+    const merchant = await Merchant.findById(req.merchant._id);
+    if (!merchant) {
+      return res.status(404).json({ message: "Merchant not found" });
+    }
 
-    await Merchant.findByIdAndUpdate(merchantId, {
-      password: hashed
-    });
+    merchant.password = await bcrypt.hash(password, 10);
+    await merchant.save();
 
     res.json({ success: true });
 
   } catch (error) {
-    console.log("error set-password", error.message);
-    res.status(500).json({ message: "Error setting password" });
+    return handleValidation(res, error, "Error setting password");
   }
 };
 
@@ -124,12 +139,11 @@ export const loginWithPassword = async (req, res) => {
     res.json({
       success: true,
       token,
-      merchant
+      merchant: sanitizeMerchant(merchant)
     });
 
   } catch (error) {
-    console.log("error login-password", error.message);
-    res.status(500).json({ message: "Login error" });
+    return handleValidation(res, error, "Login error");
   }
 };
 
@@ -153,7 +167,7 @@ export const loginWithOtp = async (req, res) => {
     res.json({
       success: true,
       token: jwtToken,
-      merchant
+      merchant: sanitizeMerchant(merchant)
     });
 
   } catch (error) {

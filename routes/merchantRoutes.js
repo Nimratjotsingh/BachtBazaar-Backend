@@ -20,7 +20,7 @@ const router = express.Router();
 
 router.post("/auth/send-otp", sendOtp);
 router.post("/auth/verify-otp", verifyOtp);
-router.post("/auth/set-password", setPassword);
+router.post("/auth/set-password", protectMerchant, setPassword);
 router.post("/auth/login-password", loginWithPassword);
 router.post("/auth/login-otp", loginWithOtp);
 router.put("/update-profile", protectMerchant, upload.single("profileImage"), updateProfile);

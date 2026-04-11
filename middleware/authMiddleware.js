@@ -13,7 +13,7 @@ export const protectUser = async (req, res, next) => {
 
       req.user = await User.findById(decoded.id).select("-password");
 
-      next();
+      return next();
     } catch (error) {
       return res.status(401).json({ message: "Not authorized" });
     }
@@ -36,7 +36,7 @@ export const protectMerchant = async (req, res, next) => {
 
       req.merchant = await Merchant.findById(decoded.id).select("-password");
 
-      next();
+      return next();
     } catch (error) {
       return res.status(401).json({ message: "Not authorized" });
     }
