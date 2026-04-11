@@ -1,0 +1,219 @@
+{
+  "info": {
+    "_postman_id": "f3cbf6c6-d0cc-4bdf-a9e8-bf1987dce2af",
+    "name": "BachtBazaar Admin RBAC Flow",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Bootstrap super admin and manage user/merchant roles"
+  },
+  "item": [
+    {
+      "name": "01 - Bootstrap Super Admin",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "x-bootstrap-secret",
+            "value": "{{bootstrap_secret}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"phone\": \"{{super_admin_phone}}\",\n  \"accountType\": \"{{super_admin_account_type}}\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/admin/bootstrap-super-admin",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "admin",
+            "bootstrap-super-admin"
+          ]
+        }
+      }
+    },
+    {
+      "name": "02 - Login Super Admin (User Password)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"phone\": \"{{super_admin_phone}}\",\n  \"password\": \"{{super_admin_password}}\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/user/auth/login-password",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "user",
+            "auth",
+            "login-password"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const json = pm.response.json();",
+              "if (json && json.token) pm.collectionVariables.set('super_admin_token', json.token);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 - Promote User to Super Admin",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{super_admin_token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"role\": \"super_admin\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/admin/users/{{target_user_id}}/role",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "admin",
+            "users",
+            "{{target_user_id}}",
+            "role"
+          ]
+        }
+      }
+    },
+    {
+      "name": "04 - Promote Merchant to Super Admin",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{super_admin_token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"role\": \"super_admin\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/admin/merchants/{{target_merchant_id}}/role",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "admin",
+            "merchants",
+            "{{target_merchant_id}}",
+            "role"
+          ]
+        }
+      }
+    },
+    {
+      "name": "05 - Create Category (Admin-only check)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{super_admin_token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"value\": \"{{new_category_value}}\",\n  \"label\": \"{{new_category_label}}\",\n  \"description\": \"Created by super admin\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/categories",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "categories"
+          ]
+        }
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:5000"
+    },
+    {
+      "key": "bootstrap_secret",
+      "value": ""
+    },
+    {
+      "key": "super_admin_phone",
+      "value": "9876543210"
+    },
+    {
+      "key": "super_admin_account_type",
+      "value": "user"
+    },
+    {
+      "key": "super_admin_password",
+      "value": "Secret@123"
+    },
+    {
+      "key": "super_admin_token",
+      "value": ""
+    },
+    {
+      "key": "target_user_id",
+      "value": ""
+    },
+    {
+      "key": "target_merchant_id",
+      "value": ""
+    },
+    {
+      "key": "new_category_value",
+      "value": "stationery"
+    },
+    {
+      "key": "new_category_label",
+      "value": "Stationery"
+    }
+  ]
+}

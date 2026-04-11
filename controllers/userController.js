@@ -2,6 +2,7 @@ import User from "../models/userModel.js";
 import bcrypt from "bcryptjs";
 import admin from "../config/firebase.js";
 import { generateToken } from "../utils/generateToken.js";
+import { ACCOUNT_TYPES, ROLES } from "../constants/roles.js";
 
 import {
   phoneSchema,
@@ -56,6 +57,20 @@ export const sendOtp = async (req, res) => {
   try {
     const { phone } = validate(phoneSchema, req.body);
 
+    const formattedPhone = formatPhone(phone);
+    const user = await User.findOne({ phone: formattedPhone });
+
+    res.json({
+      success: true,
+      exists: !!user
+    });
+
+  } catch (error) {
+    console.log("error send-otp", error.message);
+    res.status(500).json({ message: "Error sending OTP" });
+  }
+};
+
 // Get profile image
 export const getProfileImage = async (req, res) => {
   try {
@@ -69,20 +84,6 @@ export const getProfileImage = async (req, res) => {
   } catch (error) {
     console.log("error get-profile-image", error.message);
     res.status(500).json({ message: "Failed to fetch profile image" });
-  }
-};
-
-    const formattedPhone = formatPhone(phone);
-    const user = await User.findOne({ phone: formattedPhone });
-
-    res.json({
-      success: true,
-      exists: !!user
-    });
-
-  } catch (error) {
-    console.log("error send-otp", error.message);
-    res.status(500).json({ message: "Error sending OTP" });
   }
 };
 
@@ -103,7 +104,10 @@ export const verifyOtp = async (req, res) => {
       });
     }
 
-    const jwtToken = generateToken(user._id);
+    const jwtToken = generateToken(user._id, {
+      role: user.role || ROLES.USER,
+      accountType: ACCOUNT_TYPES.USER
+    });
 
     res.json({
       success: true,
@@ -161,7 +165,10 @@ export const loginWithPassword = async (req, res) => {
       return res.status(400).json({ message: "Invalid credentials" });
     }
 
-    const token = generateToken(user._id);
+    const token = generateToken(user._id, {
+      role: user.role || ROLES.USER,
+      accountType: ACCOUNT_TYPES.USER
+    });
 
     res.json({
       success: true,
@@ -191,7 +198,10 @@ export const loginWithOtp = async (req, res) => {
         isVerified: true
       });
 
-      const jwtToken = generateToken(newUser._id);
+      const jwtToken = generateToken(newUser._id, {
+        role: newUser.role || ROLES.USER,
+        accountType: ACCOUNT_TYPES.USER
+      });
 
       return res.json({
         success: true,
@@ -201,7 +211,10 @@ export const loginWithOtp = async (req, res) => {
       });
     }
 
-    const jwtToken = generateToken(user._id);
+    const jwtToken = generateToken(user._id, {
+      role: user.role || ROLES.USER,
+      accountType: ACCOUNT_TYPES.USER
+    });
 
     res.json({
       success: true,

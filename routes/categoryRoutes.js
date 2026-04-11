@@ -7,6 +7,7 @@ import {
   deleteCategory,
   hardDeleteCategory
 } from "../controllers/categoryController.js";
+import { protectAny, requireSuperAdmin } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
@@ -17,15 +18,15 @@ router.get("/", getAllCategories);
 router.get("/:id", getCategoryById);
 
 // Add new category
-router.post("/", addCategory);
+router.post("/", protectAny, requireSuperAdmin, addCategory);
 
 // Update category
-router.put("/:id", updateCategory);
+router.put("/:id", protectAny, requireSuperAdmin, updateCategory);
 
 // Soft delete (isActive = false)
-router.delete("/:id", deleteCategory);
+router.delete("/:id", protectAny, requireSuperAdmin, deleteCategory);
 
 // Hard delete (permanent removal)
-router.delete("/:id/permanent", hardDeleteCategory);
+router.delete("/:id/permanent", protectAny, requireSuperAdmin, hardDeleteCategory);
 
 export default router;

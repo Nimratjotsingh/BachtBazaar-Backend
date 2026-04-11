@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { ROLES } from "../constants/roles.js";
 
 const userSchema=new mongoose.Schema({
   phone: {
@@ -12,6 +13,11 @@ const userSchema=new mongoose.Schema({
   isVerified: {
     type:Boolean,
     default:false
+  },
+  role: {
+    type: String,
+    enum: [ROLES.USER, ROLES.SUPER_ADMIN],
+    default: ROLES.USER
   },
    name: {
     type: String

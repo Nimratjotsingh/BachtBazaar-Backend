@@ -1,5 +1,7 @@
 import express from "express";
 import {
+  registerMerchantSendOtp,
+  registerMerchantVerifyOtp,
   sendOtp,
   verifyOtp,
   setPassword,
@@ -12,6 +14,8 @@ import { protectMerchant } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
+router.post("/register/send-otp", registerMerchantSendOtp);
+router.post("/register/verify-otp", registerMerchantVerifyOtp);
 router.post("/send-otp", sendOtp);
 router.post("/verify-otp", verifyOtp);
 router.post("/set-password", protectMerchant, setPassword);

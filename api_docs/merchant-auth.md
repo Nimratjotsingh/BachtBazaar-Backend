@@ -2,6 +2,36 @@
 
 Base path: `/api/merchant/auth`
 
+## 0) Register Merchant - Step 1 (Number + Password + Send OTP)
+- Method: `POST`
+- Path: `/api/merchant/auth/register/send-otp`
+- Auth: Not required
+- Body:
+```json
+{
+  "phone": "9876543210",
+  "password": "Secret@123"
+}
+```
+- Notes:
+  - No token validation is done on this endpoint.
+  - Stores password hash in pending registration state.
+  - Initiates OTP verification step.
+  - If merchant already registered, returns `409 Merchant already registered`.
+
+## 0.1) Register Merchant - Step 2 (Verify OTP)
+- Method: `POST`
+- Path: `/api/merchant/auth/register/verify-otp`
+- Body:
+```json
+{
+  "token": "firebase_id_token"
+}
+```
+- Notes:
+  - Completes merchant creation after OTP verification.
+  - Returns JWT token and merchant payload.
+
 ## 1) Send OTP
 - Method: `POST`
 - Path: `/api/merchant/auth/send-otp`
@@ -76,3 +106,18 @@ Base path: `/api/merchant/auth`
   "newPassword": "newSecret123"
 }
 ```
+
+## Recommended Postman Sequence
+
+1. `POST /api/merchant/auth/register/send-otp`
+2. `POST /api/merchant/auth/register/verify-otp`
+3. `POST /api/merchant/auth/login-password`
+4. `POST /api/merchant/auth/send-otp`
+5. `POST /api/merchant/auth/login-otp`
+
+OTP note:
+- `login-otp` and `verify-otp` require Firebase ID token in `token` field (not raw OTP digits).
+
+Postman collections:
+- `api_docs/postman/merchant-register-login-flow.postman_collection.json`
+- `api_docs/postman/merchant-endpoints-sequence.postman_collection.json`

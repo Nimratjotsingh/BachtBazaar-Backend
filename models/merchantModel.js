@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { ROLES } from "../constants/roles.js";
 
 const imageSchema = new mongoose.Schema({
   data: Buffer,
@@ -19,6 +20,11 @@ const merchantSchema = new mongoose.Schema({
   isVerified: {
     type: Boolean,
     default: false
+  },
+  role: {
+    type: String,
+    enum: [ROLES.MERCHANT, ROLES.SUPER_ADMIN],
+    default: ROLES.MERCHANT
   },
 
   name: String,

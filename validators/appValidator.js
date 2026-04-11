@@ -17,6 +17,16 @@ export const merchantPasswordSchema = z.object({
   password: z.string().min(6, "Password must be atleast 6 characters")
 });
 
+// merchant register
+export const merchantRegisterSchema = z.object({
+  phone: z.string().regex(/^[0-9]{10}$/, "Invalid phone number"),
+  password: z.string().min(6, "Password must be atleast 6 characters")
+});
+
+export const merchantRegisterVerifySchema = z.object({
+  token: z.string().min(1, "Token is required")
+});
+
 // login with password
 export const loginPasswordSchema = z.object({
   phone: z.string().regex(/^[0-9]{10}$/, "Invalid phone number"),

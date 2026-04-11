@@ -3,7 +3,6 @@ import mongoose from "mongoose";
 const categorySchema = new mongoose.Schema({
   value: {
     type: String,
-    enum: ["restaurant", "clothing", "salon", "grocery", "electronics", "pharmacy"],
     required: true,
     unique: true
   },

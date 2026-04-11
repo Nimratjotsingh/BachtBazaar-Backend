@@ -4,7 +4,7 @@ const connectDB = async () => {
   try {
     process.env.NODE_ENV === "development" && console.log("Existing Mongo DB URI:", process.env.MONGO_URI);
     await mongoose.connect(process.env.MONGO_URI);
-    console.log("mongoDB connected");
+    process.env.NODE_ENV === "development" && console.log("mongoDB connected");
   } catch (error) {
     const timestamp = new Date().toISOString();
     console.error(`[${timestamp}] DB Connection Error: ${error.message}`);

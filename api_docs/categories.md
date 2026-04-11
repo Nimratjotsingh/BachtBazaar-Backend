@@ -13,6 +13,8 @@ Base path: `/api/categories`
 ## 3) Add Category
 - Method: `POST`
 - Path: `/api/categories`
+- Auth: Bearer token required
+- Role: `super_admin` only
 - Body:
 ```json
 {
@@ -25,6 +27,8 @@ Base path: `/api/categories`
 ## 4) Update Category
 - Method: `PUT`
 - Path: `/api/categories/:id`
+- Auth: Bearer token required
+- Role: `super_admin` only
 - Body (partial allowed):
 ```json
 {
@@ -35,9 +39,13 @@ Base path: `/api/categories`
 ## 5) Soft Delete Category
 - Method: `DELETE`
 - Path: `/api/categories/:id`
+- Auth: Bearer token required
+- Role: `super_admin` only
 - Behavior: sets `isActive = false`
 
 ## 6) Hard Delete Category
 - Method: `DELETE`
 - Path: `/api/categories/:id/permanent`
+- Auth: Bearer token required
+- Role: `super_admin` only
 - Behavior: permanently removes category document

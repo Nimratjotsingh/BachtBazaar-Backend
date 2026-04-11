@@ -1,15 +1,19 @@
 import bcrypt from "bcryptjs";
 import admin from "../config/firebase.js";
 import Merchant from "../models/merchantModel.js";
+import MerchantRegistration from "../models/merchantRegistrationModel.js";
 import { generateToken } from "../utils/generateToken.js";
 import {
   phoneSchema,
   passwordSchema,
+  merchantRegisterSchema,
+  merchantRegisterVerifySchema,
   loginPasswordSchema,
   forgotPasswordSchema,
   updatePasswordSchema
 } from "../validators/appValidator.js";
 import { validate, ValidationError } from "../validators/validate.js";
+import { ACCOUNT_TYPES, ROLES } from "../constants/roles.js";
 
 const stripBinaryData = (obj) => {
   if (!obj || typeof obj !== "object") return obj;
@@ -41,6 +45,25 @@ const handleValidation = (res, error, defaultMessage) => {
   return res.status(500).json({ message: defaultMessage });
 };
 
+const handleFirebaseAuthError = (res, error, fallbackMessage) => {
+  const code = error?.code || "";
+  const message = error?.message || fallbackMessage;
+
+  if (
+    code.includes("id-token-expired") ||
+    code.includes("invalid-id-token") ||
+    code.includes("argument-error")
+  ) {
+    return res.status(401).json({ message });
+  }
+
+  if (code.includes("insufficient-permission") || code.includes("permission-denied")) {
+    return res.status(403).json({ message });
+  }
+
+  return res.status(400).json({ message });
+};
+
 export const sendOtp = async (req, res) => {
   try {
     const { phone } = validate(phoneSchema, req.body);
@@ -48,6 +71,84 @@ export const sendOtp = async (req, res) => {
     return res.json({ success: true, exists: !!merchant });
   } catch (error) {
     return handleValidation(res, error, "Error sending OTP");
+  }
+};
+
+export const registerMerchantSendOtp = async (req, res) => {
+  try {
+    const { phone, password } = validate(merchantRegisterSchema, req.body);
+    const formattedPhone = formatPhone(phone);
+
+    const existingMerchant = await Merchant.findOne({ phone: formattedPhone });
+    if (existingMerchant && existingMerchant.password) {
+      return res.status(409).json({ message: "Merchant already registered" });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+    await MerchantRegistration.findOneAndUpdate(
+      { phone: formattedPhone },
+      { hashedPassword, expiresAt },
+      { upsert: true, new: true }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "OTP initiated. Verify OTP to complete registration",
+      nextStep: "Call /api/merchant/auth/register/verify-otp with Firebase token"
+    });
+  } catch (error) {
+    return handleValidation(res, error, "Registration failed");
+  }
+};
+
+export const registerMerchantVerifyOtp = async (req, res) => {
+  try {
+    const { token } = validate(merchantRegisterVerifySchema, req.body);
+    const decoded = await admin.auth().verifyIdToken(token);
+    const phone = formatPhone(decoded.phone_number);
+
+    const pendingRegistration = await MerchantRegistration.findOne({ phone });
+    if (!pendingRegistration) {
+      return res.status(400).json({
+        message: "No pending registration found for this number. Start with register/send-otp"
+      });
+    }
+
+    let merchant = await Merchant.findOne({ phone });
+    if (merchant && merchant.password) {
+      return res.status(409).json({ message: "Merchant already registered" });
+    }
+
+    if (!merchant) {
+      merchant = await Merchant.create({
+        phone,
+        password: pendingRegistration.hashedPassword,
+        isVerified: true
+      });
+    } else {
+      merchant.password = pendingRegistration.hashedPassword;
+      merchant.isVerified = true;
+      await merchant.save();
+    }
+
+    await MerchantRegistration.deleteOne({ _id: pendingRegistration._id });
+
+    return res.status(201).json({
+      success: true,
+      message: "Merchant registered successfully",
+      token: generateToken(merchant._id, {
+        role: merchant.role || ROLES.MERCHANT,
+        accountType: ACCOUNT_TYPES.MERCHANT
+      }),
+      merchant: sanitizeMerchant(merchant)
+    });
+  } catch (error) {
+    if (error?.code?.startsWith("auth/")) {
+      return handleFirebaseAuthError(res, error, "Registration verification failed");
+    }
+    return handleValidation(res, error, "Registration verification failed");
   }
 };
 
@@ -62,10 +163,13 @@ export const verifyOtp = async (req, res) => {
       merchant = await Merchant.create({ phone, isVerified: true });
     }
 
-    const jwtToken = generateToken(merchant._id);
+    const jwtToken = generateToken(merchant._id, {
+      role: merchant.role || ROLES.MERCHANT,
+      accountType: ACCOUNT_TYPES.MERCHANT
+    });
     return res.json({ success: true, token: jwtToken, merchant: sanitizeMerchant(merchant) });
   } catch (error) {
-    return res.status(401).json({ message: "Invalid OTP" });
+    return handleFirebaseAuthError(res, error, "Invalid OTP");
   }
 };
 
@@ -97,7 +201,10 @@ export const loginWithPassword = async (req, res) => {
 
     return res.json({
       success: true,
-      token: generateToken(merchant._id),
+      token: generateToken(merchant._id, {
+        role: merchant.role || ROLES.MERCHANT,
+        accountType: ACCOUNT_TYPES.MERCHANT
+      }),
       merchant: sanitizeMerchant(merchant)
     });
   } catch (error) {
@@ -116,11 +223,14 @@ export const loginWithOtp = async (req, res) => {
 
     return res.json({
       success: true,
-      token: generateToken(merchant._id),
+      token: generateToken(merchant._id, {
+        role: merchant.role || ROLES.MERCHANT,
+        accountType: ACCOUNT_TYPES.MERCHANT
+      }),
       merchant: sanitizeMerchant(merchant)
     });
   } catch (error) {
-    return res.status(401).json({ message: "OTP login failed" });
+    return handleFirebaseAuthError(res, error, "OTP login failed");
   }
 };
 
@@ -137,6 +247,9 @@ export const forgotPassword = async (req, res) => {
 
     return res.json({ success: true, message: "Password reset successful" });
   } catch (error) {
+    if (error?.code?.startsWith("auth/")) {
+      return handleFirebaseAuthError(res, error, "Reset failed");
+    }
     return handleValidation(res, error, "Reset failed");
   }
 };

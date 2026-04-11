@@ -13,6 +13,7 @@ The API docs are now maintained in modular files under `api_docs`.
 - Merchant Business Docs APIs: [api_docs/merchant-business-docs.md](api_docs/merchant-business-docs.md)
 - Merchant Shop APIs: [api_docs/merchant-shop.md](api_docs/merchant-shop.md)
 - Category APIs: [api_docs/categories.md](api_docs/categories.md)
+- Merchant Postman Sequence JSON: [api_docs/postman/merchant-endpoints-sequence.postman_collection.json](api_docs/postman/merchant-endpoints-sequence.postman_collection.json)
 
 ## Legacy Notes
 

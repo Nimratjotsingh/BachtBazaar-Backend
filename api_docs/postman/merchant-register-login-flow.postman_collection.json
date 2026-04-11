@@ -1,0 +1,202 @@
+{
+  "info": {
+    "_postman_id": "88f6d6d5-d6d2-4a6d-aad0-6e939e50c1b4",
+    "name": "BachtBazaar Merchant Register + Login Flow",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Merchant workflow: register send-otp + verify-otp, then login via password and OTP"
+  },
+  "item": [
+    {
+      "name": "01 - Register Send OTP (Mobile + Password)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"phone\": \"{{merchant_phone}}\",\n  \"password\": \"{{merchant_password}}\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/merchant/auth/register/send-otp",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "merchant",
+            "auth",
+            "register",
+            "send-otp"
+          ]
+        }
+      }
+    },
+    {
+      "name": "02 - Register Verify OTP",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"token\": \"{{firebase_token}}\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/merchant/auth/register/verify-otp",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "merchant",
+            "auth",
+            "register",
+            "verify-otp"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const json = pm.response.json();",
+              "if (json && json.token) {",
+              "  pm.collectionVariables.set('merchant_token', json.token);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 - Login Merchant (Password)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"phone\": \"{{merchant_phone}}\",\n  \"password\": \"{{merchant_password}}\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/merchant/auth/login-password",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "merchant",
+            "auth",
+            "login-password"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const json = pm.response.json();",
+              "if (json && json.token) {",
+              "  pm.collectionVariables.set('merchant_token', json.token);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 - Send OTP",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"phone\": \"{{merchant_phone}}\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/merchant/auth/send-otp",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "merchant",
+            "auth",
+            "send-otp"
+          ]
+        }
+      }
+    },
+    {
+      "name": "05 - Login Merchant (OTP)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"token\": \"{{firebase_token}}\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/merchant/auth/login-otp",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "merchant",
+            "auth",
+            "login-otp"
+          ]
+        }
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:5000"
+    },
+    {
+      "key": "merchant_phone",
+      "value": "9876543210"
+    },
+    {
+      "key": "merchant_password",
+      "value": "Secret@123"
+    },
+    {
+      "key": "firebase_token",
+      "value": ""
+    },
+    {
+      "key": "merchant_token",
+      "value": ""
+    }
+  ]
+}

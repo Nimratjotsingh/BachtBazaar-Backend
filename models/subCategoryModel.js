@@ -3,7 +3,6 @@ import mongoose from "mongoose";
 const subCategorySchema = new mongoose.Schema({
   value: {
     type: String,
-    enum: ["fast-food", "fine-dining", "cafe", "bakery", "takeaway"],
     required: true
   },
   label: {

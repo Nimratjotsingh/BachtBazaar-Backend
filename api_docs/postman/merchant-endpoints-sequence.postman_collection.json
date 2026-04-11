@@ -1,0 +1,289 @@
+{
+  "info": {
+    "_postman_id": "0f4e9b7a-736d-4ea6-b49b-b35f0f3dd3a0",
+    "name": "BachtBazaar Merchant Endpoint Sequence",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Merchant onboarding + login + profile/docs/shop sequence"
+  },
+  "item": [
+    {
+      "name": "01 - Register Send OTP (Mobile + Password)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"phone\": \"{{merchant_phone}}\",\n  \"password\": \"{{merchant_password}}\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/merchant/auth/register/send-otp",
+          "host": ["{{base_url}}"],
+          "path": ["api", "merchant", "auth", "register", "send-otp"]
+        }
+      }
+    },
+    {
+      "name": "02 - Register Verify OTP",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"token\": \"{{firebase_token}}\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/merchant/auth/register/verify-otp",
+          "host": ["{{base_url}}"],
+          "path": ["api", "merchant", "auth", "register", "verify-otp"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const json = pm.response.json();",
+              "if (json?.token) pm.collectionVariables.set('merchant_token', json.token);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 - Login Merchant (Password)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"phone\": \"{{merchant_phone}}\",\n  \"password\": \"{{merchant_password}}\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/merchant/auth/login-password",
+          "host": ["{{base_url}}"],
+          "path": ["api", "merchant", "auth", "login-password"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const json = pm.response.json();",
+              "if (json?.token) pm.collectionVariables.set('merchant_token', json.token);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 - Merchant Send OTP",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"phone\": \"{{merchant_phone}}\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/merchant/auth/send-otp",
+          "host": ["{{base_url}}"],
+          "path": ["api", "merchant", "auth", "send-otp"]
+        }
+      }
+    },
+    {
+      "name": "05 - Login Merchant (OTP token)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"token\": \"{{firebase_token}}\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/merchant/auth/login-otp",
+          "host": ["{{base_url}}"],
+          "path": ["api", "merchant", "auth", "login-otp"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const json = pm.response.json();",
+              "if (json?.token) pm.collectionVariables.set('merchant_token', json.token);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 - Merchant Update Profile",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{merchant_token}}" }
+        ],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            { "key": "name", "value": "Test Merchant", "type": "text" },
+            { "key": "gender", "value": "male", "type": "text" },
+            { "key": "city", "value": "Pune", "type": "text" },
+            { "key": "phone", "value": "{{merchant_phone}}", "type": "text" },
+            { "key": "email", "value": "merchant@example.com", "type": "text" },
+            { "key": "profileImage", "type": "file", "src": "" }
+          ]
+        },
+        "url": {
+          "raw": "{{base_url}}/api/merchant/profile",
+          "host": ["{{base_url}}"],
+          "path": ["api", "merchant", "profile"]
+        }
+      }
+    },
+    {
+      "name": "06 - Merchant Personal Docs Upsert",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{merchant_token}}" }
+        ],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            { "key": "aadharNumber", "value": "123412341234", "type": "text" },
+            { "key": "aadharImage", "type": "file", "src": "" }
+          ]
+        },
+        "url": {
+          "raw": "{{base_url}}/api/merchant/personal-docs",
+          "host": ["{{base_url}}"],
+          "path": ["api", "merchant", "personal-docs"]
+        }
+      }
+    },
+    {
+      "name": "07 - Merchant Business Docs Upsert",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{merchant_token}}" }
+        ],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            { "key": "gstNumber", "value": "27ABCDE1234F1Z5", "type": "text" },
+            { "key": "gstImage", "type": "file", "src": "" }
+          ]
+        },
+        "url": {
+          "raw": "{{base_url}}/api/merchant/business-docs",
+          "host": ["{{base_url}}"],
+          "path": ["api", "merchant", "business-docs"]
+        }
+      }
+    },
+    {
+      "name": "08 - Category Create",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"value\": \"restaurant\",\n  \"label\": \"Restaurant\",\n  \"description\": \"Food service businesses\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/categories",
+          "host": ["{{base_url}}"],
+          "path": ["api", "categories"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const json = pm.response.json();",
+              "if (json?.category?._id) pm.collectionVariables.set('category_id', json.category._id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "09 - Merchant Shop Upsert",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{merchant_token}}" }
+        ],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            { "key": "shopName", "value": "Test Shop", "type": "text" },
+            { "key": "categoryId", "value": "{{category_id}}", "type": "text" },
+            { "key": "address", "value": "MG Road", "type": "text" },
+            { "key": "city", "value": "Pune", "type": "text" },
+            { "key": "phone", "value": "{{merchant_phone}}", "type": "text" },
+            { "key": "description", "value": "Test merchant shop profile", "type": "text" },
+            { "key": "logoImage", "type": "file", "src": "" },
+            { "key": "shopBannerImage", "type": "file", "src": "" }
+          ]
+        },
+        "url": {
+          "raw": "{{base_url}}/api/merchant/shop",
+          "host": ["{{base_url}}"],
+          "path": ["api", "merchant", "shop"]
+        }
+      }
+    },
+    {
+      "name": "10 - Merchant Update Password",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{merchant_token}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"oldPassword\": \"{{merchant_password}}\",\n  \"newPassword\": \"{{merchant_new_password}}\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/merchant/auth/password",
+          "host": ["{{base_url}}"],
+          "path": ["api", "merchant", "auth", "password"]
+        }
+      }
+    }
+  ],
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:5000" },
+    { "key": "merchant_phone", "value": "9876543210" },
+    { "key": "merchant_password", "value": "Secret@123" },
+    { "key": "merchant_new_password", "value": "Secret@456" },
+    { "key": "firebase_token", "value": "" },
+    { "key": "merchant_token", "value": "" },
+    { "key": "merchant_id", "value": "" },
+    { "key": "category_id", "value": "" }
+  ]
+}

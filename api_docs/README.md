@@ -12,6 +12,10 @@ This folder contains module-wise API documentation for the backend.
 - [Merchant Business Docs APIs](./merchant-business-docs.md)
 - [Merchant Shop APIs](./merchant-shop.md)
 - [Category APIs](./categories.md)
+- [Admin APIs](./admin.md)
+- [Postman Collection - Merchant Test Sequence](./postman/merchant-endpoints-sequence.postman_collection.json)
+- [Postman Collection - Merchant Register/Login Flow](./postman/merchant-register-login-flow.postman_collection.json)
+- [Postman Collection - Admin RBAC Flow](./postman/admin-rbac-flow.postman_collection.json)
 
 ## Base URL
 
