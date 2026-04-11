@@ -5,6 +5,7 @@ dotenv.config();
 
 const testPhone = "+919876543210";
 const testUID = "test-user-123";
+const optionalRealIdToken = process.env.FIREBASE_TEST_ID_TOKEN || "";
 
 console.log("\n=== Firebase Admin SDK Test Suite ===\n");
 
@@ -79,22 +80,48 @@ async function testGenerateCustomToken(uid = testUID) {
 }
 
 /**
- * Test 4: Verify ID Token
+ * Test 4: Decode Custom Token
  */
-async function testVerifyIdToken(idToken) {
-  console.log("\n📋 Test 4: Verify ID Token");
+async function testDecodeCustomToken(customToken) {
+  console.log("\n📋 Test 4: Decode Custom Token");
   try {
-    const decodedToken = await admin.auth().verifyIdToken(idToken);
-    console.log("✓ ID token verified successfully");
-    console.log(`  UID: ${decodedToken.uid}`);
-    console.log(`  Email: ${decodedToken.email || "N/A"}`);
-    console.log(`  Phone: ${decodedToken.phone_number || "N/A"}`);
-    console.log(`  Issued at: ${new Date(decodedToken.iat * 1000).toISOString()}`);
-    console.log(`  Expires at: ${new Date(decodedToken.exp * 1000).toISOString()}`);
-    return decodedToken;
+    const parts = customToken.split(".");
+    if (parts.length !== 3) {
+      throw new Error("Invalid custom token format");
+    }
+
+    const payload = JSON.parse(Buffer.from(parts[1], "base64").toString());
+    console.log("✓ Custom token decoded successfully");
+    console.log(`  Subject (UID): ${payload.sub}`);
+    console.log(`  Audience: ${payload.aud}`);
+    return payload;
   } catch (error) {
     console.log(`✗ Error: ${error.message}`);
     return null;
+  }
+}
+
+/**
+ * Test 4.1: Verify Real ID Token (Optional)
+ */
+async function testVerifyRealIdToken(idToken) {
+  console.log("\n📋 Test 4.1: Verify Real Firebase ID Token (Optional)");
+  if (!idToken) {
+    console.log("- Skipped (set FIREBASE_TEST_ID_TOKEN in .env to run this test)");
+    return true;
+  }
+
+  try {
+    const decodedToken = await admin.auth().verifyIdToken(idToken);
+    console.log("✓ Real ID token verified successfully");
+    console.log(`  UID: ${decodedToken.uid}`);
+    console.log(`  Phone: ${decodedToken.phone_number || "N/A"}`);
+    console.log(`  Issued at: ${new Date(decodedToken.iat * 1000).toISOString()}`);
+    console.log(`  Expires at: ${new Date(decodedToken.exp * 1000).toISOString()}`);
+    return true;
+  } catch (error) {
+    console.log(`✗ Error: ${error.message}`);
+    return false;
   }
 }
 
@@ -138,20 +165,21 @@ async function testSetCustomClaims(uid = testUID) {
 }
 
 /**
- * Test 7: Verify Token with Claims
+ * Test 7: Confirm Claims On User Record
  */
-async function testVerifyTokenWithClaims(idToken) {
-  console.log("\n📋 Test 7: Verify Token with Custom Claims");
+async function testVerifyClaimsOnUser(uid = testUID) {
+  console.log("\n📋 Test 7: Confirm Claims On User Record");
   try {
-    const decodedToken = await admin.auth().verifyIdToken(idToken);
-    console.log("✓ Token verified with claims");
-    console.log(`  UID: ${decodedToken.uid}`);
-    console.log(`  Role: ${decodedToken.role || "N/A"}`);
-    console.log(`  Account Type: ${decodedToken.accountType || "N/A"}`);
-    return decodedToken;
+    const userRecord = await admin.auth().getUser(uid);
+    const claims = userRecord.customClaims || {};
+    console.log("✓ Claims fetched from user record");
+    console.log(`  UID: ${userRecord.uid}`);
+    console.log(`  Role: ${claims.role || "N/A"}`);
+    console.log(`  Account Type: ${claims.accountType || "N/A"}`);
+    return true;
   } catch (error) {
     console.log(`✗ Error: ${error.message}`);
-    return null;
+    return false;
   }
 }
 
@@ -171,19 +199,19 @@ async function testDeleteUser(uid = testUID) {
 }
 
 /**
- * Test 9: Token Refresh Simulation
+ * Test 9: Custom Token Payload (for debugging)
  */
-async function testTokenRefresh(idToken) {
+async function testTokenPayload(token) {
   console.log("\n📋 Test 9: Decode Token Payload (for debugging)");
   try {
     // Decode without verification (for inspection only)
-    const parts = idToken.split('.');
+    const parts = token.split('.');
     if (parts.length !== 3) {
       throw new Error("Invalid token format");
     }
     
     const decoded = JSON.parse(
-      Buffer.from(parts[1], 'base64').toString()
+      Buffer.from(parts[1], "base64").toString()
     );
     
     console.log("✓ Token decoded successfully");
@@ -222,9 +250,16 @@ async function runAllTests() {
     }
 
     // Test 4: Verify token
-    let decodedToken = await testVerifyIdToken(customToken);
-    if (!decodedToken) {
-      console.log("\n⚠️  Could not verify token.");
+    const decodedCustomToken = await testDecodeCustomToken(customToken);
+    if (!decodedCustomToken) {
+      console.log("\n⚠️  Could not decode custom token.");
+      return;
+    }
+
+    // Optional Test 4.1: Verify real ID token if provided
+    const verifiedRealIdToken = await testVerifyRealIdToken(optionalRealIdToken);
+    if (!verifiedRealIdToken) {
+      console.log("\n⚠️  Real ID token verification failed.");
       return;
     }
 
@@ -234,16 +269,12 @@ async function runAllTests() {
     // Test 6: Set custom claims
     await testSetCustomClaims();
 
-    // Test 7: Verify token with claims
-    // Generate new token after setting claims
-    const newToken = await testGenerateCustomToken();
-    if (newToken) {
-      decodedToken = await testVerifyTokenWithClaims(newToken);
-    }
+    // Test 7: Confirm claims attached to user
+    await testVerifyClaimsOnUser();
 
     // Test 9: Decode token payload
     if (customToken) {
-      await testTokenRefresh(customToken);
+      await testTokenPayload(customToken);
     }
 
     // Test 8: Clean up - delete test user
