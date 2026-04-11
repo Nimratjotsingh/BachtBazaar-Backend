@@ -9,6 +9,7 @@ dotenv.config();
  */
 
 const testPhone = "+919876543210";
+const realIdToken = process.env.FIREBASE_TEST_ID_TOKEN || "";
 
 console.log("\n=== Firebase OTP Verification Test ===\n");
 
@@ -50,18 +51,23 @@ async function testOtpFlow() {
     console.log("   (User enters OTP in frontend, Firebase verifies it)");
     console.log("   (Firebase returns ID token if OTP is correct)\n");
 
-    // Generate ID token (simulating successful OTP verification)
-    const idToken = await admin.auth().createCustomToken(userRecord.uid);
-    console.log(`✓ ID Token generated (simulating OTP verification)`);
-    console.log(`  Token: ${idToken.substring(0, 50)}...\n`);
+    // Admin SDK creates a custom token, not an ID token.
+    const customToken = await admin.auth().createCustomToken(userRecord.uid);
+    console.log("✓ Custom token generated (simulation token)");
+    console.log(`  Token: ${customToken.substring(0, 50)}...\n`);
 
     console.log("🔐 Step 3: Backend Verifies ID Token");
-    const decodedToken = await admin.auth().verifyIdToken(idToken);
-    console.log(`✓ ID Token verified successfully`);
-    console.log(`  UID: ${decodedToken.uid}`);
-    console.log(`  Phone: ${decodedToken.phone_number || "N/A"}`);
-    console.log(`  Issued: ${new Date(decodedToken.iat * 1000).toISOString()}`);
-    console.log(`  Expires: ${new Date(decodedToken.exp * 1000).toISOString()}\n`);
+    if (realIdToken) {
+      const decodedToken = await admin.auth().verifyIdToken(realIdToken);
+      console.log("✓ Real ID token verified successfully");
+      console.log(`  UID: ${decodedToken.uid}`);
+      console.log(`  Phone: ${decodedToken.phone_number || "N/A"}`);
+      console.log(`  Issued: ${new Date(decodedToken.iat * 1000).toISOString()}`);
+      console.log(`  Expires: ${new Date(decodedToken.exp * 1000).toISOString()}\n`);
+    } else {
+      console.log("- Skipped real ID token verification");
+      console.log("  Set FIREBASE_TEST_ID_TOKEN in .env to run this step\n");
+    }
 
     console.log("💾 Step 4: Create Account in MongoDB");
     console.log(`  - Store: { phone: "${testPhone}", isVerified: true }`);
@@ -69,7 +75,7 @@ async function testOtpFlow() {
     console.log(`  - Return JWT to frontend\n`);
 
     console.log("🔐 Step 5: Frontend Sets Password (Protected Endpoint)");
-    console.log(`  - Auth header: Bearer ${idToken.substring(0, 30)}...`);
+    console.log(`  - Auth header: Bearer <your_backend_jwt_token>`);
     console.log(`  - Body: { password: "Secret@123" }`);
     console.log(`  - Backend hashes & saves password\n`);
 

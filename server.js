@@ -15,6 +15,7 @@ dotenv.config();
 // console.log(process.env.MONGO_URI)
 
 const app = express();
+const PORT = Number(process.env.PORT) || 5001;
 const isDevelopment = (process.env.NODE_ENV || "")
   .trim()
   .toLowerCase()
@@ -32,12 +33,21 @@ if (isDevelopment) {
   });
 }
 
+// User routes (support both singular and plural paths)
 app.use("/api/user", userRoutes);
+app.use("/api/users", userRoutes);
+
+// Merchant routes (support both legacy and new paths)
 app.use("/api/merchant/auth", merchantAuthRoutes);
+app.use("/api/merchants", merchantAuthRoutes);
 app.use("/api/merchant/profile", merchantProfileRoutes);
+app.use("/api/merchants/profile", merchantProfileRoutes);
 app.use("/api/merchant/personal-docs", merchantPersonalDocRoutes);
+app.use("/api/merchants/personal-docs", merchantPersonalDocRoutes);
 app.use("/api/merchant/business-docs", merchantBusinessDocRoutes);
+app.use("/api/merchants/business-docs", merchantBusinessDocRoutes);
 app.use("/api/merchant/shop", merchantShopRoutes);
+app.use("/api/merchants/shop", merchantShopRoutes);
 app.use("/api/categories", categoryRoutes);
 app.use("/api/admin", adminRoutes);
 
@@ -64,6 +74,6 @@ app.use((err, req, res, next) => {
   });
 });
 
-app.listen(5000, () => {
-  console.log("Server running on port 5000");
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });

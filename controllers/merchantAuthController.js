@@ -64,6 +64,23 @@ const handleFirebaseAuthError = (res, error, fallbackMessage) => {
   return res.status(400).json({ message });
 };
 
+const isDevOtpBypass = (token) => {
+  const env = (process.env.NODE_ENV || "").toLowerCase();
+  return env.startsWith("development") && token === "123456";
+};
+
+const resolvePhoneFromTokenOrBypass = async (reqBody) => {
+  const { token } = reqBody;
+
+  if (isDevOtpBypass(token)) {
+    const { phone } = validate(phoneSchema, reqBody);
+    return formatPhone(phone);
+  }
+
+  const decoded = await admin.auth().verifyIdToken(token);
+  return formatPhone(decoded.phone_number);
+};
+
 export const sendOtp = async (req, res) => {
   try {
     const { phone } = validate(phoneSchema, req.body);
@@ -97,8 +114,7 @@ export const registerMerchantSendOtp = async (req, res) => {
 export const registerMerchantVerifyOtp = async (req, res) => {
   try {
     const { token } = validate(merchantRegisterVerifySchema, req.body);
-    const decoded = await admin.auth().verifyIdToken(token);
-    const phone = formatPhone(decoded.phone_number);
+    const phone = await resolvePhoneFromTokenOrBypass({ ...req.body, token });
 
     let merchant = await Merchant.findOne({ phone });
     
@@ -134,9 +150,7 @@ export const registerMerchantVerifyOtp = async (req, res) => {
 
 export const verifyOtp = async (req, res) => {
   try {
-    const { token } = req.body;
-    const decoded = await admin.auth().verifyIdToken(token);
-    const phone = formatPhone(decoded.phone_number);
+    const phone = await resolvePhoneFromTokenOrBypass(req.body);
 
     let merchant = await Merchant.findOne({ phone });
     if (!merchant) {
@@ -194,9 +208,7 @@ export const loginWithPassword = async (req, res) => {
 
 export const loginWithOtp = async (req, res) => {
   try {
-    const { token } = req.body;
-    const decoded = await admin.auth().verifyIdToken(token);
-    const phone = formatPhone(decoded.phone_number);
+    const phone = await resolvePhoneFromTokenOrBypass(req.body);
 
     const merchant = await Merchant.findOne({ phone });
     if (!merchant) return res.status(404).json({ message: "Merchant not found" });
@@ -217,9 +229,9 @@ export const loginWithOtp = async (req, res) => {
 export const forgotPassword = async (req, res) => {
   try {
     const { token, newPassword } = validate(forgotPasswordSchema, req.body);
-    const decoded = await admin.auth().verifyIdToken(token);
+    const phone = await resolvePhoneFromTokenOrBypass({ ...req.body, token });
 
-    const merchant = await Merchant.findOne({ phone: formatPhone(decoded.phone_number) });
+    const merchant = await Merchant.findOne({ phone });
     if (!merchant) return res.status(404).json({ message: "Merchant not found" });
 
     merchant.password = await bcrypt.hash(newPassword, 10);
