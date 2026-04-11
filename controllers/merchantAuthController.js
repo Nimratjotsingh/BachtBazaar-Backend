@@ -26,7 +26,7 @@ const stripBinaryData = (obj) => {
 };
 
 const sanitizeMerchant = (merchant) => {
-  const merchantObj = merchant.toObject();
+  const merchantObj = JSON.parse(JSON.stringify(merchant.toObject()));
   delete merchantObj.password;
   return stripBinaryData(merchantObj);
 };
@@ -66,6 +66,7 @@ const handleFirebaseAuthError = (res, error, fallbackMessage) => {
 
 const isDevOtpBypass = (token) => {
   const env = (process.env.NODE_ENV || "").toLowerCase();
+  console.log("[isDevOtpBypass] NODE_ENV:", JSON.stringify(process.env.NODE_ENV), "| env:", JSON.stringify(env), "| token:", JSON.stringify(token));
   return env.startsWith("development") && token === "123456";
 };
 
@@ -113,6 +114,7 @@ export const registerMerchantSendOtp = async (req, res) => {
 
 export const registerMerchantVerifyOtp = async (req, res) => {
   try {
+    console.log("[register/verify-otp] body:", JSON.stringify(req.body));
     const { token } = validate(merchantRegisterVerifySchema, req.body);
     const phone = await resolvePhoneFromTokenOrBypass({ ...req.body, token });
 

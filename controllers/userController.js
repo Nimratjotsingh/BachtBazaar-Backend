@@ -46,7 +46,7 @@ const stripBinaryData = (obj) => {
 };
 
 const sanitizeUser = (user) => {
-  const userObj = user.toObject();
+  const userObj = JSON.parse(JSON.stringify(user.toObject()));
   delete userObj.password;
   return stripBinaryData(userObj);
 };
