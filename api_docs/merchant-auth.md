@@ -1,71 +1,80 @@
 # Merchant Auth APIs
 
-Base path: `/api/merchant/auth`
+Base path: `/api/merchants`
 
-## 0) Register Merchant - Step 1 (Number + Password + Send OTP)
+## 3-Step Registration Flow
+
+### Step 1) Register Send OTP (Phone Only)
 - Method: `POST`
-- Path: `/api/merchant/auth/register/send-otp`
+- Path: `/api/merchants/register/send-otp`
 - Auth: Not required
-- Body:
-```json
-{
-  "phone": "9876543210",
-  "password": "Secret@123"
-}
-```
-- Notes:
-  - No token validation is done on this endpoint.
-  - Stores password hash in pending registration state.
-  - Initiates OTP verification step.
-  - If merchant already registered, returns `409 Merchant already registered`.
-
-## 0.1) Register Merchant - Step 2 (Verify OTP)
-- Method: `POST`
-- Path: `/api/merchant/auth/register/verify-otp`
-- Body:
-```json
-{
-  "token": "firebase_id_token"
-}
-```
-- Notes:
-  - Completes merchant creation after OTP verification.
-  - Returns JWT token and merchant payload.
-
-## 1) Send OTP
-- Method: `POST`
-- Path: `/api/merchant/auth/send-otp`
 - Body:
 ```json
 {
   "phone": "9876543210"
 }
 ```
+- Response:
+```json
+{
+  "success": true,
+  "message": "OTP sent to your phone. Verify to continue.",
+  "nextStep": "Call /api/merchants/register/verify-otp with Firebase token"
+}
+```
+- Notes:
+  - Validates phone is not already registered.
+  - Returns 409 if phone already exists.
 
-## 2) Verify OTP
+### Step 2) Register Verify OTP (OTP Verification)
 - Method: `POST`
-- Path: `/api/merchant/auth/verify-otp`
+- Path: `/api/merchants/register/verify-otp`
+- Auth: Not required
 - Body:
 ```json
 {
   "token": "firebase_id_token"
 }
 ```
+- Response:
+```json
+{
+  "success": true,
+  "message": "OTP verified. Please set your password.",
+  "nextStep": "Call POST /api/merchants/set-password with your password",
+  "token": "jwt_access_token",
+  "merchant": {...}
+}
+```
+- Notes:
+  - Creates merchant account if first signup.
+  - Returns JWT token for next step (password setting).
 
-## 3) Set Password (Protected)
+### Step 3) Set Password (Protected)
 - Method: `POST`
-- Path: `/api/merchant/auth/set-password`
-- Auth: Bearer token required
+- Path: `/api/merchants/set-password`
+- Auth: Bearer token required (from Step 2)
 - Body:
 ```json
 {
-  "password": "secret123"
+  "password": "Secret@123"
 }
 ```
+- Response:
+```json
+{
+  "success": true
+}
+```
+- Notes:
+  - Must be called immediately after Step 2 with returned JWT.
+  - Password stored as bcrypt hash.
 
-## 4) Login with Password
+## Login Flows
+
+### Login with Password
 - Method: `POST`
-- Path: `/api/merchant/auth/login-password`
+- Path: `/api/merchants/login-password`
 - Body:
 ```json
 {
@@ -73,20 +82,38 @@ Base path: `/api/merchant/auth`
   "password": "secret123"
 }
 ```
+- Response:
+```json
+{
+  "success": true,
+  "token": "jwt_access_token",
+  "merchant": {...}
+}
+```
 
-## 5) Login with OTP
+### Login with OTP
 - Method: `POST`
-- Path: `/api/merchant/auth/login-otp`
+- Path: `/api/merchants/login-otp`
 - Body:
 ```json
 {
   "token": "firebase_id_token"
 }
 ```
+- Response:
+```json
+{
+  "success": true,
+  "token": "jwt_access_token",
+  "merchant": {...}
+}
+```
 
-## 6) Forgot Password
+## Password Management
+
+### Forgot Password (OTP)
 - Method: `POST`
-- Path: `/api/merchant/auth/forgot-password`
+- Path: `/api/merchants/forgot-password`
 - Body:
 ```json
 {
@@ -95,9 +122,9 @@ Base path: `/api/merchant/auth`
 }
 ```
 
-## 7) Update Password (Protected)
+### Update Password (Protected)
 - Method: `PUT`
-- Path: `/api/merchant/auth/password`
+- Path: `/api/merchants/password`
 - Auth: Bearer token required
 - Body:
 ```json
@@ -107,17 +134,19 @@ Base path: `/api/merchant/auth`
 }
 ```
 
-## Recommended Postman Sequence
+## Testing Sequence (Postman)
 
-1. `POST /api/merchant/auth/register/send-otp`
-2. `POST /api/merchant/auth/register/verify-otp`
-3. `POST /api/merchant/auth/login-password`
-4. `POST /api/merchant/auth/send-otp`
-5. `POST /api/merchant/auth/login-otp`
+**Registration (First Time):**
+1. `POST /api/merchants/register/send-otp` → phone (9876543210)
+2. Get Firebase OTP token via Firebase Console/SDK
+3. `POST /api/merchants/register/verify-otp` → Firebase token
+4. Copy JWT from response
+5. `POST /api/merchants/set-password` → password (with JWT in Authorization header)
 
-OTP note:
-- `login-otp` and `verify-otp` require Firebase ID token in `token` field (not raw OTP digits).
+**Login (Subsequent Times):**
+1. `POST /api/merchants/login-password` → phone + password
+   - OR
+   `POST /api/merchants/login-otp` → Firebase token
 
-Postman collections:
+**Postman Collections:**
 - `api_docs/postman/merchant-register-login-flow.postman_collection.json`
-- `api_docs/postman/merchant-endpoints-sequence.postman_collection.json`

@@ -17,10 +17,9 @@ export const merchantPasswordSchema = z.object({
   password: z.string().min(6, "Password must be atleast 6 characters")
 });
 
-// merchant register
+// merchant register (3-step flow - phone only in send-otp)
 export const merchantRegisterSchema = z.object({
-  phone: z.string().regex(/^[0-9]{10}$/, "Invalid phone number"),
-  password: z.string().min(6, "Password must be atleast 6 characters")
+  phone: z.string().regex(/^[0-9]{10}$/, "Invalid phone number")
 });
 
 export const merchantRegisterVerifySchema = z.object({

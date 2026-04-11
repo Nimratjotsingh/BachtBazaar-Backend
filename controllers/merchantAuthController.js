@@ -76,30 +76,21 @@ export const sendOtp = async (req, res) => {
 
 export const registerMerchantSendOtp = async (req, res) => {
   try {
-    const { phone, password } = validate(merchantRegisterSchema, req.body);
+    const { phone } = validate(phoneSchema, req.body);
     const formattedPhone = formatPhone(phone);
 
     const existingMerchant = await Merchant.findOne({ phone: formattedPhone });
-    if (existingMerchant && existingMerchant.password) {
-      return res.status(409).json({ message: "Merchant already registered" });
+    if (existingMerchant) {
+      return res.status(409).json({ message: "Phone number already registered" });
     }
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
-
-    await MerchantRegistration.findOneAndUpdate(
-      { phone: formattedPhone },
-      { hashedPassword, expiresAt },
-      { upsert: true, new: true }
-    );
 
     return res.status(200).json({
       success: true,
-      message: "OTP initiated. Verify OTP to complete registration",
-      nextStep: "Call /api/merchant/auth/register/verify-otp with Firebase token"
+      message: "OTP sent to your phone. Verify to continue.",
+      nextStep: "Call /api/merchants/register/verify-otp with Firebase token"
     });
   } catch (error) {
-    return handleValidation(res, error, "Registration failed");
+    return handleValidation(res, error, "Failed to send OTP");
   }
 };
 
@@ -109,46 +100,35 @@ export const registerMerchantVerifyOtp = async (req, res) => {
     const decoded = await admin.auth().verifyIdToken(token);
     const phone = formatPhone(decoded.phone_number);
 
-    const pendingRegistration = await MerchantRegistration.findOne({ phone });
-    if (!pendingRegistration) {
-      return res.status(400).json({
-        message: "No pending registration found for this number. Start with register/send-otp"
-      });
-    }
-
     let merchant = await Merchant.findOne({ phone });
-    if (merchant && merchant.password) {
-      return res.status(409).json({ message: "Merchant already registered" });
-    }
-
+    
     if (!merchant) {
       merchant = await Merchant.create({
         phone,
-        password: pendingRegistration.hashedPassword,
         isVerified: true
       });
-    } else {
-      merchant.password = pendingRegistration.hashedPassword;
+    } else if (!merchant.isVerified) {
       merchant.isVerified = true;
       await merchant.save();
     }
 
-    await MerchantRegistration.deleteOne({ _id: pendingRegistration._id });
+    const jwtToken = generateToken(merchant._id, {
+      role: merchant.role || ROLES.MERCHANT,
+      accountType: ACCOUNT_TYPES.MERCHANT
+    });
 
     return res.status(201).json({
       success: true,
-      message: "Merchant registered successfully",
-      token: generateToken(merchant._id, {
-        role: merchant.role || ROLES.MERCHANT,
-        accountType: ACCOUNT_TYPES.MERCHANT
-      }),
+      message: "OTP verified. Please set your password.",
+      nextStep: "Call POST /api/merchants/set-password with your password",
+      token: jwtToken,
       merchant: sanitizeMerchant(merchant)
     });
   } catch (error) {
     if (error?.code?.startsWith("auth/")) {
-      return handleFirebaseAuthError(res, error, "Registration verification failed");
+      return handleFirebaseAuthError(res, error, "OTP verification failed");
     }
-    return handleValidation(res, error, "Registration verification failed");
+    return handleValidation(res, error, "OTP verification failed");
   }
 };
 

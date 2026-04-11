@@ -1,13 +1,13 @@
 {
   "info": {
-    "_postman_id": "88f6d6d5-d6d2-4a6d-aad0-6e939e50c1b4",
-    "name": "BachtBazaar Merchant Register + Login Flow (3-Step)",
+    "_postman_id": "99g7e7e6-e7e3-5b7e-bbe1-7f050f51d5c5",
+    "name": "BachtBazaar User Register + Login Flow (3-Step)",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "description": "Merchant workflow: register send-otp (phone only) → verify-otp → set-password → login"
+    "description": "User workflow: send-otp (phone only) → verify-otp → set-password → login"
   },
   "item": [
     {
-      "name": "01 - Register Send OTP (Phone Only)",
+      "name": "01 - Send OTP (Phone Only)",
       "request": {
         "method": "POST",
         "header": [
@@ -18,24 +18,23 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"phone\": \"{{merchant_phone}}\"\n}"
+          "raw": "{\n  \"phone\": \"{{user_phone}}\"\n}"
         },
         "url": {
-          "raw": "{{base_url}}/api/merchants/register/send-otp",
+          "raw": "{{base_url}}/api/users/send-otp",
           "host": [
             "{{base_url}}"
           ],
           "path": [
             "api",
-            "merchants",
-            "register",
+            "users",
             "send-otp"
           ]
         }
       }
     },
     {
-      "name": "02 - Register Verify OTP (Firebase Token)",
+      "name": "02 - Verify OTP (Firebase Token)",
       "request": {
         "method": "POST",
         "header": [
@@ -49,14 +48,13 @@
           "raw": "{\n  \"token\": \"{{firebase_token}}\"\n}"
         },
         "url": {
-          "raw": "{{base_url}}/api/merchants/register/verify-otp",
+          "raw": "{{base_url}}/api/users/verify-otp",
           "host": [
             "{{base_url}}"
           ],
           "path": [
             "api",
-            "merchants",
-            "register",
+            "users",
             "verify-otp"
           ]
         }
@@ -69,7 +67,7 @@
             "exec": [
               "const json = pm.response.json();",
               "if (json && json.token) {",
-              "  pm.collectionVariables.set('merchant_token', json.token);",
+              "  pm.collectionVariables.set('user_token', json.token);",
               "  console.log('JWT Token saved:', json.token);",
               "}"
             ]
@@ -88,28 +86,28 @@
           },
           {
             "key": "Authorization",
-            "value": "Bearer {{merchant_token}}"
+            "value": "Bearer {{user_token}}"
           }
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"password\": \"{{merchant_password}}\"\n}"
+          "raw": "{\n  \"password\": \"{{user_password}}\"\n}"
         },
         "url": {
-          "raw": "{{base_url}}/api/merchants/set-password",
+          "raw": "{{base_url}}/api/users/set-password",
           "host": [
             "{{base_url}}"
           ],
           "path": [
             "api",
-            "merchants",
+            "users",
             "set-password"
           ]
         }
       }
     },
     {
-      "name": "04 - Login Merchant (Password)",
+      "name": "04 - Login User (Password)",
       "request": {
         "method": "POST",
         "header": [
@@ -120,17 +118,17 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"phone\": \"{{merchant_phone}}\",\n  \"password\": \"{{merchant_password}}\"\n}"
+          "raw": "{\n  \"phone\": \"{{user_phone}}\",\n  \"password\": \"{{user_password}}\"\n}"
         },
         "url": {
-          "raw": "{{base_url}}/api/merchants/login-password",
+          "raw": "{{base_url}}/api/users/login",
           "host": [
             "{{base_url}}"
           ],
           "path": [
             "api",
-            "merchants",
-            "login-password"
+            "users",
+            "login"
           ]
         }
       },
@@ -142,7 +140,7 @@
             "exec": [
               "const json = pm.response.json();",
               "if (json && json.token) {",
-              "  pm.collectionVariables.set('merchant_token', json.token);",
+              "  pm.collectionVariables.set('user_token', json.token);",
               "  console.log('JWT Token saved:', json.token);",
               "}"
             ]
@@ -151,7 +149,7 @@
       ]
     },
     {
-      "name": "05 - Login Merchant (OTP)",
+      "name": "05 - Login User (OTP)",
       "request": {
         "method": "POST",
         "header": [
@@ -165,13 +163,13 @@
           "raw": "{\n  \"token\": \"{{firebase_token}}\"\n}"
         },
         "url": {
-          "raw": "{{base_url}}/api/merchants/login-otp",
+          "raw": "{{base_url}}/api/users/login-otp",
           "host": [
             "{{base_url}}"
           ],
           "path": [
             "api",
-            "merchants",
+            "users",
             "login-otp"
           ]
         }
@@ -184,19 +182,19 @@
       "value": "http://localhost:5000"
     },
     {
-      "key": "merchant_phone",
-      "value": "9876543210"
+      "key": "user_phone",
+      "value": "1234567890"
     },
     {
-      "key": "merchant_password",
-      "value": "Secret@123"
+      "key": "user_password",
+      "value": "UserPass@123"
     },
     {
       "key": "firebase_token",
       "value": ""
     },
     {
-      "key": "merchant_token",
+      "key": "user_token",
       "value": ""
     }
   ]

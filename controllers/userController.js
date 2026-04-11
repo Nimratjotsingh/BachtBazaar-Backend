@@ -102,6 +102,9 @@ export const verifyOtp = async (req, res) => {
         phone,
         isVerified: true
       });
+    } else if (!user.isVerified) {
+      user.isVerified = true;
+      await user.save();
     }
 
     const jwtToken = generateToken(user._id, {
@@ -111,6 +114,8 @@ export const verifyOtp = async (req, res) => {
 
     res.json({
       success: true,
+      message: "OTP verified. Please set your password.",
+      nextStep: "Call POST /api/users/set-password with your password",
       token: jwtToken,
       user: sanitizeUser(user)
     });

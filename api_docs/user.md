@@ -1,10 +1,13 @@
-# User APIs
+# User Auth APIs
 
-Base path: `/api/user`
+Base path: `/api/users`
 
-## 1) Send OTP
+## 3-Step Registration Flow
+
+### Step 1) Send OTP (Phone Only)
 - Method: `POST`
-- Path: `/api/user/auth/send-otp`
+- Path: `/api/users/send-otp`
+- Auth: Not required
 - Body:
 ```json
 {
@@ -19,30 +22,49 @@ Base path: `/api/user`
 }
 ```
 
-## 2) Verify OTP
+### Step 2) Verify OTP (OTP Verification)
 - Method: `POST`
-- Path: `/api/user/auth/verify-otp`
+- Path: `/api/users/verify-otp`
+- Auth: Not required
 - Body:
 ```json
 {
   "token": "firebase_id_token"
 }
 ```
-
-## 3) Set Password (Protected)
-- Method: `POST`
-- Path: `/api/user/auth/set-password`
-- Auth: Bearer token required
-- Body:
+- Response:
 ```json
 {
-  "password": "secret123"
+  "success": true,
+  "message": "OTP verified. Please set your password.",
+  "nextStep": "Call POST /api/users/set-password with your password",
+  "token": "jwt_access_token",
+  "user": {...}
 }
 ```
 
-## 4) Login with Password
+### Step 3) Set Password (Protected)
 - Method: `POST`
-- Path: `/api/user/auth/login-password`
+- Path: `/api/users/set-password`
+- Auth: Bearer token required (from Step 2)
+- Body:
+```json
+{
+  "password": "Secret@123"
+}
+```
+- Response:
+```json
+{
+  "success": true
+}
+```
+
+## Login Flows
+
+### Login with Password
+- Method: `POST`
+- Path: `/api/users/login`
 - Body:
 ```json
 {
@@ -51,9 +73,9 @@ Base path: `/api/user`
 }
 ```
 
-## 5) Login with OTP
+### Login with OTP
 - Method: `POST`
-- Path: `/api/user/auth/login-otp`
+- Path: `/api/users/login-otp`
 - Body:
 ```json
 {
@@ -61,9 +83,11 @@ Base path: `/api/user`
 }
 ```
 
-## 6) Forgot Password
+## Password Management
+
+### Forgot Password (OTP)
 - Method: `POST`
-- Path: `/api/user/auth/forgot-password`
+- Path: `/api/users/forgot-password`
 - Body:
 ```json
 {
@@ -72,20 +96,9 @@ Base path: `/api/user`
 }
 ```
 
-## 7) Update Profile (Protected)
+### Update Password (Protected)
 - Method: `PUT`
-- Path: `/api/user/profile`
-- Auth: Bearer token required
-- Content-Type: `multipart/form-data`
-- Fields:
-  - `name` (optional)
-  - `gender` (`male|female|other`, optional)
-  - `address` (optional)
-  - `profileImage` (image file, optional, max 5MB)
-
-## 8) Update Password (Protected)
-- Method: `PUT`
-- Path: `/api/user/password`
+- Path: `/api/users/password`
 - Auth: Bearer token required
 - Body:
 ```json
@@ -95,8 +108,38 @@ Base path: `/api/user`
 }
 ```
 
-## 9) Get Profile Image (Protected)
+## User Profile
+
+### Update Profile (Protected)
+- Method: `PUT`
+- Path: `/api/users/profile`
+- Auth: Bearer token required
+- Content-Type: `multipart/form-data`
+- Fields:
+  - `name` (optional)
+  - `gender` (`male|female|other`, optional)
+  - `address` (optional)
+  - `profileImage` (image file, optional, max 5MB)
+
+### Get Profile Image (Protected)
 - Method: `GET`
-- Path: `/api/user/profile-image`
+- Path: `/api/users/profile-image`
 - Auth: Bearer token required
 - Response: raw image binary with image content type
+
+## Testing Sequence (Postman)
+
+**Registration (First Time):**
+1. `POST /api/users/send-otp` → phone (9876543210)
+2. Get Firebase OTP token via Firebase Console/SDK
+3. `POST /api/users/verify-otp` → Firebase token
+4. Copy JWT from response
+5. `POST /api/users/set-password` → password (with JWT in Authorization header)
+
+**Login (Subsequent Times):**
+1. `POST /api/users/login` → phone + password
+   - OR
+   `POST /api/users/login-otp` → Firebase token
+
+**Postman Collections:**
+- `api_docs/postman/user-register-login-flow.postman_collection.json`
