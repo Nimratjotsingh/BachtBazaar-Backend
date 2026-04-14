@@ -96,12 +96,15 @@ export const deleteMerchant = async (req, res) => {
     return res.status(500).json({ message: "Failed to delete merchant" });
   }
 };
+
+
 import User from "../models/userModel.js";
 import Merchant from "../models/merchantModel.js";
 import { z } from "zod";
 import { validate, ValidationError } from "../validators/validate.js";
 import { ROLES } from "../constants/roles.js";
 import { updateUserProfileSchema } from "../validators/appValidator.js";
+
 // List all users (with pagination, search, filters)
 export const listUsers = async (req, res) => {
   try {
@@ -221,7 +224,7 @@ export const bootstrapSuperAdmin = async (req, res) => {
       const user = await User.findOneAndUpdate(
         { phone: formattedPhone },
         { role: ROLES.SUPER_ADMIN, isVerified: true },
-        { new: true }
+        { returnDocument: 'after' }
       ).select("-password");
 
       if (!user) {
