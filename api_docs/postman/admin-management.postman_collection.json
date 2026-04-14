@@ -1,0 +1,219 @@
+{
+  "info": {
+    "name": "Admin Management API",
+    "description": "Postman collection for Admin APIs to manage users and merchants.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Bootstrap Super Admin",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "x-bootstrap-secret", "value": "<BOOTSTRAP_ADMIN_SECRET>" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": { "raw": "/api/admin/bootstrap-super-admin", "path": ["api", "admin", "bootstrap-super-admin"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"phone\": \"9876543210\",\n  \"accountType\": \"user\"\n}"
+        }
+      }
+    },
+    {
+      "name": "List Users",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer <TOKEN>" }
+        ],
+        "url": { "raw": "/api/admin/users", "path": ["api", "admin", "users"] }
+      }
+    },
+    {
+      "name": "Get User Details",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer <TOKEN>" }
+        ],
+        "url": { "raw": "/api/admin/users/:id", "path": ["api", "admin", "users", ":id"] }
+      }
+    },
+    {
+      "name": "Update User Info",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Authorization", "value": "Bearer <TOKEN>" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": { "raw": "/api/admin/users/:id", "path": ["api", "admin", "users", ":id"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"New Name\",\n  \"address\": \"New Address\",\n  \"gender\": \"male\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Ban User",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Authorization", "value": "Bearer <TOKEN>" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": { "raw": "/api/admin/users/:id/status", "path": ["api", "admin", "users", ":id", "status"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"status\": \"banned\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Unban User",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Authorization", "value": "Bearer <TOKEN>" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": { "raw": "/api/admin/users/:id/status", "path": ["api", "admin", "users", ":id", "status"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"status\": \"active\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Delete User",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          { "key": "Authorization", "value": "Bearer <TOKEN>" }
+        ],
+        "url": { "raw": "/api/admin/users/:id", "path": ["api", "admin", "users", ":id"] }
+      }
+    },
+    {
+      "name": "Update User Role",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Authorization", "value": "Bearer <TOKEN>" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": { "raw": "/api/admin/users/:id/role", "path": ["api", "admin", "users", ":id", "role"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"role\": \"super_admin\"\n}"
+        }
+      }
+    },
+    {
+      "name": "List Merchants",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer <TOKEN>" }
+        ],
+        "url": { "raw": "/api/admin/merchants", "path": ["api", "admin", "merchants"] }
+      }
+    },
+    {
+      "name": "Get Merchant Details",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer <TOKEN>" }
+        ],
+        "url": { "raw": "/api/admin/merchants/:id", "path": ["api", "admin", "merchants", ":id"] }
+      }
+    },
+    {
+      "name": "Update Merchant Info",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Authorization", "value": "Bearer <TOKEN>" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": { "raw": "/api/admin/merchants/:id", "path": ["api", "admin", "merchants", ":id"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"New Name\",\n  \"city\": \"New City\",\n  \"email\": \"new@example.com\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Verify Merchant",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Authorization", "value": "Bearer <TOKEN>" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": { "raw": "/api/admin/merchants/:id/verify", "path": ["api", "admin", "merchants", ":id", "verify"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"isVerified\": true\n}"
+        }
+      }
+    },
+    {
+      "name": "Ban Merchant",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Authorization", "value": "Bearer <TOKEN>" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": { "raw": "/api/admin/merchants/:id/status", "path": ["api", "admin", "merchants", ":id", "status"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"status\": \"banned\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Unban Merchant",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Authorization", "value": "Bearer <TOKEN>" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": { "raw": "/api/admin/merchants/:id/status", "path": ["api", "admin", "merchants", ":id", "status"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"status\": \"active\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Delete Merchant",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          { "key": "Authorization", "value": "Bearer <TOKEN>" }
+        ],
+        "url": { "raw": "/api/admin/merchants/:id", "path": ["api", "admin", "merchants", ":id"] }
+      }
+    },
+    {
+      "name": "Update Merchant Role",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Authorization", "value": "Bearer <TOKEN>" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": { "raw": "/api/admin/merchants/:id/role", "path": ["api", "admin", "merchants", ":id", "role"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"role\": \"super_admin\"\n}"
+        }
+      }
+    }
+  ]
+}

@@ -32,6 +32,11 @@ const userSchema=new mongoose.Schema({
   profileImage: {
     data: Buffer,
     contentType: String
+  },
+  status: {
+    type: String,
+    enum: ["active", "banned"],
+    default: "active"
   }
 }, { timestamps:true });
 

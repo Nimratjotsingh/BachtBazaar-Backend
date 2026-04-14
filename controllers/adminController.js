@@ -1,8 +1,187 @@
+// List all merchants (with pagination, search, filters)
+export const listMerchants = async (req, res) => {
+  try {
+    const { page = 1, limit = 10, search = "", role, isVerified } = req.query;
+    const query = {};
+    if (role) query.role = role;
+    if (isVerified !== undefined) query.isVerified = isVerified === "true";
+    if (search) {
+      query.$or = [
+        { name: { $regex: search, $options: "i" } },
+        { phone: { $regex: search, $options: "i" } },
+        { email: { $regex: search, $options: "i" } }
+      ];
+    }
+    const total = await Merchant.countDocuments(query);
+    const merchants = await Merchant.find(query)
+      .select("-password")
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(Number(limit));
+    return res.json({ success: true, merchants, total, page: Number(page), pages: Math.ceil(total / limit) });
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to list merchants" });
+  }
+};
+
+// Get merchant details
+export const getMerchant = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const merchant = await Merchant.findById(id).select("-password");
+    if (!merchant) return res.status(404).json({ message: "Merchant not found" });
+    return res.json({ success: true, merchant });
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to get merchant" });
+  }
+};
+
+// Update merchant info
+import { updateMerchantProfileSchema } from "../validators/appValidator.js";
+export const updateMerchant = async (req, res) => {
+  try {
+    const updates = validate(updateMerchantProfileSchema, req.body);
+    const { id } = req.params;
+    const merchant = await Merchant.findByIdAndUpdate(id, updates, { new: true }).select("-password");
+    if (!merchant) return res.status(404).json({ message: "Merchant not found" });
+    return res.json({ success: true, message: "Merchant updated", merchant });
+  } catch (error) {
+    if (error instanceof ValidationError) {
+      return res.status(400).json({ message: error.message });
+    }
+    return res.status(500).json({ message: "Failed to update merchant" });
+  }
+};
+
+// Verify/Reject merchant
+export const verifyMerchant = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { isVerified } = req.body;
+    if (typeof isVerified !== "boolean") {
+      return res.status(400).json({ message: "isVerified must be boolean" });
+    }
+    const merchant = await Merchant.findByIdAndUpdate(id, { isVerified }, { new: true }).select("-password");
+    if (!merchant) return res.status(404).json({ message: "Merchant not found" });
+    return res.json({ success: true, message: isVerified ? "Merchant verified" : "Merchant unverified", merchant });
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to verify merchant" });
+  }
+};
+
+// Ban/Unban merchant (status field required in model)
+export const updateMerchantStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+    if (!status || !["active", "banned"].includes(status)) {
+      return res.status(400).json({ message: "Invalid status" });
+    }
+    const merchant = await Merchant.findByIdAndUpdate(id, { status }, { new: true }).select("-password");
+    if (!merchant) return res.status(404).json({ message: "Merchant not found" });
+    return res.json({ success: true, message: `Merchant ${status === "banned" ? "banned" : "unbanned"}`, merchant });
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to update merchant status" });
+  }
+};
+
+// Delete merchant
+export const deleteMerchant = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const merchant = await Merchant.findByIdAndDelete(id);
+    if (!merchant) return res.status(404).json({ message: "Merchant not found" });
+    return res.json({ success: true, message: "Merchant deleted" });
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to delete merchant" });
+  }
+};
 import User from "../models/userModel.js";
 import Merchant from "../models/merchantModel.js";
 import { z } from "zod";
 import { validate, ValidationError } from "../validators/validate.js";
 import { ROLES } from "../constants/roles.js";
+import { updateUserProfileSchema } from "../validators/appValidator.js";
+// List all users (with pagination, search, filters)
+export const listUsers = async (req, res) => {
+  try {
+    const { page = 1, limit = 10, search = "", role, isVerified } = req.query;
+    const query = {};
+    if (role) query.role = role;
+    if (isVerified !== undefined) query.isVerified = isVerified === "true";
+    if (search) {
+      query.$or = [
+        { name: { $regex: search, $options: "i" } },
+        { phone: { $regex: search, $options: "i" } }
+      ];
+    }
+    const total = await User.countDocuments(query);
+    const users = await User.find(query)
+      .select("-password")
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(Number(limit));
+    return res.json({ success: true, users, total, page: Number(page), pages: Math.ceil(total / limit) });
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to list users" });
+  }
+};
+
+// Get user details
+export const getUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = await User.findById(id).select("-password");
+    if (!user) return res.status(404).json({ message: "User not found" });
+    return res.json({ success: true, user });
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to get user" });
+  }
+};
+
+// Update user info
+export const updateUser = async (req, res) => {
+  try {
+    const updates = validate(updateUserProfileSchema, req.body);
+    const { id } = req.params;
+    const user = await User.findByIdAndUpdate(id, updates, { new: true }).select("-password");
+    if (!user) return res.status(404).json({ message: "User not found" });
+    return res.json({ success: true, message: "User updated", user });
+  } catch (error) {
+    if (error instanceof ValidationError) {
+      return res.status(400).json({ message: error.message });
+    }
+    return res.status(500).json({ message: "Failed to update user" });
+  }
+};
+
+// Ban/Unban user (status field required in model)
+export const updateUserStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+    if (!status || !["active", "banned"].includes(status)) {
+      return res.status(400).json({ message: "Invalid status" });
+    }
+    const user = await User.findByIdAndUpdate(id, { status }, { new: true }).select("-password");
+    if (!user) return res.status(404).json({ message: "User not found" });
+    return res.json({ success: true, message: `User ${status === "banned" ? "banned" : "unbanned"}`, user });
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to update user status" });
+  }
+};
+
+// Delete user
+export const deleteUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = await User.findByIdAndDelete(id);
+    if (!user) return res.status(404).json({ message: "User not found" });
+    return res.json({ success: true, message: "User deleted" });
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to delete user" });
+  }
+};
 
 const updateUserRoleSchema = z.object({
   role: z.enum([ROLES.USER, ROLES.SUPER_ADMIN])
