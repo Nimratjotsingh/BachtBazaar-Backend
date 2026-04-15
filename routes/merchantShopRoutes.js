@@ -1,7 +1,7 @@
 import express from "express";
 import upload from "../middleware/upload.js";
 import { protectMerchant } from "../middleware/authMiddleware.js";
-import { upsertShopProfile } from "../controllers/merchantShopController.js";
+import { upsertShopProfile, getOpeningHours, updateOpeningHours, updateDayHours } from "../controllers/merchantShopController.js";
 
 const router = express.Router();
 
@@ -14,5 +14,10 @@ router.put(
   ]),
   upsertShopProfile
 );
+
+// Opening hours routes
+router.get("/hours", protectMerchant, getOpeningHours);
+router.put("/hours", protectMerchant, updateOpeningHours);
+router.patch("/hours/:day", protectMerchant, updateDayHours);
 
 export default router;

@@ -101,3 +101,18 @@ export const updatePasswordSchema = z.object({
   oldPassword: z.string().min(6, "Old password is required"),
   newPassword: z.string().min(6, "New password must be at least 6 characters")
 });
+
+const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
+const dayHoursSchema = z.object({
+  open: z.string().regex(timeRegex, "Invalid time format, use HH:MM (e.g. 09:00)").optional(),
+  close: z.string().regex(timeRegex, "Invalid time format, use HH:MM (e.g. 18:00)").optional(),
+  isClosed: z.boolean().optional()
+});
+
+export const updateOpeningHoursSchema = z.record(
+  z.enum(["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]),
+  dayHoursSchema
+).refine(val => Object.keys(val).length > 0, { message: "At least one day is required" });
+
+export const updateSingleDayHoursSchema = dayHoursSchema;
