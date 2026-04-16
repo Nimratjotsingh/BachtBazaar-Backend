@@ -2,6 +2,7 @@ import express from "express";
 import {
   getAllCategories,
   getCategoryById,
+  getSubcategoriesByCategory,
   addCategory,
   updateCategory,
   deleteCategory,
@@ -13,6 +14,9 @@ const router = express.Router();
 
 // Get all categories
 router.get("/", getAllCategories);
+
+// Get all subcategories under a category
+router.get("/:categoryId/subcategories", getSubcategoriesByCategory);
 
 // Get category by ID
 router.get("/:id", getCategoryById);

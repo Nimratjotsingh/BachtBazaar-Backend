@@ -1,0 +1,163 @@
+{
+  "info": {
+    "_postman_id": "1b8af8cc-7f4f-4d37-8b76-4f28d6a5f6b2",
+    "name": "BachtBazaar - New Requirements APIs",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Categories - Get Subcategories By Category",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/categories/{{categoryId}}/subcategories",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "categories", "{{categoryId}}", "subcategories"]
+        }
+      }
+    },
+    {
+      "name": "KYC - Verify Aadhaar PAN (Cashfree passthrough)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{token}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"aadhaarNumber\": \"123412341234\",\n  \"panNumber\": \"ABCDE1234F\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/kyc/verify",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "kyc", "verify"]
+        }
+      }
+    },
+    {
+      "name": "Profile - Get Current Profile (User or Merchant)",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/profile",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "profile"]
+        }
+      }
+    },
+    {
+      "name": "Merchant Shop Hours - Get All Days",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{merchantToken}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/merchant/shop/hours",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "merchant", "shop", "hours"]
+        }
+      }
+    },
+    {
+      "name": "Merchant Shop Hours - Update Multiple Days",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{merchantToken}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"monday\": {\n    \"open\": \"09:00\",\n    \"close\": \"21:00\",\n    \"isClosed\": false\n  },\n  \"sunday\": {\n    \"isClosed\": true\n  }\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/merchant/shop/hours",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "merchant", "shop", "hours"]
+        }
+      }
+    },
+    {
+      "name": "Merchant Shop Hours - Update Single Day",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{merchantToken}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"open\": \"10:00\",\n  \"close\": \"22:00\",\n  \"isClosed\": false\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/merchant/shop/hours/monday",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "merchant", "shop", "hours", "monday"]
+        }
+      }
+    },
+    {
+      "name": "Merchant Shop - Create/Update With Address Geo",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{merchantToken}}" }
+        ],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            { "key": "shopName", "value": "My Shop", "type": "text" },
+            { "key": "categoryId", "value": "{{categoryId}}", "type": "text" },
+            { "key": "subCategoryId", "value": "{{subCategoryId}}", "type": "text" },
+            { "key": "address", "value": "Main Road, Block A", "type": "text" },
+            { "key": "address1", "value": "Near Metro Station", "type": "text" },
+            { "key": "latitude", "value": "28.6139", "type": "text" },
+            { "key": "longitude", "value": "77.2090", "type": "text" },
+            { "key": "city", "value": "Delhi", "type": "text" },
+            { "key": "phone", "value": "9876543210", "type": "text" },
+            { "key": "description", "value": "Updated shop details", "type": "text" }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/merchant/shop",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "merchant", "shop"]
+        }
+      }
+    },
+    {
+      "name": "Merchant Business Docs - Upload PAN",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{merchantToken}}" }
+        ],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            { "key": "panNumber", "value": "ABCDE1234F", "type": "text" },
+            { "key": "panImage", "type": "file", "src": "" }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/merchant/business-docs",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "merchant", "business-docs"]
+        }
+      }
+    }
+  ],
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:5001" },
+    { "key": "token", "value": "" },
+    { "key": "merchantToken", "value": "" },
+    { "key": "categoryId", "value": "" },
+    { "key": "subCategoryId", "value": "" }
+  ]
+}

@@ -8,6 +8,57 @@ import {
 import { validate, ValidationError } from "../validators/validate.js";
 
 const VALID_DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
+const DEFAULT_DAY_HOURS = { open: null, close: null, isClosed: false };
+
+const buildOpeningHoursResponse = (openingHoursMap) => {
+  const result = Object.fromEntries(
+    VALID_DAYS.map((day) => [day, { ...DEFAULT_DAY_HOURS }])
+  );
+
+  if (!openingHoursMap) return result;
+
+  const fromDb = openingHoursMap instanceof Map
+    ? Object.fromEntries(openingHoursMap)
+    : openingHoursMap;
+
+  for (const [day, value] of Object.entries(fromDb || {})) {
+    if (!VALID_DAYS.includes(day)) continue;
+    result[day] = {
+      open: value?.open ?? null,
+      close: value?.close ?? null,
+      isClosed: Boolean(value?.isClosed)
+    };
+  }
+
+  return result;
+};
+
+const normalizeAndValidateHours = (rawHours) => {
+  const normalized = {};
+
+  for (const [rawDay, dayData] of Object.entries(rawHours)) {
+    const day = rawDay.toLowerCase().trim();
+    if (!VALID_DAYS.includes(day)) {
+      throw new ValidationError(`Invalid day '${rawDay}'. Must be one of: ${VALID_DAYS.join(", ")}`);
+    }
+
+    const isClosed = dayData?.isClosed === true;
+    const open = dayData?.open;
+    const close = dayData?.close;
+
+    if (!isClosed && ((open && !close) || (!open && close))) {
+      throw new ValidationError(`${day}: both open and close are required when isClosed is false`);
+    }
+
+    normalized[day] = {
+      open: open ?? null,
+      close: close ?? null,
+      isClosed
+    };
+  }
+
+  return normalized;
+};
 
 export const upsertShopProfile = async (req, res) => {
   try {
@@ -54,9 +105,7 @@ export const upsertShopProfile = async (req, res) => {
 export const getOpeningHours = async (req, res) => {
   try {
     const shop = await MerchantShop.findOne({ merchantId: req.merchant._id }).select("openingHours");
-    if (!shop) return res.status(404).json({ message: "Shop not found" });
-
-    const hours = shop.openingHours ? Object.fromEntries(shop.openingHours) : {};
+    const hours = buildOpeningHoursResponse(shop?.openingHours);
     return res.json({ success: true, openingHours: hours });
   } catch (error) {
     console.log(error);
@@ -68,9 +117,10 @@ export const getOpeningHours = async (req, res) => {
 export const updateOpeningHours = async (req, res) => {
   try {
     const data = validate(updateOpeningHoursSchema, req.body);
+    const normalizedData = normalizeAndValidateHours(data);
 
     const updateFields = {};
-    for (const [day, dayData] of Object.entries(data)) {
+    for (const [day, dayData] of Object.entries(normalizedData)) {
       updateFields[`openingHours.${day}`] = dayData;
     }
 
@@ -80,7 +130,7 @@ export const updateOpeningHours = async (req, res) => {
       { new: true, upsert: true }
     ).select("openingHours");
 
-    const hours = shop.openingHours ? Object.fromEntries(shop.openingHours) : {};
+    const hours = buildOpeningHoursResponse(shop.openingHours);
     return res.json({ success: true, openingHours: hours });
   } catch (error) {
     if (error instanceof ValidationError) {
@@ -101,17 +151,18 @@ export const updateDayHours = async (req, res) => {
     }
 
     const data = validate(updateSingleDayHoursSchema, req.body);
+    const normalized = normalizeAndValidateHours({ [day]: data });
 
     const shop = await MerchantShop.findOneAndUpdate(
       { merchantId: req.merchant._id },
       {
-        $set: { [`openingHours.${day}`]: data },
+        $set: { [`openingHours.${day}`]: normalized[day] },
         $setOnInsert: { merchantId: req.merchant._id }
       },
       { new: true, upsert: true }
     ).select("openingHours");
 
-    const dayHours = shop.openingHours?.get(day) ?? null;
+    const dayHours = buildOpeningHoursResponse(shop.openingHours)[day] ?? DEFAULT_DAY_HOURS;
     return res.json({ success: true, day, hours: dayHours });
   } catch (error) {
     if (error instanceof ValidationError) {

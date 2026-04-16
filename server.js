@@ -10,6 +10,8 @@ import merchantBusinessDocRoutes from "./routes/merchantBusinessDocRoutes.js";
 import merchantShopRoutes from "./routes/merchantShopRoutes.js";
 import categoryRoutes from "./routes/categoryRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
+import profileRoutes from "./routes/profileRoutes.js";
+import kycRoutes from "./routes/kycRoutes.js";
 
 dotenv.config();
 // console.log(process.env.MONGO_URI)
@@ -50,6 +52,8 @@ app.use("/api/merchant/shop", merchantShopRoutes);
 app.use("/api/merchants/shop", merchantShopRoutes);
 app.use("/api/categories", categoryRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/profile", profileRoutes);
+app.use("/api/kyc", kycRoutes);
 
 app.get("/health", (req, res) => {
   res.json({ message: "Server is healthy!" });

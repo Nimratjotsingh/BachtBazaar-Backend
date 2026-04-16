@@ -12,7 +12,8 @@ router.post(
     { name: "gstImage", maxCount: 1 },
     { name: "tradeLicenseImage", maxCount: 1 },
     { name: "shopRegistrationImage", maxCount: 1 },
-    { name: "fssaiImage", maxCount: 1 }
+    { name: "fssaiImage", maxCount: 1 },
+    { name: "panImage", maxCount: 1 }
   ]),
   upsertBusinessDocs
 );

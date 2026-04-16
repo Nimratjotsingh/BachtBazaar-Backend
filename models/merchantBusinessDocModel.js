@@ -19,7 +19,9 @@ const merchantBusinessDocSchema = new mongoose.Schema({
   shopRegistrationNumber: String,
   shopRegistrationImage: imageSchema,
   fssaiNumber: String,
-  fssaiImage: imageSchema
+  fssaiImage: imageSchema,
+  panNumber: String,
+  panImage: imageSchema
 }, { timestamps: true });
 
 export default mongoose.model("MerchantBusinessDoc", merchantBusinessDocSchema);

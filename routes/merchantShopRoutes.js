@@ -15,6 +15,16 @@ router.put(
   upsertShopProfile
 );
 
+router.post(
+  "/",
+  protectMerchant,
+  upload.fields([
+    { name: "logoImage", maxCount: 1 },
+    { name: "shopBannerImage", maxCount: 1 }
+  ]),
+  upsertShopProfile
+);
+
 // Opening hours routes
 router.get("/hours", protectMerchant, getOpeningHours);
 router.put("/hours", protectMerchant, updateOpeningHours);

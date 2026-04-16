@@ -77,6 +77,20 @@ export const updateShopProfileSchema = z.object({
     .min(3, { message: "Address must be at least 3 characters" })
     .optional(),
 
+  address1: z.string()
+    .min(3, { message: "Address1 must be at least 3 characters" })
+    .optional(),
+
+  latitude: z.preprocess(
+    (value) => value === "" || value === undefined || value === null ? undefined : Number(value),
+    z.number({ invalid_type_error: "Latitude must be a number" }).min(-90).max(90).optional()
+  ),
+
+  longitude: z.preprocess(
+    (value) => value === "" || value === undefined || value === null ? undefined : Number(value),
+    z.number({ invalid_type_error: "Longitude must be a number" }).min(-180).max(180).optional()
+  ),
+
   city: z.string()
     .min(3, { message: "City must be at least 3 characters" })
     .optional(),
@@ -111,8 +125,11 @@ const dayHoursSchema = z.object({
 });
 
 export const updateOpeningHoursSchema = z.record(
-  z.enum(["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]),
+  z.string(),
   dayHoursSchema
 ).refine(val => Object.keys(val).length > 0, { message: "At least one day is required" });
 
-export const updateSingleDayHoursSchema = dayHoursSchema;
+export const updateSingleDayHoursSchema = dayHoursSchema.refine(
+  (val) => Object.keys(val).length > 0,
+  { message: "At least one field is required" }
+);

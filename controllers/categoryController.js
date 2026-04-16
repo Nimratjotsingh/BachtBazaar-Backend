@@ -1,4 +1,5 @@
 import Category from "../models/categoryModel.js";
+import SubCategory from "../models/subCategoryModel.js";
 import { validate, ValidationError } from "../validators/validate.js";
 import { z } from "zod";
 
@@ -49,6 +50,33 @@ export const getCategoryById = async (req, res) => {
   } catch (error) {
     console.error("Error fetching category:", error.message);
     res.status(500).json({ message: "Failed to fetch category" });
+  }
+};
+
+// Get subcategories by categoryId
+export const getSubcategoriesByCategory = async (req, res) => {
+  try {
+    const { categoryId } = req.params;
+
+    const category = await Category.findById(categoryId).select("_id value label");
+    if (!category) {
+      return res.status(404).json({ message: "Category not found" });
+    }
+
+    const subcategories = await SubCategory.find({
+      categoryId,
+      isActive: true
+    }).sort({ label: 1 });
+
+    return res.json({
+      success: true,
+      category,
+      count: subcategories.length,
+      subcategories
+    });
+  } catch (error) {
+    console.error("Error fetching subcategories:", error.message);
+    return res.status(500).json({ message: "Failed to fetch subcategories" });
   }
 };
 

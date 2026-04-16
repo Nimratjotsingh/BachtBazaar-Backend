@@ -25,7 +25,10 @@ const merchantShopSchema = new mongoose.Schema({
     ref: "SubCategory"
   },
   address: String,
+  address1: String,
   city: String,
+  latitude: Number,
+  longitude: Number,
   logo: imageSchema,
   banner: imageSchema,
   phone: String,

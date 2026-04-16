@@ -12,11 +12,13 @@ export const upsertBusinessDocs = async (req, res) => {
     if (req.body.tradeLicenseNumber) update.tradeLicenseNumber = req.body.tradeLicenseNumber;
     if (req.body.shopRegistrationNumber) update.shopRegistrationNumber = req.body.shopRegistrationNumber;
     if (req.body.fssaiNumber) update.fssaiNumber = req.body.fssaiNumber;
+    if (req.body.panNumber) update.panNumber = String(req.body.panNumber).toUpperCase();
 
     const gstImageFile = req.files?.gstImage?.[0];
     const tradeLicenseImageFile = req.files?.tradeLicenseImage?.[0];
     const shopRegistrationImageFile = req.files?.shopRegistrationImage?.[0];
     const fssaiImageFile = req.files?.fssaiImage?.[0];
+    const panImageFile = req.files?.panImage?.[0];
 
     if (gstImageFile) {
       update.gstImage = {
@@ -43,6 +45,13 @@ export const upsertBusinessDocs = async (req, res) => {
       update.fssaiImage = {
         data: fssaiImageFile.buffer,
         contentType: fssaiImageFile.mimetype
+      };
+    }
+
+    if (panImageFile) {
+      update.panImage = {
+        data: panImageFile.buffer,
+        contentType: panImageFile.mimetype
       };
     }
 
