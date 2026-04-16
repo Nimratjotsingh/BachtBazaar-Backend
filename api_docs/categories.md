@@ -5,12 +5,22 @@ Base path: `/api/categories`
 ## 1) Get All Categories
 - Method: `GET`
 - Path: `/api/categories`
+- Auth: Public (no token required)
+- Access: Merchant/User/Guest (read-only)
 
 ## 2) Get Category By ID
 - Method: `GET`
 - Path: `/api/categories/:id`
+- Auth: Public (no token required)
+- Access: Merchant/User/Guest (read-only)
 
-## 3) Add Category
+## 3) Get Subcategories By Category
+- Method: `GET`
+- Path: `/api/categories/:categoryId/subcategories`
+- Auth: Public (no token required)
+- Access: Merchant/User/Guest (read-only)
+
+## 4) Add Category
 - Method: `POST`
 - Path: `/api/categories`
 - Auth: Bearer token required
@@ -24,7 +34,7 @@ Base path: `/api/categories`
 }
 ```
 
-## 4) Update Category
+## 5) Update Category
 - Method: `PUT`
 - Path: `/api/categories/:id`
 - Auth: Bearer token required
@@ -36,14 +46,14 @@ Base path: `/api/categories`
 }
 ```
 
-## 5) Soft Delete Category
+## 6) Soft Delete Category
 - Method: `DELETE`
 - Path: `/api/categories/:id`
 - Auth: Bearer token required
 - Role: `super_admin` only
 - Behavior: sets `isActive = false`
 
-## 6) Hard Delete Category
+## 7) Hard Delete Category
 - Method: `DELETE`
 - Path: `/api/categories/:id/permanent`
 - Auth: Bearer token required

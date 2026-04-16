@@ -38,7 +38,7 @@ export const getCategoryById = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const category = await Category.findById(id);
+    const category = await Category.findOne({ _id: id, isActive: true });
     if (!category) {
       return res.status(404).json({ message: "Category not found" });
     }
@@ -58,7 +58,8 @@ export const getSubcategoriesByCategory = async (req, res) => {
   try {
     const { categoryId } = req.params;
 
-    const category = await Category.findById(categoryId).select("_id value label");
+    const category = await Category.findOne({ _id: categoryId, isActive: true })
+      .select("_id value label");
     if (!category) {
       return res.status(404).json({ message: "Category not found" });
     }
