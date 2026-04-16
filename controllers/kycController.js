@@ -6,6 +6,8 @@ const BASE_URL =
     ? "https://api.cashfree.com"
     : "https://sandbox.cashfree.com";
 
+// https://sandbox.cashfree.com/verification/pan 
+
 const cashfreeHeaders = () => ({
   "Content-Type": "application/json",
   "x-client-id": process.env.CASHFREE_CLIENT_ID,
@@ -31,6 +33,7 @@ const isCashfreeApiError = (error) => {
 };
 
 const verifyPanPrimary = async (pan, name) => {
+  console.log(`${BASE_URL}/verification/pan`)
   return axios.post(
     `${BASE_URL}/verification/pan`,
     { pan, name },
@@ -57,9 +60,9 @@ export const verifyPan = async (req, res) => {
     const pan = String(req.body?.pan || "").trim().toUpperCase();
     const name = String(req.body?.name || "").trim();
 
-    if (!pan || !/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(pan)) {
-      throw new ValidationError("A valid 10-character PAN is required");
-    }
+    // if (!pan || !/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(pan)) {
+    //   throw new ValidationError("A valid 10-character PAN is required");
+    // }
 
     let response;
     try {
