@@ -26,6 +26,7 @@ const isDevelopment = (process.env.NODE_ENV || "")
 connectDB();
 
 app.use(cors());
+app.use(express.urlencoded({extended: true}))
 app.use(express.json());
 
 if (isDevelopment) {

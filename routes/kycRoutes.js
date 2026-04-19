@@ -11,7 +11,7 @@ const router = express.Router();
 // PAN Verification
 // POST /api/kyc/pan
 // Body: { pan, name }
-router.post("/pan", protectMerchant, verifyPan);
+router.post("/pan",  verifyPan);
 
 // Aadhaar – Step 1: send OTP to registered mobile
 // POST /api/kyc/aadhaar/initiate

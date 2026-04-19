@@ -6,12 +6,15 @@ const BASE_URL =
     ? "https://api.cashfree.com"
     : "https://sandbox.cashfree.com";
 
-// https://sandbox.cashfree.com/verification/pan 
-
-const cashfreeHeaders = () => ({
+/**
+ * FIXED: Updated helper to accept dynamic credentials.
+ * If credentials aren't passed, it falls back to environment variables.
+ */
+const cashfreeHeaders = (clientId, clientSecret) => ({
   "Content-Type": "application/json",
-  "x-client-id": process.env.CASHFREE_CLIENT_ID,
-  "x-client-secret": process.env.CASHFREE_SECRET_KEY
+  "x-client-id": clientId || process.env.CASHFREE_CLIENT_ID,
+  "x-client-secret": clientSecret || process.env.CASHFREE_SECRET_KEY,
+  "x-api-version": "2022-09-01" // Best practice: always include the version
 });
 
 const handleCashfreeError = (res, error, fallbackMessage) => {
@@ -32,16 +35,21 @@ const isCashfreeApiError = (error) => {
   return code === "api_error";
 };
 
-const verifyPanPrimary = async (pan, name) => {
-  console.log(`${BASE_URL}/verification/pan`)
+/**
+ * FIXED: Added clientId and clientSecret as arguments
+ */
+const verifyPanPrimary = async (pan, name, clientId, clientSecret) => {
   return axios.post(
     `${BASE_URL}/verification/pan`,
     { pan, name },
-    { headers: cashfreeHeaders() }
+    { headers: cashfreeHeaders(clientId, clientSecret) }
   );
 };
 
-const verifyPanLiteFallback = async (pan, name) => {
+/**
+ * FIXED: Added clientId and clientSecret as arguments
+ */
+const verifyPanLiteFallback = async (pan, name, clientId, clientSecret) => {
   return axios.post(
     `${BASE_URL}/verification/pan-lite`,
     {
@@ -49,28 +57,44 @@ const verifyPanLiteFallback = async (pan, name) => {
       pan,
       name
     },
-    { headers: cashfreeHeaders() }
+    { headers: cashfreeHeaders(clientId, clientSecret) }
   );
 };
 
-// ─── PAN Verification ────────────────────────────────────────────────────────
-// POST /api/kyc/pan
+// ─── PAN Verification Controller ─────────────────────────────────────────────
+
 export const verifyPan = async (req, res) => {
   try {
+    // 1. Extract Credentials from Headers (Postman)
+    const clientId = req.headers['x-client-id'];
+    const clientSecret = req.headers['x-client-secret'];
+
+    // 2. Validate existence of credentials
+    if (!clientId || !clientSecret) {
+      return res.status(400).json({
+        success: false,
+        code: "x-client-id_missing",
+        message: "Credentials (x-client-id or x-client-secret) are missing in request headers.",
+        type: "validation_error"
+      });
+    }
+
+    // 3. Extract Data from Body
     const pan = String(req.body?.pan || "").trim().toUpperCase();
     const name = String(req.body?.name || "").trim();
 
-    // if (!pan || !/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(pan)) {
-    //   throw new ValidationError("A valid 10-character PAN is required");
-    // }
+    if (!pan) {
+      return res.status(400).json({ success: false, message: "PAN is required" });
+    }
 
     let response;
     try {
-      response = await verifyPanPrimary(pan, name);
+      // 4. FIXED: Now passing the extracted headers into the helpers
+      response = await verifyPanPrimary(pan, name, clientId, clientSecret);
     } catch (primaryError) {
-      // Some sandbox accounts are not enabled for /verification/pan; use pan-lite as fallback.
+      console.log(primaryError)
       if (isCashfreeApiError(primaryError)) {
-        response = await verifyPanLiteFallback(pan, name);
+        response = await verifyPanLiteFallback(pan, name, clientId, clientSecret);
       } else {
         throw primaryError;
       }
@@ -82,20 +106,23 @@ export const verifyPan = async (req, res) => {
   }
 };
 
-// ─── Aadhaar – Step 1: Initiate OTP ──────────────────────────────────────────
-// POST /api/kyc/aadhaar/initiate
+// ─── Aadhaar OTP Initiation ──────────────────────────────────────────
+
 export const initiateAadhaarOtp = async (req, res) => {
   try {
+    const clientId = req.headers['x-client-id'];
+    const clientSecret = req.headers['x-client-secret'];
     const uid = String(req.body?.aadhaarNumber || "").trim();
 
     if (!uid || !/^\d{12}$/.test(uid)) {
       throw new ValidationError("A valid 12-digit Aadhaar number is required");
     }
 
+    // FIXED: Passing credentials from headers
     const response = await axios.post(
       `${BASE_URL}/verification/aadhaar`,
       { uid },
-      { headers: cashfreeHeaders() }
+      { headers: cashfreeHeaders(clientId, clientSecret) }
     );
 
     return res.status(200).json({ success: true, data: response.data });
@@ -104,20 +131,23 @@ export const initiateAadhaarOtp = async (req, res) => {
   }
 };
 
-// ─── Aadhaar – Step 2: Verify OTP ────────────────────────────────────────────
-// POST /api/kyc/aadhaar/verify
+// ─── Aadhaar OTP Verification ────────────────────────────────────────────
+
 export const verifyAadhaarOtp = async (req, res) => {
   try {
+    const clientId = req.headers['x-client-id'];
+    const clientSecret = req.headers['x-client-secret'];
     const refId = String(req.body?.refId || "").trim();
     const otp = String(req.body?.otp || "").trim();
 
     if (!refId) throw new ValidationError("refId is required");
     if (!otp || !/^\d{6}$/.test(otp)) throw new ValidationError("A valid 6-digit OTP is required");
 
+    // FIXED: Passing credentials from headers
     const response = await axios.post(
       `${BASE_URL}/verification/aadhaar/verify`,
       { ref_id: refId, otp },
-      { headers: cashfreeHeaders() }
+      { headers: cashfreeHeaders(clientId, clientSecret) }
     );
 
     return res.status(200).json({ success: true, data: response.data });

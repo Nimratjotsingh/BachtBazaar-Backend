@@ -123,7 +123,7 @@ export const registerMerchantVerifyOtp = async (req, res) => {
     if (!merchant) {
       merchant = await Merchant.create({
         phone,
-        isVerified: true
+        isVerified: false
       });
     } else if (!merchant.isVerified) {
       merchant.isVerified = true;
