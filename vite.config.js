@@ -9,12 +9,16 @@ dotenv.config({ path: path.resolve(process.cwd(), ".env") });
 export default defineConfig({
   plugins: [react()],
 
+  base: "/admin/",
+  host: true,
+  port: 5173,
+  allowedHosts: "all",
   server: {
     proxy: {
       "/api": {
         target:
           process.env.VITE_API_PROXY_TARGET ||
-          "http://localhost:5001",
+          "http://bachatbazaar.tech",
         changeOrigin: true,
         secure: false,
       },
