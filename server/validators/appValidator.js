@@ -1,0 +1,135 @@
+import { z } from "zod";
+
+// phone
+export const phoneSchema = z.object({
+  phone: z.string().regex(/^[0-9]{10}$/, "Invalid phone number")
+});
+
+
+// password
+export const passwordSchema = z.object({
+  password: z.string().min(6, "Password must be atleast 6 characters")
+});
+
+// merchant password
+export const merchantPasswordSchema = z.object({
+  merchantId: z.string().min(1, "Merchant ID is required"),
+  password: z.string().min(6, "Password must be atleast 6 characters")
+});
+
+// merchant register (3-step flow - phone only in send-otp)
+export const merchantRegisterSchema = z.object({
+  phone: z.string().regex(/^[0-9]{10}$/, "Invalid phone number")
+});
+
+export const merchantRegisterVerifySchema = z.object({
+  token: z.string().min(1, "Token is required")
+});
+
+// login with password
+export const loginPasswordSchema = z.object({
+ 
+  password: z.string().min(6, "Password must be atleast 6 characters")
+});
+
+// profile update
+export const updateUserProfileSchema = z.object({
+  name: z.string().min(1).optional(),
+  gender: z.enum(["male","female","other"]).optional(),
+  address: z.string().min(3).optional()
+});
+
+// merchant profile update
+export const updateMerchantProfileSchema = z.object({
+ name: z.string().min(1, "Name required").optional(),
+
+  gender: z.enum(["male","female","other"]).optional(),
+
+  city: z.string().min(3, "City must be at least 3 chars").optional(),
+
+  phone: z.string()
+    .regex(/^[0-9]{10}$/, "Invalid phone number").optional(),
+
+   
+
+  email: z.string()
+    .email("Invalid email")
+    .optional()
+  
+});
+
+
+//merchant shop profile update
+export const updateShopProfileSchema = z.object({
+  shopName: z.string()
+    .min(2, { message: "Shop name must be at least 2 characters" })
+    .optional(),
+
+  categoryId: z.string()
+    .regex(/^[0-9a-f]{24}$/, { message: "Invalid category ID" })
+    .optional(),
+
+  subCategoryId: z.string()
+    .regex(/^[0-9a-f]{24}$/, { message: "Invalid subcategory ID" })
+    .optional(),
+
+  address: z.string()
+    .min(3, { message: "Address must be at least 3 characters" })
+    .optional(),
+
+  address1: z.string()
+    .min(3, { message: "Address1 must be at least 3 characters" })
+    .optional(),
+
+  latitude: z.preprocess(
+    (value) => value === "" || value === undefined || value === null ? undefined : Number(value),
+    z.number({ invalid_type_error: "Latitude must be a number" }).min(-90).max(90).optional()
+  ),
+
+  longitude: z.preprocess(
+    (value) => value === "" || value === undefined || value === null ? undefined : Number(value),
+    z.number({ invalid_type_error: "Longitude must be a number" }).min(-180).max(180).optional()
+  ),
+
+  city: z.string()
+    .min(3, { message: "City must be at least 3 characters" })
+    .optional(),
+
+  phone: z.string()
+    .regex(/^[0-9]{10}$/, { message: "Invalid phone number" })
+    .optional(),
+
+  description: z.string()
+    .max(500, { message: "Description too long" })
+    .optional(),
+
+  openingHours: z.any().optional() 
+});
+
+export const forgotPasswordSchema = z.object({
+  token: z.string().min(1, "Token is required"),
+  newPassword: z.string().min(6, "Password must be at least 6 characters")
+});
+
+export const updatePasswordSchema = z.object({
+  oldPassword: z.string().min(6, "Old password is required"),
+  newPassword: z.string().min(6, "New password must be at least 6 characters")
+});
+
+const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
+const dayHoursSchema = z.object({
+  open: z.string().regex(timeRegex, "Invalid time format, use HH:MM (e.g. 09:00)").optional(),
+  close: z.string().regex(timeRegex, "Invalid time format, use HH:MM (e.g. 18:00)").optional(),
+  isClosed: z.boolean().optional()
+});
+
+export const updateOpeningHoursSchema = z.record(
+  z.string(),
+  dayHoursSchema
+).refine(val => Object.keys(val).length > 0, { message: "At least one day is required" });
+
+export const updateSingleDayHoursSchema = dayHoursSchema.refine(
+  (val) => Object.keys(val).length > 0,
+  { message: "At least one field is required" }
+);
