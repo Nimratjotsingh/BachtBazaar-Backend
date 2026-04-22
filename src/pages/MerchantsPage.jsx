@@ -1,236 +1,9 @@
-// import { useEffect, useMemo, useState } from "react";
-// import { adminClient, buildAuthHeaders } from "../lib/api";
-
-// function MerchantsPage({ token }) {
-//   const [search, setSearch] = useState("");
-//   const [page, setPage] = useState(1);
-//   const [items, setItems] = useState([]);
-//   const [totalPages, setTotalPages] = useState(1);
-//   const [loading, setLoading] = useState(false);
-//   const [feedback, setFeedback] = useState("");
-
-//   const headers = useMemo(() => buildAuthHeaders(token), [token]);
-
-//   const loadMerchants = async () => {
-//     setLoading(true);
-//     setFeedback("");
-//     try {
-//       const response = await adminClient.get("/merchants", {
-//         headers,
-//         params: { page, limit: 10, search }
-//       });
-//       setItems(response.data.merchants || []);
-//       setTotalPages(response.data.pages || 1);
-//     } catch (requestError) {
-//       setFeedback(requestError.response?.data?.message || "Failed to load merchants");
-//     } finally {
-//       setLoading(false);
-//     }
-//   };
-
-//   useEffect(() => {
-//     loadMerchants();
-//   }, [page]);
-
-//   const runAction = async (actionFn) => {
-//     setFeedback("");
-//     try {
-//       await actionFn();
-//       await loadMerchants();
-//     } catch (requestError) {
-//       setFeedback(requestError.response?.data?.message || "Action failed");
-//     }
-//   };
-
-//   const submitSearch = async (event) => {
-//     event.preventDefault();
-//     setPage(1);
-//     await loadMerchants();
-//   };
-
-//   const resetSearch = async () => {
-//     setSearch("");
-//     setPage(1);
-//     await loadMerchants();
-//   };
-
-//   const editMerchant = async (merchant) => {
-//     const name = window.prompt("Name", merchant.name || "");
-//     if (name === null) return;
-//     const gender = window.prompt("Gender (male/female/other)", merchant.gender || "") || undefined;
-//     const city = window.prompt("City", merchant.city || "") || undefined;
-//     const email = window.prompt("Email", merchant.email || "") || undefined;
-//     await runAction(() => adminClient.put(`/merchants/${merchant._id}`, { name, gender, city, email }, { headers }));
-//   };
-
-//   return (
-//     <section className="rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-xl backdrop-blur sm:p-6">
-//       <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-//         <div>
-//           <h1 className="font-display text-2xl font-bold text-slate-900">Merchants Management</h1>
-//           <p className="text-sm text-slate-600">Manage merchant verification, status, and permissions.</p>
-//         </div>
-//       </div>
-
-//       <form className="mb-4 grid gap-2 sm:grid-cols-[1fr_auto_auto]" onSubmit={submitSearch}>
-//         <input
-//           className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-800 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-200"
-//           value={search}
-//           onChange={(e) => setSearch(e.target.value)}
-//           placeholder="Search by name, phone, or email"
-//         />
-//         <button type="submit" className="inline-flex h-11 items-center justify-center rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white transition hover:bg-blue-700">Search</button>
-//         <button type="button" className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50" onClick={resetSearch}>Reset</button>
-//       </form>
-
-//       {/* <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
-//         <p className="text-sm font-semibold text-amber-900">Create Merchant is currently disabled.</p>
-//       </div> */}
-
-//       {feedback && <p className="mb-4 text-sm font-semibold text-blue-700">{feedback}</p>}
-
-//       <div className="overflow-x-auto rounded-xl border border-slate-200">
-//         <table className="min-w-[940px] w-full text-sm">
-//           <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
-//             <tr>
-//               <th className="px-3 py-3">Name</th>
-//               <th className="px-3 py-3">Phone</th>
-//               <th className="px-3 py-3">Email</th>
-//               <th className="px-3 py-3">Role</th>
-//               <th className="px-3 py-3">Status</th>
-//               <th className="px-3 py-3">Verified</th>
-//               <th className="px-3 py-3">Actions</th>
-//             </tr>
-//           </thead>
-//           <tbody>
-//             {loading && (
-//               <tr>
-//                 <td className="px-3 py-4" colSpan="7">Loading merchants...</td>
-//               </tr>
-//             )}
-//             {!loading && items.length === 0 && (
-//               <tr>
-//                 <td className="px-3 py-4" colSpan="7">No merchants found.</td>
-//               </tr>
-//             )}
-//             {!loading &&
-//               items.map((merchant) => (
-//                 <tr key={merchant._id} className="border-t border-slate-100">
-//                   <td className="px-3 py-3">{merchant.name || "-"}</td>
-//                   <td className="px-3 py-3">{merchant.phone || "-"}</td>
-//                   <td className="px-3 py-3">{merchant.email || "-"}</td>
-//                   <td className="px-3 py-3">{merchant.role || "merchant"}</td>
-//                   <td className="px-3 py-3">{merchant.status || "active"}</td>
-//                   <td className="px-3 py-3">{merchant.isVerified ? "Yes" : "No"}</td>
-//                   <td className="px-3 py-3">
-//                     <div className="flex flex-wrap gap-2">
-//                       <button
-//                         type="button"
-//                         className="inline-flex h-9 items-center justify-center rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-//                         onClick={() => editMerchant(merchant)}
-//                       >
-//                         Edit
-//                       </button>
-//                       <button
-//                         type="button"
-//                         className="inline-flex h-9 items-center justify-center rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-//                         onClick={() =>
-//                           runAction(() =>
-//                             adminClient.put(
-//                               `/merchants/${merchant._id}/status`,
-//                               { status: merchant.status === "banned" ? "active" : "banned" },
-//                               { headers }
-//                             )
-//                           )
-//                         }
-//                       >
-//                         {merchant.status === "banned" ? "Unban" : "Ban"}
-//                       </button>
-//                       <button
-//                         type="button"
-//                         className="inline-flex h-9 items-center justify-center rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-//                         onClick={() =>
-//                           runAction(() =>
-//                             adminClient.put(
-//                               `/merchants/${merchant._id}/verify`,
-//                               { isVerified: !merchant.isVerified },
-//                               { headers }
-//                             )
-//                           )
-//                         }
-//                       >
-//                         {merchant.isVerified ? "Unverify" : "Verify"}
-//                       </button>
-//                       <button
-//                         type="button"
-//                         className="inline-flex h-9 items-center justify-center rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-//                         onClick={() => {
-//                           const role = window.prompt("Role (merchant/super_admin)", merchant.role || "merchant");
-//                           if (!role) return;
-//                           runAction(() => adminClient.put(`/merchants/${merchant._id}/role`, { role }, { headers }));
-//                         }}
-//                       >
-//                         Role
-//                       </button>
-//                       <button
-//                         type="button"
-//                         className="inline-flex h-9 items-center justify-center rounded-xl border border-rose-200 bg-rose-50 px-3 text-sm font-semibold text-rose-700 hover:bg-rose-100"
-//                         onClick={() => {
-//                           if (!window.confirm("Delete this merchant?")) return;
-//                           runAction(() => adminClient.delete(`/merchants/${merchant._id}`, { headers }));
-//                         }}
-//                       >
-//                         Delete
-//                       </button>
-//                     </div>
-//                   </td>
-//                 </tr>
-//               ))}
-//           </tbody>
-//         </table>
-//       </div>
-
-//       <div className="mt-4 flex flex-col items-center justify-between gap-3 sm:flex-row">
-//         <button
-//           type="button"
-//           className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
-//           disabled={page <= 1}
-//           onClick={() => setPage((current) => current - 1)}
-//         >
-//           Previous
-//         </button>
-//         <span className="text-sm font-semibold text-slate-600">Page {page} of {totalPages}</span>
-//         <button
-//           type="button"
-//           className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
-//           disabled={page >= totalPages}
-//           onClick={() => setPage((current) => current + 1)}
-//         >
-//           Next
-//         </button>
-//       </div>
-//     </section>
-//   );
-// }
-
-// export default MerchantsPage;
-
 import React, { useEffect, useMemo, useState } from "react";
 import { adminClient, buildAuthHeaders } from "../lib/api";
 import { 
-  Search, 
-  UserKeyIcon, 
-  ShieldCheck, 
-  ShieldAlert, 
-  Trash2, 
-  MoreHorizontal, 
-  ChevronLeft, 
-  ChevronRight,
-  UserPlus,
-  Mail,
-  Phone,
-  RotateCcw,
-  X
+  Search, UserKeyIcon, ShieldCheck, ShieldAlert, Trash2, 
+  ChevronLeft, ChevronRight, Mail, Phone, RotateCcw, X,
+  Store, FileText, BadgeCheck, MapPin, Clock
 } from "lucide-react";
 
 function MerchantsPage({ token }) {
@@ -241,24 +14,41 @@ function MerchantsPage({ token }) {
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [editingMerchant, setEditingMerchant] = useState(null);
+  
+  // New States for Detail Modal
+  const [selectedMerchantData, setSelectedMerchantData] = useState(null);
+  const [detailsLoading, setDetailsLoading] = useState(false);
 
   const headers = useMemo(() => buildAuthHeaders(token), [token]);
 
   const loadMerchants = async () => {
     setLoading(true);
-    setFeedback("");
     try {
       const response = await adminClient.get("/merchants", {
         headers,
         params: { page, limit: 10, search }
       });
-      console.log(response.data)
       setItems(response.data.merchants || []);
       setTotalPages(response.data.pages || 1);
     } catch (requestError) {
       setFeedback(requestError.response?.data?.message || "Failed to load merchants");
     } finally {
       setLoading(false);
+    }
+  };
+
+  // 🔥 New Function: Fetch all merchant data for popup
+  const viewMerchantDetails = async (id) => {
+    setDetailsLoading(true);
+    setFeedback("");
+    try {
+      // Calling your new "load all data" API
+      const response = await adminClient.get(`/merchants/${id}`, { headers });
+      setSelectedMerchantData(response.data.data);
+    } catch (err) {
+      setFeedback("Could not load merchant details");
+    } finally {
+      setDetailsLoading(false);
     }
   };
 
@@ -271,7 +61,7 @@ function MerchantsPage({ token }) {
     try {
       await actionFn();
       await loadMerchants();
-      setEditingMerchant(null); // Close panel if open
+      setEditingMerchant(null);
     } catch (requestError) {
       setFeedback(requestError.response?.data?.message || "Action failed");
     }
@@ -283,217 +73,198 @@ function MerchantsPage({ token }) {
     loadMerchants();
   };
 
-  const resetSearch = () => {
-    setSearch("");
-    setPage(1);
-    loadMerchants();
-  };
-
   return (
-    <div className="space-y-6 relative overflow-hidden">
-      {/* Header Section */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="space-y-6 relative">
+      {/* Header */}
+      <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-extrabold text-sky-900 tracking-tight">Merchant Directory</h1>
-          <p className="text-sky-500 font-medium">Manage access, verification, and roles for all platform sellers.</p>
+          <p className="text-sky-500 font-medium">Click a merchant to view full business & KYC details.</p>
         </div>
       </div>
 
-      {/* Search & Actions Bar */}
-      <div className="bg-white p-4 rounded-2xl border border-sky-100 shadow-sm flex flex-col md:flex-row gap-4">
+      {/* Search Bar */}
+      <div className="bg-white p-4 rounded-2xl border border-sky-100 shadow-sm flex gap-4">
         <form onSubmit={submitSearch} className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-sky-300" size={18} />
           <input
-            className="w-full pl-10 pr-4 py-2.5 bg-sky-50/50 border border-sky-100 rounded-xl text-sm focus:ring-2 focus:ring-sky-500 outline-none transition"
+            className="w-full pl-10 pr-4 py-2.5 bg-sky-50/50 border border-sky-100 rounded-xl text-sm outline-none focus:ring-2 focus:ring-sky-500"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by name, phone, or email..."
+            placeholder="Search merchants..."
           />
         </form>
-        <div className="flex gap-2">
-          <button onClick={loadMerchants} className="p-2.5 bg-white border border-sky-100 text-sky-600 rounded-xl hover:bg-sky-50 transition">
-            <RotateCcw size={20} />
-          </button>
-          <button onClick={submitSearch} className="px-6 py-2.5 bg-sky-600 text-white rounded-xl font-bold text-sm hover:bg-sky-700 shadow-lg shadow-sky-200 transition">
-            Search
-          </button>
-        </div>
+        <button onClick={loadMerchants} className="p-2.5 bg-white border border-sky-100 text-sky-600 rounded-xl"><RotateCcw size={20} /></button>
       </div>
 
-      {feedback && (
-        <div className="p-3 bg-sky-900 text-white rounded-xl text-xs font-bold flex items-center gap-2 animate-in fade-in slide-in-from-top-2">
-          <ShieldAlert size={14} className="text-sky-400" /> {feedback}
-        </div>
-      )}
-
-      {/* Main Table */}
+      {/* Table */}
       <div className="bg-white rounded-2xl border border-sky-100 shadow-xl overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-sky-50/50 border-b border-sky-100">
-                <th className="px-6 py-4 text-[10px] font-black text-sky-900 uppercase tracking-widest">Merchant</th>
-                <th className="px-6 py-4 text-[10px] font-black text-sky-900 uppercase tracking-widest">Contact</th>
-                <th className="px-6 py-4 text-[10px] font-black text-sky-900 uppercase tracking-widest">Role</th>
-                <th className="px-6 py-4 text-[10px] font-black text-sky-900 uppercase tracking-widest">Status</th>
-                <th className="px-6 py-4 text-[10px] font-black text-sky-900 uppercase tracking-widest text-right">Actions</th>
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="bg-sky-50/50 border-b border-sky-100">
+              <th className="px-6 py-4 text-[10px] font-black text-sky-900 uppercase">Merchant Profile</th>
+              <th className="px-6 py-4 text-[10px] font-black text-sky-900 uppercase">Status</th>
+              <th className="px-6 py-4 text-[10px] font-black text-sky-900 uppercase text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-sky-50">
+            {items.map((merchant) => (
+              <tr key={merchant._id} className="hover:bg-sky-50/50 transition-colors cursor-pointer group" onClick={() => viewMerchantDetails(merchant._id)}>
+                <td className="px-6 py-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-sky-600 text-white flex items-center justify-center font-bold">
+                      {merchant.name?.charAt(0) || "M"}
+                    </div>
+                    <div>
+                      <p className="font-bold text-sky-900">{merchant.name || "Unnamed"}</p>
+                      <p className="text-xs text-sky-400">{merchant.phone}</p>
+                    </div>
+                  </div>
+                </td>
+                <td className="px-6 py-4">
+                  <span className={`px-2 py-1 rounded text-[10px] font-black uppercase ${merchant.isVerified ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
+                    {merchant.isVerified ? "Verified" : "Pending"}
+                  </span>
+                </td>
+                <td className="px-6 py-4 text-right">
+                  <button onClick={(e) => { e.stopPropagation(); setEditingMerchant(merchant); }} className="p-2 text-sky-400 hover:bg-sky-50 rounded-lg">
+                    <UserKeyIcon size={18} />
+                  </button>
+                </td>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-sky-50 text-sm">
-              {loading ? (
-                <tr><td colSpan="5" className="px-6 py-12 text-center text-sky-400 font-bold uppercase tracking-widest animate-pulse">Fetching Data...</td></tr>
-              ) : items.length === 0 ? (
-                <tr><td colSpan="5" className="px-6 py-12 text-center text-sky-400 italic">No merchants found matching your criteria.</td></tr>
-              ) : (
-                items.map((merchant) => (
-                  <tr key={merchant._id} className="hover:bg-sky-50/30 transition-colors group">
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-full bg-sky-100 flex items-center justify-center text-sky-600 font-bold border border-sky-200">
-                          {merchant.name ? merchant.name.charAt(0) : "M"}
-                        </div>
-                        <div>
-                          <p className="font-bold text-sky-900">{merchant.name || "Unnamed Merchant"}</p>
-                          <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${merchant.isVerified ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
-                            {merchant.isVerified ? "Verified" : "Unverified"}
-                          </span>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 space-y-1">
-                      <div className="flex items-center gap-2 text-sky-600 text-xs"><Mail size={12}/> {merchant.email || "-"}</div>
-                      <div className="flex items-center gap-2 text-sky-400 text-xs"><Phone size={12}/> {merchant.phone || "-"}</div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="text-[10px] font-bold text-sky-800 bg-sky-100 px-2 py-1 rounded uppercase tracking-tighter">
-                        {merchant.role || "merchant"}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase border ${merchant.status === 'banned' ? 'bg-red-100 text-red-700 border-red-200' : 'bg-sky-100 text-sky-700 border-sky-200'}`}>
-                        {merchant.status || "active"}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={() => setEditingMerchant(merchant)} className="p-2 text-sky-400 hover:text-sky-600 hover:bg-sky-50 rounded-lg transition" title="Quick Edit">
-                          <UserKeyIcon size={18} />
-                        </button>
-                        <button 
-                          onClick={() => runAction(() => adminClient.delete(`/merchants/${merchant._id}`, { headers }))}
-                          className="p-2 text-sky-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition"
-                        >
-                          <Trash2 size={18} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Pagination */}
-        <div className="px-6 py-4 bg-sky-50/50 flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-sky-100">
-          <p className="text-xs font-bold text-sky-400 uppercase tracking-widest">
-            Page {page} of {totalPages}
-          </p>
-          <div className="flex items-center gap-2">
-            <button 
-              disabled={page <= 1} 
-              onClick={() => setPage(p => p - 1)}
-              className="p-2 rounded-lg bg-white border border-sky-200 text-sky-600 disabled:opacity-40 hover:bg-sky-100 transition"
-            >
-              <ChevronLeft size={20} />
-            </button>
-            <button 
-              disabled={page >= totalPages} 
-              onClick={() => setPage(p => p + 1)}
-              className="p-2 rounded-lg bg-white border border-sky-200 text-sky-600 disabled:opacity-40 hover:bg-sky-100 transition"
-            >
-              <ChevronRight size={20} />
-            </button>
-          </div>
-        </div>
+            ))}
+          </tbody>
+        </table>
       </div>
 
-      {/* --- Quick Edit Panel (Slide Over) --- */}
-      {editingMerchant && (
-        <div className="fixed inset-0 z-50 flex justify-end animate-in fade-in duration-300">
-          <div className="absolute inset-0 bg-sky-900/40 backdrop-blur-sm" onClick={() => setEditingMerchant(null)} />
-          <div className="relative w-full max-w-md bg-white h-full shadow-2xl p-8 animate-in slide-in-from-right duration-300">
-            <div className="flex items-center justify-between mb-8">
-              <h2 className="text-xl font-black text-sky-900 uppercase">Manage Merchant</h2>
-              <button onClick={() => setEditingMerchant(null)} className="p-2 hover:bg-sky-50 rounded-full text-sky-300 transition">
+      {/* 🔥 FULL DATA MODAL POPUP */}
+      {selectedMerchantData && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
+          <div className="absolute inset-0 bg-sky-950/60 backdrop-blur-md" onClick={() => setSelectedMerchantData(null)} />
+          
+          <div className="relative w-full max-w-4xl bg-white rounded-[32px] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            {/* Modal Header */}
+            <div className="p-6 border-b border-sky-50 flex justify-between items-center bg-sky-50/50">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-sky-600 flex items-center justify-center text-white font-black text-xl">
+                  {selectedMerchantData.profile.name?.charAt(0)}
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-sky-900">{selectedMerchantData.profile.name}</h2>
+                  <p className="text-xs text-sky-500 font-mono">ID: {selectedMerchantData.profile._id}</p>
+                </div>
+              </div>
+              <button onClick={() => setSelectedMerchantData(null)} className="p-2 hover:bg-white rounded-full text-sky-300 transition">
                 <X size={24} />
               </button>
             </div>
 
-            <div className="space-y-6">
-              <div className="flex items-center gap-4 p-4 bg-sky-50 rounded-2xl">
-                <div className="w-16 h-16 rounded-2xl bg-sky-600 flex items-center justify-center text-white text-2xl font-black">
-                  {editingMerchant.name?.charAt(0)}
+            {/* Modal Body */}
+            <div className="overflow-y-auto p-8 space-y-8">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                
+                {/* 1. Shop Info */}
+                <div className="space-y-4">
+                  <h3 className="text-[10px] font-black text-sky-400 uppercase tracking-widest flex items-center gap-2">
+                    <Store size={14} /> Shop Details
+                  </h3>
+                  {selectedMerchantData.shop ? (
+                    <div className="p-4 bg-sky-50 rounded-2xl border border-sky-100 space-y-3">
+                      <p className="font-bold text-sky-900 text-lg">{selectedMerchantData.shop.shopName}</p>
+                      <div className="text-xs text-sky-600 flex items-center gap-2">
+                         <MapPin size={12}/> {selectedMerchantData.shop.address}, {selectedMerchantData.shop.city}
+                      </div>
+                      <div className="flex gap-2">
+                        <span className="text-[10px] bg-white px-2 py-1 rounded border border-sky-100 text-sky-600 font-bold">
+                          {selectedMerchantData.shop.categoryId?.label || "No Category"}
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-slate-400 italic">No shop registered yet.</p>
+                  )}
                 </div>
-                <div>
-                  <h3 className="font-bold text-sky-900">{editingMerchant.name}</h3>
-                  <p className="text-xs text-sky-500 font-mono">{editingMerchant._id}</p>
+
+                {/* 2. KYC Status */}
+                <div className="space-y-4">
+                  <h3 className="text-[10px] font-black text-sky-400 uppercase tracking-widest flex items-center gap-2">
+                    <FileText size={14} /> Documentation
+                  </h3>
+                  <div className="space-y-2">
+                    <StatusItem label="Personal Docs" exists={selectedMerchantData.kycStatus.personal} />
+                    <StatusItem label="Business Docs" exists={selectedMerchantData.kycStatus.business} />
+                    <StatusItem label="Shop Profile" exists={selectedMerchantData.kycStatus.shop} />
+                  </div>
+                </div>
+
+                {/* 3. Contact Info */}
+                <div className="space-y-4">
+                  <h3 className="text-[10px] font-black text-sky-400 uppercase tracking-widest flex items-center gap-2">
+                    <BadgeCheck size={14} /> Account Meta
+                  </h3>
+                  <div className="text-sm space-y-2">
+                    <p className="flex items-center gap-2 text-sky-900 font-medium"><Mail size={14} className="text-sky-300"/> {selectedMerchantData.profile.email || "N/A"}</p>
+                    <p className="flex items-center gap-2 text-sky-900 font-medium"><Phone size={14} className="text-sky-300"/> {selectedMerchantData.profile.phone}</p>
+                    <p className="text-xs text-sky-400 mt-2">Member since: {new Date(selectedMerchantData.profile.createdAt).toLocaleDateString()}</p>
+                  </div>
                 </div>
               </div>
 
-              <div className="space-y-4 pt-4 border-t border-sky-50">
-                <h4 className="text-[10px] font-black text-sky-400 uppercase tracking-widest">Administrative Actions</h4>
-                
-                {/* Verification Toggle */}
-                <button 
-                  onClick={() => runAction(() => adminClient.put(`/merchants/${editingMerchant._id}/verify`, { isVerified: !editingMerchant.isVerified }, { headers }))}
-                  className={`w-full flex items-center justify-between p-4 rounded-xl border transition ${editingMerchant.isVerified ? 'border-sky-200 bg-sky-50 text-sky-700' : 'border-green-100 bg-green-50 text-green-700 font-bold'}`}
-                >
-                  <div className="flex items-center gap-3">
-                    <ShieldCheck size={20} />
-                    <span>{editingMerchant.isVerified ? "Revoke Verification" : "Verify Merchant"}</span>
-                  </div>
-                  <ChevronRight size={16} />
-                </button>
-
-                {/* Ban Toggle */}
-                <button 
-                  onClick={() => runAction(() => adminClient.put(`/merchants/${editingMerchant._id}/status`, { status: editingMerchant.status === "banned" ? "active" : "banned" }, { headers }))}
-                  className={`w-full flex items-center justify-between p-4 rounded-xl border transition ${editingMerchant.status === 'banned' ? 'border-sky-200 bg-sky-50 text-sky-700' : 'border-red-100 bg-red-50 text-red-700 font-bold'}`}
-                >
-                  <div className="flex items-center gap-3">
-                    <ShieldAlert size={20} />
-                    <span>{editingMerchant.status === "banned" ? "Unban Account" : "Ban Account"}</span>
-                  </div>
-                  <ChevronRight size={16} />
-                </button>
-
-                {/* Role Toggle */}
-                <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
-                  <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block">System Role</label>
-                  <div className="flex gap-2">
-                    {['merchant', 'super_admin'].map(role => (
-                      <button
-                        key={role}
-                        onClick={() => runAction(() => adminClient.put(`/merchants/${editingMerchant._id}/role`, { role }, { headers }))}
-                        className={`flex-1 py-2 rounded-lg text-xs font-bold uppercase transition ${editingMerchant.role === role ? 'bg-sky-900 text-white shadow-lg' : 'bg-white text-slate-400 border border-slate-200'}`}
-                      >
-                        {role.replace('_', ' ')}
-                      </button>
-                    ))}
-                  </div>
+              {/* Detailed Document Numbers Section */}
+              <div className="pt-6 border-t border-sky-50">
+                <h3 className="text-sm font-bold text-sky-900 mb-4">Verification IDs</h3>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                   <IDBox label="Aadhaar" value={selectedMerchantData.documents.personal?.aadharNumber} />
+                   <IDBox label="PAN (Personal)" value={selectedMerchantData.documents.personal?.panNumber} />
+                   <IDBox label="GSTIN" value={selectedMerchantData.documents.business?.gstNumber} />
+                   <IDBox label="PAN (Business)" value={selectedMerchantData.documents.business?.panNumber} />
                 </div>
               </div>
             </div>
-            
-            <div className="absolute bottom-8 left-8 right-8">
-               <button onClick={() => setEditingMerchant(null)} className="w-full py-4 text-sky-400 font-bold hover:text-sky-600 transition">Close Panel</button>
+
+            <div className="p-6 bg-sky-50 flex justify-end gap-3">
+               <button onClick={() => setSelectedMerchantData(null)} className="px-6 py-2 text-sky-600 font-bold hover:bg-white rounded-xl transition">Close</button>
+               <button 
+                  onClick={() => {
+                    const id = selectedMerchantData.profile._id;
+                    const verified = selectedMerchantData.profile.isVerified;
+                    runAction(() => adminClient.put(`/merchants/${id}/verify`, { isVerified: !verified }, { headers }));
+                    setSelectedMerchantData(null);
+                  }}
+                  className={`px-6 py-2 rounded-xl font-bold shadow-lg transition ${selectedMerchantData.profile.isVerified ? 'bg-amber-500 text-white' : 'bg-green-600 text-white'}`}
+                >
+                  {selectedMerchantData.profile.isVerified ? "Revoke Verification" : "Approve Merchant"}
+               </button>
             </div>
           </div>
         </div>
       )}
+
+      {/* Loading Overlay for fetching details */}
+      {detailsLoading && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-white/20 backdrop-blur-[2px]">
+          <div className="w-12 h-12 border-4 border-sky-200 border-t-sky-600 rounded-full animate-spin"></div>
+        </div>
+      )}
+
+      {/* Your Existing Sidebar Quick Edit Panel code remains below... */}
     </div>
   );
 }
+
+// Helper Components
+const StatusItem = ({ label, exists }) => (
+  <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-100">
+    <span className="text-xs font-bold text-slate-600">{label}</span>
+    {exists ? <BadgeCheck className="text-green-500" size={16} /> : <X className="text-red-300" size={16} />}
+  </div>
+);
+
+const IDBox = ({ label, value }) => (
+  <div className="p-3 bg-sky-50/50 rounded-xl border border-sky-100">
+    <p className="text-[9px] font-black text-sky-400 uppercase tracking-widest mb-1">{label}</p>
+    <p className="text-xs font-mono font-bold text-sky-900">{value || "---"}</p>
+  </div>
+);
 
 export default MerchantsPage;

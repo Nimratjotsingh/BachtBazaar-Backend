@@ -1,3 +1,7 @@
+import MerchantShop from "../models/merchantShopModel.js";
+import MerchantPersonalDoc from "../models/merchantPersonalDocModel.js";
+import MerchantBusinessDoc from "../models/merchantBusinessDocModel.js";
+
 // List all merchants (with pagination, search, filters)
 export const listMerchants = async (req, res) => {
   try {
@@ -28,14 +32,59 @@ export const listMerchants = async (req, res) => {
 export const getMerchant = async (req, res) => {
   try {
     const { id } = req.params;
-    const merchant = await Merchant.findById(id).select("-password");
-    if (!merchant) return res.status(404).json({ message: "Merchant not found" });
-    return res.json({ success: true, merchant });
+
+    // 1. Execute all queries in parallel for performance
+    const [merchant, shop, personalDocs, businessDocs] = await Promise.all([
+      // Main profile (excluding password)
+      Merchant.findById(id).select("-password"),
+      
+      // Shop details (populated with Category/Subcategory info)
+      MerchantShop.findOne({ merchantId: id })
+        .populate("categoryId", "label")
+        .populate("subCategoryId", "label")
+        .select("-logo.data -banner.data"), // Exclude raw image buffers
+      
+      // Personal KYC Documents
+      MerchantPersonalDoc.findOne({ merchantId: id })
+        .select("-aadharImage.data -panImage.data"), 
+      
+      // Business/GST Documents
+      MerchantBusinessDoc.findOne({ merchantId: id })
+        .select("-gstImage.data -tradeLicenseImage.data -shopRegistrationImage.data -fssaiImage.data -panImage.data")
+    ]);
+
+    // 2. Validation
+    if (!merchant) {
+      return res.status(404).json({ success: false, message: "Merchant not found" });
+    }
+
+    // 3. Construct the full response
+    return res.json({
+      success: true,
+      data: {
+        profile: merchant,
+        shop: shop || null,
+        documents: {
+          personal: personalDocs || null,
+          business: businessDocs || null
+        },
+        // Helper to check if KYC is completed
+        kycStatus: {
+          personal: !!personalDocs,
+          business: !!businessDocs,
+          shop: !!shop
+        }
+      }
+    });
+
   } catch (error) {
-    return res.status(500).json({ message: "Failed to get merchant" });
+    console.error("Get Merchant Full Data Error:", error);
+    return res.status(500).json({ 
+      success: false, 
+      message: "Failed to load complete merchant data" 
+    });
   }
 };
-
 
 
 
