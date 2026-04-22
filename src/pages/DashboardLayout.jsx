@@ -23,7 +23,7 @@ const navItems = [
   
 ];
 
-const DashboardLayout = () => {
+const DashboardLayout = ({token,onLogout}) => {
   const [isSidebarOpen, setSidebarOpen] = useState(true);
   const navigate = useNavigate();
   const location = useLocation();
@@ -49,6 +49,7 @@ const DashboardLayout = () => {
   }, []);
 
   const handleLogout = () => {
+    onLogout();
     navigate("/login");
   };
 

@@ -8,10 +8,11 @@ dotenv.config();
 const seedSuperAdmin = async () => {
   try {
     await mongoose.connect(process.env.MONGO_URI);
+    console.log(process.env.MONGO_URI)
     console.log("✅ DB Connected");
 
     // 🔒 STRICT CHECK → only one admin allowed
-    const adminExists = await SuperAdmin.exists({});
+    const adminExists = await SuperAdmin.findOne({email:'superadmin@example.com'});
 
     if (adminExists) {
       console.log("⛔ Super Admin already exists. Only one allowed.");
