@@ -36,6 +36,9 @@ export const getMerchant = async (req, res) => {
   }
 };
 
+
+
+
 // Update merchant info
 import { updateMerchantProfileSchema } from "../validators/appValidator.js";
 export const updateMerchant = async (req, res) => {
@@ -309,5 +312,30 @@ export const updateMerchantRole = async (req, res) => {
     }
     console.log(error);
     return res.status(500).json({ message: "Failed to update merchant role" });
+  }
+};
+
+export const getDashboardStats = async (req, res) => {
+  try {
+    // We use Promise.all to run both counts in parallel for better performance
+    const [userCount, merchantCount] = await Promise.all([
+      User.countDocuments({}), // Assuming you have isActive field
+      Merchant.countDocuments({}) 
+    ]);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        totalUsers: userCount.toLocaleString(), // Formats as 12,840
+        totalMerchants: merchantCount.toLocaleString(),
+        // You can add more metrics here later (e.g. totalSales, totalOrders)
+      }
+    });
+  } catch (error) {
+    console.error("Dashboard Stats Error:", error.message);
+    res.status(500).json({ 
+      success: false, 
+      message: "Failed to fetch dashboard statistics" 
+    });
   }
 };

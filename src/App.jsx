@@ -8,6 +8,8 @@ import UsersPage from "./pages/UsersPage";
 import PolicyEditor from "./pages/PrivacyPage/Privacy";
 import CategoryPage from "./pages/Categories/Categories";
 import SubCategoryPage from "./pages/SubCategory/SubCategory";
+import AdminDashboard from "./pages/Dashboard/Dashboard";
+import LegalViewPage from "./pages/Slug/Slug";
 
 const tokenStorageKey = "bb_admin_token";
 
@@ -36,6 +38,7 @@ function App() {
 
   return (
     <Routes>
+      <Route path="/legal/:slug" element={<LegalViewPage />} />
       {/* 🔐 Login */}
       <Route
         path="/login"
@@ -61,6 +64,7 @@ function App() {
       >
         <Route index element={<Navigate to="users" replace />} />
         <Route path="users" element={<UsersPage token={token} />} />
+        <Route path="main" element={<AdminDashboard token={token} />} />
         <Route path="merchants" element={<MerchantsPage token={token} />} />
         <Route path="privacy" element={<PolicyEditor token={token} />} />
         <Route path="categories" element={<CategoryPage token={token} />} />

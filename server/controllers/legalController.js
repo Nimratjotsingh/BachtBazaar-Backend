@@ -148,6 +148,8 @@ export const getLegalBySlug = async (req, res) => {
       status: "Published"
     });
 
+   
+
     if (!doc) {
       return res.status(404).json({ message: "Document not found" });
     }
