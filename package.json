@@ -3,23 +3,21 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-
   "scripts": {
     "dev": "concurrently \"npm run server\" \"npm run client\"",
+<<<<<<< HEAD
 
     "server": "nodemon --spawn server/server.js",
+=======
+    "server": "nodemon server/server.js",
+>>>>>>> afdc8784659c6359501f3bcf5d840d33677bf548
     "client": "vite --config vite.config.js",
-
     "build": "vite build --config vite.config.js",
     "preview": "vite preview --config client/vite.config.js",
-
     "start": "node server/server.js",
-
     "lint": "eslint .",
-
     "seed:categories": "node server/scripts/seedCategories.js"
   },
-
   "dependencies": {
     "axios": "^1.15.0",
     "bcryptjs": "^3.0.3",
@@ -29,16 +27,15 @@
     "express": "^5.2.1",
     "firebase-admin": "^13.7.0",
     "jsonwebtoken": "^9.0.3",
+    "lucide-react": "^1.8.0",
     "mongodb": "^7.1.1",
     "mongoose": "^9.4.1",
     "multer": "^2.1.1",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-router-dom": "^7.14.1",
-    "lucide-react": "^1.8.0",
     "zod": "^4.3.6"
   },
-
   "devDependencies": {
     "@eslint/js": "^9.39.4",
     "@tailwindcss/postcss": "^4.2.2",
