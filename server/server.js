@@ -71,6 +71,20 @@ app.get("/health", (req, res) => {
   res.json({ message: "Server is healthy!" });
 });
 
+// ESM Route Debug Function
+function printRoutes(app) {
+  console.log('=== ALL REGISTERED ROUTES ===');
+  
+  // Method 1: Direct route check
+  app._router.stack.forEach((layer) => {
+    if (layer.route) {
+      const methods = Object.keys(layer.route.methods).map(m => m.toUpperCase());
+      console.log(`${methods.join(', ')} ${layer.route.path}`);
+    }
+  });
+  
+  console.log('=== END ROUTES ===');
+}
 // Handle unknown routes
 app.use((req, res) => {
   res.status(404).json({

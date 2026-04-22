@@ -154,7 +154,7 @@
     }
   ],
   "variable": [
-    { "key": "baseUrl", "value": "http://localhost:5001" },
+    { "key": "baseUrl", "value": "http://bachatbazaar.tech" },
     { "key": "token", "value": "" },
     { "key": "merchantToken", "value": "" },
     { "key": "categoryId", "value": "" },
