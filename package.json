@@ -5,12 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "concurrently \"npm run server\" \"npm run client\"",
-<<<<<<< HEAD
-
-    "server": "nodemon --spawn server/server.js",
-=======
     "server": "nodemon server/server.js",
->>>>>>> afdc8784659c6359501f3bcf5d840d33677bf548
     "client": "vite --config vite.config.js",
     "build": "vite build --config vite.config.js",
     "preview": "vite preview --config client/vite.config.js",
