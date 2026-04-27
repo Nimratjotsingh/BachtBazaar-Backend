@@ -4,13 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"npm run server\" \"npm run client\"",
-<<<<<<< HEAD
-
+    "dev": "concurrently \"npm run server\" \"npm run client",
     "server": "nodemon --spawn server/server.js",
-=======
-    "server": "nodemon server/server.js",
->>>>>>> afdc8784659c6359501f3bcf5d840d33677bf548
     "client": "vite --config vite.config.js",
     "build": "vite build --config vite.config.js",
     "preview": "vite preview --config client/vite.config.js",
@@ -34,6 +29,7 @@
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-router-dom": "^7.14.1",
+    "recharts": "^3.8.1",
     "zod": "^4.3.6"
   },
   "devDependencies": {
