@@ -1,0 +1,25 @@
+@import "tailwindcss";
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@600;700&display=swap");
+@config "../tailwind.config.js";
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: "Manrope", "Segoe UI", sans-serif;
+  color: #1e293b;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-image:
+    radial-gradient(circle at 12% 12%, rgba(17, 102, 245, 0.18), transparent 34%),
+    radial-gradient(circle at 88% 3%, rgba(82, 168, 255, 0.2), transparent 30%),
+    linear-gradient(165deg, #f8fbff 0%, #eef4ff 48%, #f7faff 100%);
+}
+
+.font-display {
+  font-family: "Sora", "Manrope", "Segoe UI", sans-serif;
+}
