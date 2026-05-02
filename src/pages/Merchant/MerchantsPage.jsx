@@ -1,49 +1,52 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { adminClient, buildAuthHeaders } from "../../lib/api";
 import { 
-  Search, 
-  UserKeyIcon, 
-  ShieldCheck, 
-  ShieldAlert, 
-  Trash2, 
-  ChevronLeft, 
-  ChevronRight,
-  Mail, 
-  Phone, 
-  RotateCcw, 
-  X,
-  Store,
-  FileBadge,
-  MapPin,
-  Loader2,
-  Image as ImageIcon,
-  User
+  Search, UserKeyIcon, ShieldCheck, ShieldAlert, Trash2, 
+  ChevronLeft, ChevronRight, Mail, Phone, RotateCcw, X,
+  Store, FileBadge, MapPin, Loader2, ExternalLink, 
+  CheckCircle2, AlertCircle, Eye, Hash, Calendar, Building2, UserCircle
 } from "lucide-react";
 
-// Reusable Image Preview Component
-const ImagePreview = ({ src, label }) => {
-  if (!src) return null;
+// --- Sub-Component: Image Display ---
+const DataImage = ({ src, label, fallbackIcon: Icon }) => {
+  if (!src) return (
+    <div className="flex flex-col items-center justify-center p-6 bg-slate-100 rounded-2xl border-2 border-dashed border-slate-200 text-slate-400">
+      <Icon size={24} className="mb-2 opacity-50" />
+      <span className="text-[10px] font-bold uppercase tracking-tighter">No {label}</span>
+    </div>
+  );
+
   return (
-    <div className="space-y-2">
-      <p className="text-[9px] font-black text-sky-400 uppercase tracking-wider">{label}</p>
-      <div className="relative aspect-video rounded-xl overflow-hidden border border-sky-100 bg-sky-50 group">
-        <img 
-          src={src} 
-          alt={label} 
-          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" 
-        />
-        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all flex items-center justify-center">
-             <button 
-              onClick={() => window.open(src, '_blank')}
-              className="opacity-0 group-hover:opacity-100 bg-white text-sky-600 p-2 rounded-full shadow-lg transition-opacity"
-             >
-              <Search size={16} />
-             </button>
+    <div className="space-y-2 group">
+      <div className="relative aspect-video rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 shadow-sm">
+        <img src={src} alt={label} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
+        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
+          <button 
+            onClick={() => {
+              const win = window.open();
+              win.document.write(`<title>${label}</title><body style="margin:0; background:#000; display:flex; align-items:center; justify-content:center;"><img src="${src}" style="max-width:100%; max-height:100vh; shadow: 0 0 50px rgba(0,0,0,0.5);"></body>`);
+            }}
+            className="p-2 bg-white text-slate-900 rounded-full hover:scale-110 transition-transform shadow-xl"
+          >
+            <ExternalLink size={18} />
+          </button>
         </div>
       </div>
+      <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest text-center">{label}</p>
     </div>
   );
 };
+
+// --- Sub-Component: Info Pill ---
+const InfoField = ({ label, value, icon: Icon }) => (
+  <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex items-start gap-3">
+    {Icon && <Icon size={16} className="text-slate-400 mt-0.5" />}
+    <div>
+      <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider leading-none mb-1">{label}</p>
+      <p className="text-sm font-bold text-slate-800 break-all">{value || "N/A"}</p>
+    </div>
+  </div>
+);
 
 function MerchantsPage({ token }) {
   const [search, setSearch] = useState("");
@@ -53,360 +56,313 @@ function MerchantsPage({ token }) {
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [editingMerchant, setEditingMerchant] = useState(null);
-  const [fullMerchantData, setFullMerchantData] = useState(null);
+  
+  // States for the deep-dive data
+  const [fullData, setFullData] = useState(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
 
   const headers = useMemo(() => buildAuthHeaders(token), [token]);
 
   const loadMerchants = async () => {
     setLoading(true);
-    setFeedback("");
     try {
       const response = await adminClient.get("/merchants", {
-        headers,
-        params: { page, limit: 10, search }
+        headers, params: { page, limit: 10, search }
       });
       setItems(response.data.merchants || []);
       setTotalPages(response.data.pages || 1);
-    } catch (requestError) {
-      setFeedback(requestError.response?.data?.message || "Failed to load merchants");
-    } finally {
-      setLoading(false);
-    }
+    } catch (err) {
+      setFeedback("Failed to sync records.");
+    } finally { setLoading(false); }
   };
 
-  const fetchMerchantDetails = async (merchant) => {
+  const fetchMerchantAudit = async (merchant) => {
     setEditingMerchant(merchant);
     setLoadingDetails(true);
-    setFullMerchantData(null);
+    setFullData(null);
     try {
       const response = await adminClient.get(`/merchants/${merchant._id}`, { headers });
-      setFullMerchantData(response.data.data);
+      console.log(response.data)
+      // response.data.data contains { profile, shop, documents, kycStatus }
+      setFullData(response.data.data);
     } catch (err) {
-      setFeedback("Could not load merchant documents");
-    } finally {
-      setLoadingDetails(false);
-    }
+      setFeedback("Could not retrieve document package.");
+    } finally { setLoadingDetails(false); }
   };
 
-  useEffect(() => {
-    loadMerchants();
-  }, [page]);
-
-  const runAction = async (actionFn) => {
-    setFeedback("");
+  const updateStatus = async (endpoint, payload) => {
     try {
-      await actionFn();
+      await adminClient.put(`/merchants/${editingMerchant._id}/${endpoint}`, payload, { headers });
       await loadMerchants();
-      if (editingMerchant) {
-          const res = await adminClient.get(`/merchants/${editingMerchant._id}`, { headers });
-          setFullMerchantData(res.data.data);
-      }
-    } catch (requestError) {
-      setFeedback(requestError.response?.data?.message || "Action failed");
+      // Refresh current panel
+      const res = await adminClient.get(`/merchants/${editingMerchant._id}`, { headers });
+      setFullData(res.data.data);
+      setEditingMerchant(res.data.data.profile);
+    } catch (err) {
+      setFeedback("Update failed.");
     }
   };
 
-  const submitSearch = (e) => {
-    e.preventDefault();
-    setPage(1);
-    loadMerchants();
-  };
+  useEffect(() => { loadMerchants(); }, [page]);
 
   return (
-    <div className="space-y-6 relative overflow-hidden p-4">
+    <div className="p-8 max-w-[1600px] mx-auto space-y-8 bg-[#FDFDFD] min-h-screen">
       
-      {/* Header Section */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      {/* HEADER AREA */}
+      <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-extrabold text-sky-900 tracking-tight">Merchant Directory</h1>
-          <p className="text-sky-500 font-medium">Manage access, verification, and roles for all platform sellers.</p>
+          <h1 className="text-4xl font-black text-slate-900 tracking-tight flex items-center gap-3">
+            Merchant Central
+          </h1>
+          <p className="text-slate-500 font-medium">Full access control & document verification suite.</p>
         </div>
-      </div>
-
-      {/* Search & Actions Bar */}
-      <div className="bg-white p-4 rounded-2xl border border-sky-100 shadow-sm flex flex-col md:flex-row gap-4">
-        <form onSubmit={submitSearch} className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-sky-300" size={18} />
-          <input
-            className="w-full pl-10 pr-4 py-2.5 bg-sky-50/50 border border-sky-100 rounded-xl text-sm focus:ring-2 focus:ring-sky-500 outline-none transition"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by name, phone, or email..."
-          />
-        </form>
-        <div className="flex gap-2">
-          <button onClick={loadMerchants} className="p-2.5 bg-white border border-sky-100 text-sky-600 rounded-xl hover:bg-sky-50 transition">
+        <div className="flex items-center gap-3">
+          <div className="bg-white border p-3 rounded-2xl flex items-center gap-4 shadow-sm">
+            <div className="text-center px-2">
+              <p className="text-[9px] font-black text-slate-400 uppercase">Page</p>
+              <p className="text-sm font-black text-slate-900">{page} / {totalPages}</p>
+            </div>
+          </div>
+          <button onClick={loadMerchants} className="p-4 bg-white border rounded-2xl hover:bg-slate-50 text-slate-600 transition shadow-sm">
             <RotateCcw size={20} />
           </button>
-          <button onClick={submitSearch} className="px-6 py-2.5 bg-sky-600 text-white rounded-xl font-bold text-sm hover:bg-sky-700 shadow-lg shadow-sky-200 transition">
-            Search
-          </button>
         </div>
+      </header>
+
+      {/* SEARCH BAR */}
+      <div className="relative group">
+        <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-indigo-500 transition-colors" size={20} />
+        <input 
+          className="w-full pl-14 pr-6 py-4 bg-white border border-slate-200 rounded-[24px] shadow-sm outline-none focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-500 transition-all text-slate-700 font-medium"
+          placeholder="Search by name, email, or merchant UID..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && loadMerchants()}
+        />
       </div>
 
-      {feedback && (
-        <div className="p-3 bg-sky-900 text-white rounded-xl text-xs font-bold flex items-center gap-2 animate-in fade-in slide-in-from-top-2">
-          <ShieldAlert size={14} className="text-sky-400" /> {feedback}
-        </div>
-      )}
-
-      {/* Main Table */}
-      <div className="bg-white rounded-2xl border border-sky-100 shadow-xl overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-sky-50/50 border-b border-sky-100">
-                <th className="px-6 py-4 text-[10px] font-black text-sky-900 uppercase tracking-widest">Merchant</th>
-                <th className="px-6 py-4 text-[10px] font-black text-sky-900 uppercase tracking-widest">Contact</th>
-                <th className="px-6 py-4 text-[10px] font-black text-sky-900 uppercase tracking-widest">Role</th>
-                <th className="px-6 py-4 text-[10px] font-black text-sky-900 uppercase tracking-widest">Status</th>
-                <th className="px-6 py-4 text-[10px] font-black text-sky-900 uppercase tracking-widest text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-sky-50 text-sm">
-              {loading ? (
-                <tr><td colSpan="5" className="px-6 py-12 text-center text-sky-400 font-bold uppercase tracking-widest animate-pulse">Fetching Data...</td></tr>
-              ) : items.length === 0 ? (
-                <tr><td colSpan="5" className="px-6 py-12 text-center text-sky-400 italic">No merchants found matching your criteria.</td></tr>
-              ) : (
-                items.map((merchant) => (
-                  <tr key={merchant._id} className="hover:bg-sky-50/30 transition-colors group">
-                    <td className="px-6 py-4 cursor-pointer" onClick={() => fetchMerchantDetails(merchant)}>
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-full bg-sky-100 flex items-center justify-center text-sky-600 font-bold border border-sky-200">
-                          {merchant.name ? merchant.name.charAt(0) : "M"}
-                        </div>
-                        <div>
-                          <p className="font-bold text-sky-900">{merchant.name || "Unnamed Merchant"}</p>
-                          <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${merchant.isVerified ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
-                            {merchant.isVerified ? "Verified" : "Unverified"}
-                          </span>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 space-y-1">
-                      <div className="flex items-center gap-2 text-sky-600 text-xs"><Mail size={12}/> {merchant.email || "-"}</div>
-                      <div className="flex items-center gap-2 text-sky-400 text-xs"><Phone size={12}/> {merchant.phone || "-"}</div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="text-[10px] font-bold text-sky-800 bg-sky-100 px-2 py-1 rounded uppercase tracking-tighter">
-                        {merchant.role || "merchant"}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase border ${merchant.status === 'banned' ? 'bg-red-100 text-red-700 border-red-200' : 'bg-sky-100 text-sky-700 border-sky-200'}`}>
-                        {merchant.status || "active"}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={() => fetchMerchantDetails(merchant)} className="p-2 text-sky-400 hover:text-sky-600 hover:bg-sky-50 rounded-lg transition" title="View Full Details">
-                          <UserKeyIcon size={18} />
-                        </button>
-                        <button 
-                          onClick={() => runAction(() => adminClient.delete(`/merchants/${merchant._id}`, { headers }))}
-                          className="p-2 text-sky-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition"
-                        >
-                          <Trash2 size={18} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Pagination */}
-        <div className="px-6 py-4 bg-sky-50/50 flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-sky-100">
-          <p className="text-xs font-bold text-sky-400 uppercase tracking-widest">
-            Page {page} of {totalPages}
-          </p>
-          <div className="flex items-center gap-2">
-            <button 
-              disabled={page <= 1} 
-              onClick={() => setPage(p => p - 1)}
-              className="p-2 rounded-lg bg-white border border-sky-200 text-sky-600 disabled:opacity-40 hover:bg-sky-100 transition"
-            >
-              <ChevronLeft size={20} />
-            </button>
-            <button 
-              disabled={page >= totalPages} 
-              onClick={() => setPage(p => p + 1)}
-              className="p-2 rounded-lg bg-white border border-sky-200 text-sky-600 disabled:opacity-40 hover:bg-sky-100 transition"
-            >
-              <ChevronRight size={20} />
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* --- Detailed Admin Panel (Slide Over) --- */}
-      {editingMerchant && (
-        <div className="fixed inset-0 z-50 flex justify-end">
-          <div className="absolute inset-0 bg-sky-900/40 backdrop-blur-sm animate-in fade-in duration-300" onClick={() => setEditingMerchant(null)} />
-          <div className="relative w-full max-w-2xl bg-white h-full shadow-2xl overflow-y-auto animate-in slide-in-from-right duration-300 flex flex-col">
-            
-            {/* Panel Header */}
-            <div className="sticky top-0 bg-white z-20 border-b border-sky-50 p-6 flex items-center justify-between">
-              <h2 className="text-xl font-black text-sky-900 uppercase">Merchant Insights</h2>
-              <button onClick={() => setEditingMerchant(null)} className="p-2 hover:bg-sky-50 rounded-full text-sky-300 transition">
-                <X size={24} />
-              </button>
-            </div>
-
-            <div className="p-8 flex-1 space-y-8">
-              {/* Profile Overview */}
-              <div className="flex items-center gap-5 p-6 bg-sky-50 rounded-[32px] border border-sky-100">
-                <div className="w-20 h-20 rounded-[24px] bg-sky-600 flex items-center justify-center text-white text-3xl font-black shadow-lg overflow-hidden border-4 border-white">
-                  {fullMerchantData?.shop?.logo ? (
-                    <img src={fullMerchantData.shop.logo} className="w-full h-full object-cover" />
-                  ) : (
-                    editingMerchant.name?.charAt(0)
-                  )}
-                </div>
-                <div>
-                  <h3 className="text-xl font-bold text-sky-900">{editingMerchant.name}</h3>
-                  <p className="text-xs text-sky-400 font-mono tracking-tighter mb-2">{editingMerchant._id}</p>
-                  <div className="flex gap-2">
-                    <span className="text-[10px] font-black bg-white px-2 py-1 rounded-md text-sky-600 border border-sky-100 uppercase">{editingMerchant.role}</span>
-                    <span className={`text-[10px] font-black px-2 py-1 rounded-md uppercase border ${editingMerchant.status === 'banned' ? 'bg-red-50 text-red-600 border-red-100' : 'bg-green-50 text-green-600 border-green-100'}`}>
-                        {editingMerchant.status}
-                    </span>
+      {/* TABLE SECTION */}
+      <div className="bg-white border border-slate-200 rounded-[32px] shadow-sm overflow-hidden">
+        <table className="w-full text-left">
+          <thead className="bg-slate-50/50 border-b border-slate-100">
+            <tr>
+              <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Merchant Profile</th>
+              <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Contact</th>
+              <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">KYC Progress</th>
+              <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Status</th>
+              <th className="px-8 py-5 text-right"></th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-50">
+            {loading ? (
+              <tr><td colSpan="5" className="px-8 py-20 text-center"><Loader2 className="animate-spin inline-block text-indigo-500" size={32} /></td></tr>
+            ) : items.map((m) => (
+              <tr key={m._id} className="hover:bg-indigo-50/30 transition-colors group">
+                <td className="px-8 py-5">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-[18px] bg-indigo-600 flex items-center justify-center text-white font-black text-lg shadow-lg shadow-indigo-100">
+                      {m.name?.charAt(0)}
+                    </div>
+                    <div>
+                      <p className="font-black text-slate-900">{m.name}</p>
+                      <p className="text-[10px] font-bold text-slate-400 font-mono tracking-tighter uppercase">{m._id}</p>
+                    </div>
                   </div>
-                </div>
+                </td>
+                <td className="px-8 py-5">
+                  <div className="flex flex-col gap-1">
+                    <div className="flex items-center gap-2 text-xs font-bold text-slate-600"><Mail size={12} className="text-slate-300"/> {m.email}</div>
+                    <div className="flex items-center gap-2 text-xs font-bold text-slate-600"><Phone size={12} className="text-slate-300"/> {m.phone}</div>
+                  </div>
+                </td>
+                <td className="px-8 py-5">
+                   <div className="flex gap-1.5">
+                      <div className={`w-2 h-2 rounded-full ${m.isVerified ? 'bg-emerald-500' : 'bg-slate-200'}`} title="Verified Status"/>
+                      <div className={`w-2 h-2 rounded-full ${m.status !== 'banned' ? 'bg-indigo-500' : 'bg-red-500'}`} title="Account Status"/>
+                   </div>
+                </td>
+                <td className="px-8 py-5">
+                  <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${m.status === 'banned' ? 'bg-red-50 text-red-600 border-red-100' : 'bg-emerald-50 text-emerald-700 border-emerald-100'}`}>
+                    {m.status || 'Active'}
+                  </span>
+                </td>
+                <td className="px-8 py-5 text-right">
+                  <button onClick={() => fetchMerchantAudit(m)} className="p-3 bg-slate-100 text-slate-600 rounded-2xl hover:bg-indigo-600 hover:text-white transition shadow-sm group-hover:scale-105">
+                    <Eye size={20} />
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        
+        {/* PAGINATION */}
+        <div className="p-6 bg-slate-50 border-t border-slate-100 flex justify-between items-center">
+            <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Page Control</p>
+            <div className="flex gap-2">
+                <button disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="p-2.5 bg-white border rounded-xl shadow-sm hover:bg-slate-50 disabled:opacity-30 transition"><ChevronLeft size={20}/></button>
+                <button disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} className="p-2.5 bg-white border rounded-xl shadow-sm hover:bg-slate-50 disabled:opacity-30 transition"><ChevronRight size={20}/></button>
+            </div>
+        </div>
+      </div>
+
+      {/* --- AUDIT SLIDE PANEL --- */}
+      {editingMerchant && (
+        <div className="fixed inset-0 z-[100] flex justify-end">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-500" onClick={() => setEditingMerchant(null)} />
+          <div className="relative w-full max-w-4xl bg-white h-full shadow-2xl overflow-y-auto flex flex-col animate-in slide-in-from-right duration-500">
+            
+            {/* PANEL HEADER */}
+            <div className="sticky top-0 bg-white/90 backdrop-blur z-20 p-8 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <h2 className="text-2xl font-black text-slate-900 uppercase">Audit Terminal</h2>
+                <p className="text-xs font-bold text-slate-400 tracking-[0.2em] uppercase">UID: {editingMerchant._id}</p>
               </div>
+              <button onClick={() => setEditingMerchant(null)} className="p-3 hover:bg-slate-100 rounded-full transition"><X size={28}/></button>
+            </div>
 
+            <div className="p-10 space-y-12">
               {loadingDetails ? (
-                <div className="py-20 flex flex-col items-center justify-center gap-3 text-sky-300">
-                  <Loader2 className="animate-spin" size={40} />
-                  <p className="text-[10px] font-black uppercase tracking-widest">Syncing Records...</p>
+                <div className="flex flex-col items-center justify-center py-40 gap-4 text-indigo-500">
+                  <Loader2 className="animate-spin" size={48} />
+                  <p className="text-sm font-black uppercase tracking-[0.3em]">Decoding Documents...</p>
                 </div>
-              ) : fullMerchantData && (
-                <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4">
+              ) : fullData && (
+                <div className="space-y-14 animate-in fade-in slide-in-from-bottom-10">
                   
-                  {/* Shop & Branding */}
-                  <section className="space-y-4">
-                    <h4 className="text-[10px] font-black text-sky-400 uppercase tracking-widest flex items-center gap-2">
-                        <Store size={14}/> Shop & Branding
-                    </h4>
-                    {fullMerchantData.shop ? (
-                        <div className="space-y-4">
-                            {fullMerchantData.shop.banner && (
-                                <div className="w-full h-32 rounded-2xl overflow-hidden border border-sky-100">
-                                    <img src={fullMerchantData.shop.banner} alt="Banner" className="w-full h-full object-cover" />
-                                </div>
-                            )}
-                            <div className="bg-white border border-sky-100 rounded-2xl p-5 space-y-3 shadow-sm">
-                                <h5 className="font-bold text-sky-900 text-lg">{fullMerchantData.shop.shopName}</h5>
-                                <div className="grid grid-cols-2 gap-4 text-xs">
-                                    <div className="space-y-1">
-                                        <p className="text-sky-400 font-bold uppercase text-[9px]">Category</p>
-                                        <p className="text-sky-800 font-semibold">{fullMerchantData.shop.categoryId?.label || "N/A"}</p>
-                                    </div>
-                                    <div className="space-y-1">
-                                        <p className="text-sky-400 font-bold uppercase text-[9px]">Sub-Category</p>
-                                        <p className="text-sky-800 font-semibold">{fullMerchantData.shop.subCategoryId?.label || "N/A"}</p>
-                                    </div>
-                                    <div className="space-y-1">
-                                        <p className="text-sky-400 font-bold uppercase text-[9px]">City</p>
-                                        <p className="text-sky-800 font-semibold">{fullMerchantData.shop.city || "N/A"}</p>
-                                    </div>
-                                </div>
-                                <div className="flex items-start gap-2 pt-2 border-t border-sky-50">
-                                    <MapPin size={14} className="text-sky-300 mt-0.5" />
-                                    <p className="text-xs text-sky-600 leading-relaxed">{fullMerchantData.shop.address || "No address provided"}</p>
-                                </div>
-                            </div>
+                  {/* SECTION 1: PROFILE & ACCOUNT */}
+                  <section className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div className="space-y-6">
+                        <div className="flex items-center gap-3 text-indigo-600">
+                          <UserCircle size={20}/>
+                          <h3 className="font-black text-sm uppercase tracking-widest">Account Profile</h3>
                         </div>
-                    ) : (
-                        <div className="p-6 bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-center text-xs text-slate-400 italic">
-                            No shop profile created yet.
-                        </div>
-                    )}
-                  </section>
-
-                  {/* Personal KYC Documents */}
-                  <section className="space-y-4">
-                    <h4 className="text-[10px] font-black text-sky-400 uppercase tracking-widest flex items-center gap-2">
-                        <User size={14}/> Personal KYC Proofs
-                    </h4>
-                    {fullMerchantData.documents.personal ? (
-                        <div className="grid grid-cols-2 gap-4">
-                            <ImagePreview src={fullMerchantData.documents.personal.aadharImage} label="Aadhar Card" />
-                            <ImagePreview src={fullMerchantData.documents.personal.panImage} label="Personal PAN Card" />
-                        </div>
-                    ) : (
-                        <div className="p-4 bg-red-50 text-red-600 rounded-xl text-xs font-bold border border-red-100">
-                           Personal KYC documents not uploaded.
-                        </div>
-                    )}
-                  </section>
-
-                  {/* Business KYC Documents */}
-                  <section className="space-y-4">
-                    <h4 className="text-[10px] font-black text-sky-400 uppercase tracking-widest flex items-center gap-2">
-                        <FileBadge size={14}/> Business Legal Documents
-                    </h4>
-                    {fullMerchantData.documents.business ? (
-                        <div className="grid grid-cols-2 gap-4">
-                            <ImagePreview src={fullMerchantData.documents.business.gstImage} label="GST Certificate" />
-                            <ImagePreview src={fullMerchantData.documents.business.panImage} label="Business PAN" />
-                            <ImagePreview src={fullMerchantData.documents.business.tradeLicenseImage} label="Trade License" />
-                            <ImagePreview src={fullMerchantData.documents.business.fssaiImage} label="FSSAI License" />
-                            <ImagePreview src={fullMerchantData.documents.business.shopRegistrationImage} label="Shop Registration" />
-                        </div>
-                    ) : (
-                        <div className="p-4 bg-red-50 text-red-600 rounded-xl text-xs font-bold border border-red-100">
-                           Business KYC documents not uploaded.
-                        </div>
-                    )}
-                  </section>
-
-                  {/* Admin Controls */}
-                  <section className="space-y-4 pt-4 border-t border-sky-50">
-                    <h4 className="text-[10px] font-black text-sky-400 uppercase tracking-widest">Administrative Actions</h4>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <button 
-                            onClick={() => runAction(() => adminClient.put(`/merchants/${editingMerchant._id}/verify`, { isVerified: !editingMerchant.isVerified }, { headers }))}
-                            className={`flex items-center gap-3 p-4 rounded-xl border transition ${editingMerchant.isVerified ? 'border-sky-200 bg-sky-50 text-sky-700' : 'border-green-100 bg-green-50 text-green-700 font-bold'}`}
-                        >
-                            <ShieldCheck size={20} />
-                            <span className="text-xs uppercase">{editingMerchant.isVerified ? "Revoke Verification" : "Verify Merchant"}</span>
-                        </button>
-
-                        <button 
-                            onClick={() => runAction(() => adminClient.put(`/merchants/${editingMerchant._id}/status`, { status: editingMerchant.status === "banned" ? "active" : "banned" }, { headers }))}
-                            className={`flex items-center gap-3 p-4 rounded-xl border transition ${editingMerchant.status === 'banned' ? 'border-sky-200 bg-sky-50 text-sky-700' : 'border-red-100 bg-red-50 text-red-700 font-bold'}`}
-                        >
-                            <ShieldAlert size={20} />
-                            <span className="text-xs uppercase">{editingMerchant.status === "banned" ? "Unban Account" : "Ban Account"}</span>
-                        </button>
-                    </div>
-
-                    <div className="p-5 rounded-2xl bg-slate-900 text-white shadow-xl">
-                        <label className="text-[9px] font-black text-sky-400 uppercase mb-3 block tracking-widest">System Role Privilege</label>
-                        <div className="flex gap-2">
-                            {['merchant', 'super_admin'].map(role => (
-                                <button
-                                    key={role}
-                                    onClick={() => runAction(() => adminClient.put(`/merchants/${editingMerchant._id}/role`, { role }, { headers }))}
-                                    className={`flex-1 py-3 rounded-xl text-xs font-bold uppercase transition ${editingMerchant.role === role ? 'bg-sky-600 text-white shadow-inner' : 'bg-white/10 text-white/40 hover:bg-white/20'}`}
-                                >
-                                    {role.replace('_', ' ')}
-                                </button>
-                            ))}
+                        <div className="grid grid-cols-1 gap-4">
+                            <InfoField label="Full Name" value={fullData.profile.name} icon={UserCircle} />
+                            <InfoField label="Email Address" value={fullData.profile.email} icon={Mail} />
+                            <InfoField label="Phone Number" value={fullData.profile.phone} icon={Phone} />
+                            <InfoField label="System Role" value={fullData.profile.role} icon={ShieldCheck} />
                         </div>
                     </div>
+
+                    <div className="space-y-6">
+                        <div className="flex items-center gap-3 text-emerald-600">
+                          <Building2 size={20}/>
+                          <h3 className="font-black text-sm uppercase tracking-widest">Shop Information</h3>
+                        </div>
+                        {fullData.shop ? (
+                          <div className="grid grid-cols-1 gap-4">
+                             <InfoField label="Shop Name" value={fullData.shop.shopName} icon={Store} />
+                             <InfoField label="Category" value={fullData.shop.categoryId?.label} icon={Hash} />
+                             <InfoField label="Sub Category" value={fullData.shop.subCategoryId?.label} icon={Hash} />
+                             <InfoField label="City" value={fullData.shop.city} icon={MapPin} />
+                             <div className="col-span-full">
+                                <InfoField label="Full Address" value={fullData.shop.address} icon={MapPin} />
+                             </div>
+                          </div>
+                        ) : (
+                          <div className="h-full flex items-center justify-center bg-slate-50 border-2 border-dashed rounded-3xl text-slate-400 font-bold text-xs uppercase italic">No Shop Linked</div>
+                        )}
+                    </div>
+                  </section>
+
+                  {/* SECTION 2: SHOP MEDIA */}
+                  {fullData.shop && (
+                    <section className="space-y-6">
+                      <div className="flex items-center gap-3 text-pink-600">
+                          <Eye size={20}/>
+                          <h3 className="font-black text-sm uppercase tracking-widest">Store Branding</h3>
+                      </div>
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                          <DataImage src={fullData.shop.banner} label="Shop Banner" fallbackIcon={Store} />
+                          <div className="max-w-xs">
+                             <DataImage src={fullData.shop.logo} label="Store Logo" fallbackIcon={Store} />
+                          </div>
+                      </div>
+                    </section>
+                  )}
+
+                  {/* SECTION 3: PERSONAL KYC */}
+                  <section className="space-y-6">
+                      <div className="flex items-center gap-3 text-indigo-600">
+                          <UserKeyIcon size={20}/>
+                          <h3 className="font-black text-sm uppercase tracking-widest">Personal Identification</h3>
+                      </div>
+                      {fullData.documents.personal ? (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                            <DataImage src={fullData.documents.personal.aadharImage} label="Aadhar Card" fallbackIcon={FileBadge} />
+                            <DataImage src={fullData.documents.personal.panImage} label="PAN Card" fallbackIcon={FileBadge} />
+                        </div>
+                      ) : (
+                        <div className="p-8 bg-red-50 border border-red-100 rounded-3xl text-red-600 font-bold text-center text-xs uppercase tracking-widest">Missing Personal Documents</div>
+                      )}
+                  </section>
+
+                  {/* SECTION 4: BUSINESS KYC */}
+                  <section className="space-y-6">
+                      <div className="flex items-center gap-3 text-emerald-600">
+                          <FileBadge size={20}/>
+                          <h3 className="font-black text-sm uppercase tracking-widest">Business Compliance</h3>
+                      </div>
+                      {fullData.documents.business ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+                            <DataImage src={fullData.documents.business.gstImage} label="GST Certificate" fallbackIcon={Building2} />
+                            <DataImage src={fullData.documents.business.panImage} label="Business PAN" fallbackIcon={Building2} />
+                            <DataImage src={fullData.documents.business.tradeLicenseImage} label="Trade License" fallbackIcon={Building2} />
+                            <DataImage src={fullData.documents.business.fssaiImage} label="FSSAI License" fallbackIcon={Building2} />
+                            <DataImage src={fullData.documents.business.shopRegistrationImage} label="Shop Registration" fallbackIcon={Building2} />
+                        </div>
+                      ) : (
+                        <div className="p-8 bg-red-50 border border-red-100 rounded-3xl text-red-600 font-bold text-center text-xs uppercase tracking-widest">Missing Business Documents</div>
+                      )}
+                  </section>
+
+                  {/* SECTION 5: ACTIONS */}
+                  <section className="bg-slate-900 rounded-[40px] p-10 shadow-2xl space-y-10 border border-white/5">
+                    <div className="flex flex-col md:flex-row justify-between gap-6">
+                      <div>
+                        <h3 className="text-white text-xl font-black uppercase tracking-tight">Audit Decisions</h3>
+                        <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Review results and enforce platform rules</p>
+                      </div>
+                      <div className="flex gap-3">
+                         <button 
+                            onClick={() => updateStatus('verify', { isVerified: !editingMerchant.isVerified })}
+                            className={`flex items-center gap-3 px-8 py-4 rounded-[20px] font-black text-xs uppercase tracking-widest transition-all ${editingMerchant.isVerified ? 'bg-white/10 text-white border border-white/20' : 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20 hover:scale-105'}`}
+                         >
+                           <ShieldCheck size={18} /> {editingMerchant.isVerified ? 'Revoke Verified' : 'Verify Merchant'}
+                         </button>
+                         <button 
+                            onClick={() => updateStatus('status', { status: editingMerchant.status === 'banned' ? 'active' : 'banned' })}
+                            className={`flex items-center gap-3 px-8 py-4 rounded-[20px] font-black text-xs uppercase tracking-widest transition-all ${editingMerchant.status === 'banned' ? 'bg-emerald-500 text-white' : 'bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-500 hover:text-white'}`}
+                         >
+                           <ShieldAlert size={18} /> {editingMerchant.status === 'banned' ? 'Unban Account' : 'Ban Merchant'}
+                         </button>
+                      </div>
+                    </div>
+
+                    {/* <div className="p-6 bg-white/5 rounded-3xl border border-white/10 space-y-4">
+                       <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Promote / Demote Access Role</p>
+                       <div className="flex gap-4">
+                          {['merchant', 'super_admin'].map(r => (
+                            <button 
+                              key={r}
+                              onClick={() => updateStatus('role', { role: r })}
+                              className={`flex-1 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all ${editingMerchant.role === r ? 'bg-white text-slate-900 shadow-xl' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
+                            >
+                              {r.replace('_', ' ')}
+                            </button>
+                          ))}
+                       </div>
+                    </div> */}
                   </section>
                 </div>
               )}
             </div>
-            
-            <div className="p-6 border-t border-sky-50 bg-white sticky bottom-0">
-                <button onClick={() => setEditingMerchant(null)} className="w-full py-4 bg-sky-50 text-sky-600 rounded-2xl font-bold hover:bg-sky-100 transition">Close Insights</button>
+
+            <div className="p-10 border-t bg-slate-50">
+                <button onClick={() => setEditingMerchant(null)} className="w-full py-5 bg-white border border-slate-200 text-slate-900 rounded-3xl font-black uppercase tracking-widest hover:bg-slate-100 transition shadow-sm">
+                  Close Audit Panel
+                </button>
             </div>
           </div>
         </div>
