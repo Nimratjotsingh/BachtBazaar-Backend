@@ -19,13 +19,18 @@ const DataImage = ({ src, label, fallbackIcon: Icon }) => {
   return (
     <div className="space-y-2 group">
       <div className="relative aspect-video rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 shadow-sm">
-        <img src={src} alt={label} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
+        {/* API Full URL Integration */}
+        <img 
+          src={src} 
+          alt={label} 
+          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" 
+          onError={(e) => {
+            e.target.src = "https://placehold.co/600x400?text=Image+Load+Error";
+          }}
+        />
         <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
           <button 
-            onClick={() => {
-              const win = window.open();
-              win.document.write(`<title>${label}</title><body style="margin:0; background:#000; display:flex; align-items:center; justify-content:center;"><img src="${src}" style="max-width:100%; max-height:100vh; shadow: 0 0 50px rgba(0,0,0,0.5);"></body>`);
-            }}
+            onClick={() => window.open(src, "_blank")}
             className="p-2 bg-white text-slate-900 rounded-full hover:scale-110 transition-transform shadow-xl"
           >
             <ExternalLink size={18} />
@@ -82,9 +87,9 @@ function MerchantsPage({ token }) {
     setFullData(null);
     try {
       const response = await adminClient.get(`/merchants/${merchant._id}`, { headers });
-      console.log(response.data)
       // response.data.data contains { profile, shop, documents, kycStatus }
       setFullData(response.data.data);
+      console.log(response.data)
     } catch (err) {
       setFeedback("Could not retrieve document package.");
     } finally { setLoadingDetails(false); }
@@ -339,21 +344,6 @@ function MerchantsPage({ token }) {
                          </button>
                       </div>
                     </div>
-
-                    {/* <div className="p-6 bg-white/5 rounded-3xl border border-white/10 space-y-4">
-                       <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Promote / Demote Access Role</p>
-                       <div className="flex gap-4">
-                          {['merchant', 'super_admin'].map(r => (
-                            <button 
-                              key={r}
-                              onClick={() => updateStatus('role', { role: r })}
-                              className={`flex-1 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all ${editingMerchant.role === r ? 'bg-white text-slate-900 shadow-xl' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
-                            >
-                              {r.replace('_', ' ')}
-                            </button>
-                          ))}
-                       </div>
-                    </div> */}
                   </section>
                 </div>
               )}
