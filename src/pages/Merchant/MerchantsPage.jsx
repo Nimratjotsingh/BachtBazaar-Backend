@@ -4,12 +4,26 @@ import {
   Search, UserKeyIcon, ShieldCheck, ShieldAlert, Trash2, 
   ChevronLeft, ChevronRight, Mail, Phone, RotateCcw, X,
   Store, FileBadge, MapPin, Loader2, ExternalLink, 
-  CheckCircle2, AlertCircle, Eye, Hash, Building2, UserCircle
+  CheckCircle2, AlertCircle, Eye, Hash, Calendar, Building2, UserCircle
 } from "lucide-react";
 
+// --- Helper: Convert Buffer to Base64 ---
+const getImageUrl = (imageObj) => {
+  if (!imageObj || !imageObj.data || !imageObj.data.data) return null;
+  // Convert the array of numbers from the Buffer to a base64 string
+  const base64String = btoa(
+    new Uint8Array(imageObj.data.data).reduce(
+      (data, byte) => data + String.fromCharCode(byte),
+      ''
+    )
+  );
+  return `data:${imageObj.contentType};base64,${base64String}`;
+};
+
 // --- Sub-Component: Image Display ---
-const DataImage = ({ src, label, fallbackIcon: Icon }) => {
-  // src is now expected to be a normal URL string
+const DataImage = ({ imageObj, label, fallbackIcon: Icon }) => {
+  const src = getImageUrl(imageObj);
+
   if (!src) return (
     <div className="flex flex-col items-center justify-center p-6 bg-slate-100 rounded-2xl border-2 border-dashed border-slate-200 text-slate-400">
       <Icon size={24} className="mb-2 opacity-50" />
@@ -20,18 +34,13 @@ const DataImage = ({ src, label, fallbackIcon: Icon }) => {
   return (
     <div className="space-y-2 group">
       <div className="relative aspect-video rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 shadow-sm">
-        <img 
-          src={src} 
-          alt={label} 
-          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-          onError={(e) => {
-            e.target.onerror = null; 
-            e.target.src = "https://placehold.co/400x300?text=Image+Not+Found";
-          }}
-        />
+        <img src={src} alt={label} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
         <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
           <button 
-            onClick={() => window.open(src, '_blank')}
+            onClick={() => {
+              const win = window.open();
+              win.document.write(`<title>${label}</title><body style="margin:0; background:#000; display:flex; align-items:center; justify-content:center;"><img src="${src}" style="max-width:100%; max-height:100vh; shadow: 0 0 50px rgba(0,0,0,0.5);"></body>`);
+            }}
             className="p-2 bg-white text-slate-900 rounded-full hover:scale-110 transition-transform shadow-xl"
           >
             <ExternalLink size={18} />
@@ -211,8 +220,8 @@ function MerchantsPage({ token }) {
       {/* --- AUDIT SLIDE PANEL --- */}
       {editingMerchant && (
         <div className="fixed inset-0 z-[100] flex justify-end">
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300" onClick={() => setEditingMerchant(null)} />
-          <div className="relative w-full max-w-4xl bg-white h-full shadow-2xl overflow-y-auto flex flex-col animate-in slide-in-from-right duration-300">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-500" onClick={() => setEditingMerchant(null)} />
+          <div className="relative w-full max-w-4xl bg-white h-full shadow-2xl overflow-y-auto flex flex-col animate-in slide-in-from-right duration-500">
             
             <div className="sticky top-0 bg-white/90 backdrop-blur z-20 p-8 border-b border-slate-100 flex items-center justify-between">
               <div>
@@ -226,7 +235,7 @@ function MerchantsPage({ token }) {
               {loadingDetails ? (
                 <div className="flex flex-col items-center justify-center py-40 gap-4 text-indigo-500">
                   <Loader2 className="animate-spin" size={48} />
-                  <p className="text-sm font-black uppercase tracking-[0.3em]">Loading Records...</p>
+                  <p className="text-sm font-black uppercase tracking-[0.3em]">Decoding Documents...</p>
                 </div>
               ) : fullData && (
                 <div className="space-y-14 animate-in fade-in slide-in-from-bottom-10">
@@ -273,9 +282,9 @@ function MerchantsPage({ token }) {
                           <h3 className="font-black text-sm uppercase tracking-widest">Store Branding</h3>
                       </div>
                       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                          <DataImage src={fullData.shop.banner} label="Shop Banner" fallbackIcon={Store} />
+                          <DataImage imageObj={fullData.shop.banner} label="Shop Banner" fallbackIcon={Store} />
                           <div className="max-w-xs">
-                             <DataImage src={fullData.shop.logo} label="Store Logo" fallbackIcon={Store} />
+                             <DataImage imageObj={fullData.shop.logo} label="Store Logo" fallbackIcon={Store} />
                           </div>
                       </div>
                     </section>
@@ -289,8 +298,8 @@ function MerchantsPage({ token }) {
                       </div>
                       {fullData.documents.personal ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                            <DataImage src={fullData.documents.personal.aadharImage} label="Aadhar Card" fallbackIcon={FileBadge} />
-                            <DataImage src={fullData.documents.personal.panImage} label="PAN Card" fallbackIcon={FileBadge} />
+                            <DataImage imageObj={fullData.documents.personal.aadharImage} label="Aadhar Card" fallbackIcon={FileBadge} />
+                            <DataImage imageObj={fullData.documents.personal.panImage} label="PAN Card" fallbackIcon={FileBadge} />
                         </div>
                       ) : (
                         <div className="p-8 bg-red-50 border border-red-100 rounded-3xl text-red-600 font-bold text-center text-xs uppercase tracking-widest">Missing Personal Documents</div>
@@ -305,11 +314,11 @@ function MerchantsPage({ token }) {
                       </div>
                       {fullData.documents.business ? (
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
-                            <DataImage src={fullData.documents.business.gstImage} label="GST Certificate" fallbackIcon={Building2} />
-                            <DataImage src={fullData.documents.business.panImage} label="Business PAN" fallbackIcon={Building2} />
-                            <DataImage src={fullData.documents.business.tradeLicenseImage} label="Trade License" fallbackIcon={Building2} />
-                            <DataImage src={fullData.documents.business.fssaiImage} label="FSSAI License" fallbackIcon={Building2} />
-                            <DataImage src={fullData.documents.business.shopRegistrationImage} label="Shop Registration" fallbackIcon={Building2} />
+                            <DataImage imageObj={fullData.documents.business.gstImage} label="GST Certificate" fallbackIcon={Building2} />
+                            <DataImage imageObj={fullData.documents.business.panImage} label="Business PAN" fallbackIcon={Building2} />
+                            <DataImage imageObj={fullData.documents.business.tradeLicenseImage} label="Trade License" fallbackIcon={Building2} />
+                            <DataImage imageObj={fullData.documents.business.fssaiImage} label="FSSAI License" fallbackIcon={Building2} />
+                            <DataImage imageObj={fullData.documents.business.shopRegistrationImage} label="Shop Registration" fallbackIcon={Building2} />
                         </div>
                       ) : (
                         <div className="p-8 bg-red-50 border border-red-100 rounded-3xl text-red-600 font-bold text-center text-xs uppercase tracking-widest">Missing Business Documents</div>
