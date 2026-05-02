@@ -29,11 +29,6 @@ export const listMerchants = async (req, res) => {
 };
 
 // Get merchant details
-const convertToBase64 = (file) => {
-  if (!file || !file.data) return null;
-  return `data:${file.contentType};base64,${file.data.toString("base64")}`;
-};
-
 export const getMerchant = async (req, res) => {
   try {
     const { id } = req.params;
@@ -51,26 +46,37 @@ export const getMerchant = async (req, res) => {
     ]);
 
     if (!merchant) {
-      return res.status(404).json({ success: false, message: "Merchant not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Merchant not found"
+      });
     }
 
-    // 🔥 Convert images to base64
+    // 🔥 Helper to convert file path → full URL
+    const makeUrl = (filePath) => {
+      if (!filePath) return null;
+
+      return `${req.protocol}://${req.get("host")}/${filePath.replace(/\\/g, "/")}`;
+    };
+
+    // 🔥 Convert image paths to URLs
+
     if (personalDocs) {
-      personalDocs.aadharImage = convertToBase64(personalDocs.aadharImage);
-      personalDocs.panImage = convertToBase64(personalDocs.panImage);
+      personalDocs.aadharImage = makeUrl(personalDocs.aadharImage);
+      personalDocs.panImage = makeUrl(personalDocs.panImage);
     }
 
     if (businessDocs) {
-      businessDocs.gstImage = convertToBase64(businessDocs.gstImage);
-      businessDocs.tradeLicenseImage = convertToBase64(businessDocs.tradeLicenseImage);
-      businessDocs.shopRegistrationImage = convertToBase64(businessDocs.shopRegistrationImage);
-      businessDocs.fssaiImage = convertToBase64(businessDocs.fssaiImage);
-      businessDocs.panImage = convertToBase64(businessDocs.panImage);
+      businessDocs.gstImage = makeUrl(businessDocs.gstImage);
+      businessDocs.tradeLicenseImage = makeUrl(businessDocs.tradeLicenseImage);
+      businessDocs.shopRegistrationImage = makeUrl(businessDocs.shopRegistrationImage);
+      businessDocs.fssaiImage = makeUrl(businessDocs.fssaiImage);
+      businessDocs.panImage = makeUrl(businessDocs.panImage);
     }
 
     if (shop) {
-      shop.logo = convertToBase64(shop.logo);
-      shop.banner = convertToBase64(shop.banner);
+      shop.logo = makeUrl(shop.logo);
+      shop.banner = makeUrl(shop.banner);
     }
 
     return res.json({
