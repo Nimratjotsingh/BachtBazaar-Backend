@@ -15,11 +15,35 @@ import {
   Store,
   FileBadge,
   MapPin,
-  Clock,
-  Loader2
+  Loader2,
+  Image as ImageIcon,
+  User
 } from "lucide-react";
-import MerchantStats from "./component/Stats";
-import MerchantListTable from "./component/MerchantsData";
+
+// Reusable Image Preview Component
+const ImagePreview = ({ src, label }) => {
+  if (!src) return null;
+  return (
+    <div className="space-y-2">
+      <p className="text-[9px] font-black text-sky-400 uppercase tracking-wider">{label}</p>
+      <div className="relative aspect-video rounded-xl overflow-hidden border border-sky-100 bg-sky-50 group">
+        <img 
+          src={src} 
+          alt={label} 
+          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" 
+        />
+        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all flex items-center justify-center">
+             <button 
+              onClick={() => window.open(src, '_blank')}
+              className="opacity-0 group-hover:opacity-100 bg-white text-sky-600 p-2 rounded-full shadow-lg transition-opacity"
+             >
+              <Search size={16} />
+             </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 function MerchantsPage({ token }) {
   const [search, setSearch] = useState("");
@@ -29,8 +53,6 @@ function MerchantsPage({ token }) {
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [editingMerchant, setEditingMerchant] = useState(null);
-  
-  // NEW STATES for detailed data
   const [fullMerchantData, setFullMerchantData] = useState(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
 
@@ -53,13 +75,11 @@ function MerchantsPage({ token }) {
     }
   };
 
-  // NEW FUNCTION: Fetch all associated merchant data
   const fetchMerchantDetails = async (merchant) => {
     setEditingMerchant(merchant);
     setLoadingDetails(true);
     setFullMerchantData(null);
     try {
-      // Calling the API we created: GET /merchants/:id
       const response = await adminClient.get(`/merchants/${merchant._id}`, { headers });
       setFullMerchantData(response.data.data);
     } catch (err) {
@@ -78,7 +98,6 @@ function MerchantsPage({ token }) {
     try {
       await actionFn();
       await loadMerchants();
-      // Keep panel open but refresh details if necessary
       if (editingMerchant) {
           const res = await adminClient.get(`/merchants/${editingMerchant._id}`, { headers });
           setFullMerchantData(res.data.data);
@@ -95,7 +114,7 @@ function MerchantsPage({ token }) {
   };
 
   return (
-    <div className="space-y-6 relative overflow-hidden">
+    <div className="space-y-6 relative overflow-hidden p-4">
       
       {/* Header Section */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -226,12 +245,12 @@ function MerchantsPage({ token }) {
 
       {/* --- Detailed Admin Panel (Slide Over) --- */}
       {editingMerchant && (
-        <div className="fixed inset-0 z-50 flex justify-end animate-in fade-in duration-300">
-          <div className="absolute inset-0 bg-sky-900/40 backdrop-blur-sm" onClick={() => setEditingMerchant(null)} />
-          <div className="relative w-full max-w-xl bg-white h-full shadow-2xl overflow-y-auto animate-in slide-in-from-right duration-300 flex flex-col">
+        <div className="fixed inset-0 z-50 flex justify-end">
+          <div className="absolute inset-0 bg-sky-900/40 backdrop-blur-sm animate-in fade-in duration-300" onClick={() => setEditingMerchant(null)} />
+          <div className="relative w-full max-w-2xl bg-white h-full shadow-2xl overflow-y-auto animate-in slide-in-from-right duration-300 flex flex-col">
             
             {/* Panel Header */}
-            <div className="sticky top-0 bg-white z-10 border-b border-sky-50 p-6 flex items-center justify-between">
+            <div className="sticky top-0 bg-white z-20 border-b border-sky-50 p-6 flex items-center justify-between">
               <h2 className="text-xl font-black text-sky-900 uppercase">Merchant Insights</h2>
               <button onClick={() => setEditingMerchant(null)} className="p-2 hover:bg-sky-50 rounded-full text-sky-300 transition">
                 <X size={24} />
@@ -239,10 +258,14 @@ function MerchantsPage({ token }) {
             </div>
 
             <div className="p-8 flex-1 space-y-8">
-              {/* Profile Header */}
+              {/* Profile Overview */}
               <div className="flex items-center gap-5 p-6 bg-sky-50 rounded-[32px] border border-sky-100">
-                <div className="w-20 h-20 rounded-[24px] bg-sky-600 flex items-center justify-center text-white text-3xl font-black shadow-lg">
-                  {editingMerchant.name?.charAt(0)}
+                <div className="w-20 h-20 rounded-[24px] bg-sky-600 flex items-center justify-center text-white text-3xl font-black shadow-lg overflow-hidden border-4 border-white">
+                  {fullMerchantData?.shop?.logo ? (
+                    <img src={fullMerchantData.shop.logo} className="w-full h-full object-cover" />
+                  ) : (
+                    editingMerchant.name?.charAt(0)
+                  )}
                 </div>
                 <div>
                   <h3 className="text-xl font-bold text-sky-900">{editingMerchant.name}</h3>
@@ -259,81 +282,107 @@ function MerchantsPage({ token }) {
               {loadingDetails ? (
                 <div className="py-20 flex flex-col items-center justify-center gap-3 text-sky-300">
                   <Loader2 className="animate-spin" size={40} />
-                  <p className="text-[10px] font-black uppercase tracking-widest">Loading Detailed Records...</p>
+                  <p className="text-[10px] font-black uppercase tracking-widest">Syncing Records...</p>
                 </div>
-              ) : fullMerchantData ? (
-                <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4">
+              ) : fullMerchantData && (
+                <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4">
                   
-                  {/* Shop Details */}
+                  {/* Shop & Branding */}
                   <section className="space-y-4">
                     <h4 className="text-[10px] font-black text-sky-400 uppercase tracking-widest flex items-center gap-2">
-                        <Store size={14}/> Shop Information
+                        <Store size={14}/> Shop & Branding
                     </h4>
                     {fullMerchantData.shop ? (
-                        <div className="bg-white border border-sky-100 rounded-2xl p-5 space-y-3 shadow-sm">
-                            <h5 className="font-bold text-sky-900 text-lg">{fullMerchantData.shop.shopName}</h5>
-                            <div className="grid grid-cols-2 gap-4 text-xs">
-                                <div className="space-y-1">
-                                    <p className="text-sky-400 font-bold uppercase text-[9px]">Category</p>
-                                    <p className="text-sky-800 font-semibold">{fullMerchantData.shop.categoryId?.label || "N/A"}</p>
+                        <div className="space-y-4">
+                            {fullMerchantData.shop.banner && (
+                                <div className="w-full h-32 rounded-2xl overflow-hidden border border-sky-100">
+                                    <img src={fullMerchantData.shop.banner} alt="Banner" className="w-full h-full object-cover" />
                                 </div>
-                                <div className="space-y-1">
-                                    <p className="text-sky-400 font-bold uppercase text-[9px]">City</p>
-                                    <p className="text-sky-800 font-semibold">{fullMerchantData.shop.city || "N/A"}</p>
+                            )}
+                            <div className="bg-white border border-sky-100 rounded-2xl p-5 space-y-3 shadow-sm">
+                                <h5 className="font-bold text-sky-900 text-lg">{fullMerchantData.shop.shopName}</h5>
+                                <div className="grid grid-cols-2 gap-4 text-xs">
+                                    <div className="space-y-1">
+                                        <p className="text-sky-400 font-bold uppercase text-[9px]">Category</p>
+                                        <p className="text-sky-800 font-semibold">{fullMerchantData.shop.categoryId?.label || "N/A"}</p>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <p className="text-sky-400 font-bold uppercase text-[9px]">Sub-Category</p>
+                                        <p className="text-sky-800 font-semibold">{fullMerchantData.shop.subCategoryId?.label || "N/A"}</p>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <p className="text-sky-400 font-bold uppercase text-[9px]">City</p>
+                                        <p className="text-sky-800 font-semibold">{fullMerchantData.shop.city || "N/A"}</p>
+                                    </div>
                                 </div>
-                            </div>
-                            <div className="flex items-start gap-2 pt-2 border-t border-sky-50">
-                                <MapPin size={14} className="text-sky-300 mt-0.5" />
-                                <p className="text-xs text-sky-600 leading-relaxed">{fullMerchantData.shop.address || "No address provided"}</p>
+                                <div className="flex items-start gap-2 pt-2 border-t border-sky-50">
+                                    <MapPin size={14} className="text-sky-300 mt-0.5" />
+                                    <p className="text-xs text-sky-600 leading-relaxed">{fullMerchantData.shop.address || "No address provided"}</p>
+                                </div>
                             </div>
                         </div>
                     ) : (
-                        <div className="p-6 bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-center">
-                            <p className="text-xs text-slate-400 font-medium italic">No shop profile created yet.</p>
+                        <div className="p-6 bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-center text-xs text-slate-400 italic">
+                            No shop profile created yet.
                         </div>
                     )}
                   </section>
 
-                  {/* KYC Documents */}
+                  {/* Personal KYC Documents */}
                   <section className="space-y-4">
                     <h4 className="text-[10px] font-black text-sky-400 uppercase tracking-widest flex items-center gap-2">
-                        <FileBadge size={14}/> Document Verification
+                        <User size={14}/> Personal KYC Proofs
                     </h4>
-                    <div className="grid grid-cols-2 gap-3">
-                        <div className={`p-4 rounded-2xl border flex flex-col gap-1 ${fullMerchantData.documents.personal ? 'bg-green-50 border-green-100 text-green-700' : 'bg-red-50 border-red-100 text-red-700'}`}>
-                            <span className="text-[9px] font-black uppercase opacity-60">Personal KYC</span>
-                            <span className="text-xs font-bold">{fullMerchantData.documents.personal ? "AADHAAR & PAN UPLOADED" : "MISSING"}</span>
+                    {fullMerchantData.documents.personal ? (
+                        <div className="grid grid-cols-2 gap-4">
+                            <ImagePreview src={fullMerchantData.documents.personal.aadharImage} label="Aadhar Card" />
+                            <ImagePreview src={fullMerchantData.documents.personal.panImage} label="Personal PAN Card" />
                         </div>
-                        <div className={`p-4 rounded-2xl border flex flex-col gap-1 ${fullMerchantData.documents.business ? 'bg-green-50 border-green-100 text-green-700' : 'bg-red-50 border-red-100 text-red-700'}`}>
-                            <span className="text-[9px] font-black uppercase opacity-60">Business KYC</span>
-                            <span className="text-xs font-bold">{fullMerchantData.documents.business ? "GST & PAN UPLOADED" : "MISSING"}</span>
+                    ) : (
+                        <div className="p-4 bg-red-50 text-red-600 rounded-xl text-xs font-bold border border-red-100">
+                           Personal KYC documents not uploaded.
                         </div>
-                    </div>
+                    )}
+                  </section>
+
+                  {/* Business KYC Documents */}
+                  <section className="space-y-4">
+                    <h4 className="text-[10px] font-black text-sky-400 uppercase tracking-widest flex items-center gap-2">
+                        <FileBadge size={14}/> Business Legal Documents
+                    </h4>
+                    {fullMerchantData.documents.business ? (
+                        <div className="grid grid-cols-2 gap-4">
+                            <ImagePreview src={fullMerchantData.documents.business.gstImage} label="GST Certificate" />
+                            <ImagePreview src={fullMerchantData.documents.business.panImage} label="Business PAN" />
+                            <ImagePreview src={fullMerchantData.documents.business.tradeLicenseImage} label="Trade License" />
+                            <ImagePreview src={fullMerchantData.documents.business.fssaiImage} label="FSSAI License" />
+                            <ImagePreview src={fullMerchantData.documents.business.shopRegistrationImage} label="Shop Registration" />
+                        </div>
+                    ) : (
+                        <div className="p-4 bg-red-50 text-red-600 rounded-xl text-xs font-bold border border-red-100">
+                           Business KYC documents not uploaded.
+                        </div>
+                    )}
                   </section>
 
                   {/* Admin Controls */}
                   <section className="space-y-4 pt-4 border-t border-sky-50">
                     <h4 className="text-[10px] font-black text-sky-400 uppercase tracking-widest">Administrative Actions</h4>
-                    
-                    <div className="grid grid-cols-1 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <button 
                             onClick={() => runAction(() => adminClient.put(`/merchants/${editingMerchant._id}/verify`, { isVerified: !editingMerchant.isVerified }, { headers }))}
-                            className={`flex items-center justify-between p-4 rounded-xl border transition ${editingMerchant.isVerified ? 'border-sky-200 bg-sky-50 text-sky-700' : 'border-green-100 bg-green-50 text-green-700 font-bold'}`}
+                            className={`flex items-center gap-3 p-4 rounded-xl border transition ${editingMerchant.isVerified ? 'border-sky-200 bg-sky-50 text-sky-700' : 'border-green-100 bg-green-50 text-green-700 font-bold'}`}
                         >
-                            <div className="flex items-center gap-3">
-                                <ShieldCheck size={20} />
-                                <span>{editingMerchant.isVerified ? "Revoke Verification" : "Verify Merchant"}</span>
-                            </div>
+                            <ShieldCheck size={20} />
+                            <span className="text-xs uppercase">{editingMerchant.isVerified ? "Revoke Verification" : "Verify Merchant"}</span>
                         </button>
 
                         <button 
                             onClick={() => runAction(() => adminClient.put(`/merchants/${editingMerchant._id}/status`, { status: editingMerchant.status === "banned" ? "active" : "banned" }, { headers }))}
-                            className={`flex items-center justify-between p-4 rounded-xl border transition ${editingMerchant.status === 'banned' ? 'border-sky-200 bg-sky-50 text-sky-700' : 'border-red-100 bg-red-50 text-red-700 font-bold'}`}
+                            className={`flex items-center gap-3 p-4 rounded-xl border transition ${editingMerchant.status === 'banned' ? 'border-sky-200 bg-sky-50 text-sky-700' : 'border-red-100 bg-red-50 text-red-700 font-bold'}`}
                         >
-                            <div className="flex items-center gap-3">
-                                <ShieldAlert size={20} />
-                                <span>{editingMerchant.status === "banned" ? "Unban Account" : "Ban Account"}</span>
-                            </div>
+                            <ShieldAlert size={20} />
+                            <span className="text-xs uppercase">{editingMerchant.status === "banned" ? "Unban Account" : "Ban Account"}</span>
                         </button>
                     </div>
 
@@ -353,11 +402,11 @@ function MerchantsPage({ token }) {
                     </div>
                   </section>
                 </div>
-              ) : null}
+              )}
             </div>
             
-            <div className="p-8 border-t border-sky-50">
-               <button onClick={() => setEditingMerchant(null)} className="w-full py-4 bg-sky-50 text-sky-600 rounded-2xl font-bold hover:bg-sky-100 transition shadow-sm">Close Insights</button>
+            <div className="p-6 border-t border-sky-50 bg-white sticky bottom-0">
+                <button onClick={() => setEditingMerchant(null)} className="w-full py-4 bg-sky-50 text-sky-600 rounded-2xl font-bold hover:bg-sky-100 transition">Close Insights</button>
             </div>
           </div>
         </div>

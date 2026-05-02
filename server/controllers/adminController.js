@@ -29,36 +29,50 @@ export const listMerchants = async (req, res) => {
 };
 
 // Get merchant details
+const convertToBase64 = (file) => {
+  if (!file || !file.data) return null;
+  return `data:${file.contentType};base64,${file.data.toString("base64")}`;
+};
+
 export const getMerchant = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // 1. Execute all queries in parallel for performance
     const [merchant, shop, personalDocs, businessDocs] = await Promise.all([
-      // Main profile (excluding password)
       Merchant.findById(id).select("-password"),
-      
-      // Shop details (populated with Category/Subcategory info)
+
       MerchantShop.findOne({ merchantId: id })
         .populate("categoryId", "label")
-        .populate("subCategoryId", "label")
-        .select("-logo.data -banner.data"), // Exclude raw image buffers
-      
-      // Personal KYC Documents
-      MerchantPersonalDoc.findOne({ merchantId: id })
-        .select("-aadharImage.data -panImage.data"), 
-      
-      // Business/GST Documents
+        .populate("subCategoryId", "label"),
+
+      MerchantPersonalDoc.findOne({ merchantId: id }),
+
       MerchantBusinessDoc.findOne({ merchantId: id })
-        .select("-gstImage.data -tradeLicenseImage.data -shopRegistrationImage.data -fssaiImage.data -panImage.data")
     ]);
 
-    // 2. Validation
     if (!merchant) {
       return res.status(404).json({ success: false, message: "Merchant not found" });
     }
 
-    // 3. Construct the full response
+    // 🔥 Convert images to base64
+    if (personalDocs) {
+      personalDocs.aadharImage = convertToBase64(personalDocs.aadharImage);
+      personalDocs.panImage = convertToBase64(personalDocs.panImage);
+    }
+
+    if (businessDocs) {
+      businessDocs.gstImage = convertToBase64(businessDocs.gstImage);
+      businessDocs.tradeLicenseImage = convertToBase64(businessDocs.tradeLicenseImage);
+      businessDocs.shopRegistrationImage = convertToBase64(businessDocs.shopRegistrationImage);
+      businessDocs.fssaiImage = convertToBase64(businessDocs.fssaiImage);
+      businessDocs.panImage = convertToBase64(businessDocs.panImage);
+    }
+
+    if (shop) {
+      shop.logo = convertToBase64(shop.logo);
+      shop.banner = convertToBase64(shop.banner);
+    }
+
     return res.json({
       success: true,
       data: {
@@ -68,7 +82,6 @@ export const getMerchant = async (req, res) => {
           personal: personalDocs || null,
           business: businessDocs || null
         },
-        // Helper to check if KYC is completed
         kycStatus: {
           personal: !!personalDocs,
           business: !!businessDocs,
@@ -79,9 +92,9 @@ export const getMerchant = async (req, res) => {
 
   } catch (error) {
     console.error("Get Merchant Full Data Error:", error);
-    return res.status(500).json({ 
-      success: false, 
-      message: "Failed to load complete merchant data" 
+    return res.status(500).json({
+      success: false,
+      message: "Failed to load complete merchant data"
     });
   }
 };
