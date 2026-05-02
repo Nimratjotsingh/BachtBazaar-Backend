@@ -4,11 +4,12 @@ import {
   Search, UserKeyIcon, ShieldCheck, ShieldAlert, Trash2, 
   ChevronLeft, ChevronRight, Mail, Phone, RotateCcw, X,
   Store, FileBadge, MapPin, Loader2, ExternalLink, 
-  CheckCircle2, AlertCircle, Eye, Hash, Calendar, Building2, UserCircle
+  CheckCircle2, AlertCircle, Eye, Hash, Building2, UserCircle
 } from "lucide-react";
 
 // --- Sub-Component: Image Display ---
 const DataImage = ({ src, label, fallbackIcon: Icon }) => {
+  // src is now expected to be a normal URL string
   if (!src) return (
     <div className="flex flex-col items-center justify-center p-6 bg-slate-100 rounded-2xl border-2 border-dashed border-slate-200 text-slate-400">
       <Icon size={24} className="mb-2 opacity-50" />
@@ -19,18 +20,18 @@ const DataImage = ({ src, label, fallbackIcon: Icon }) => {
   return (
     <div className="space-y-2 group">
       <div className="relative aspect-video rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 shadow-sm">
-        {/* API Full URL Integration */}
         <img 
           src={src} 
           alt={label} 
-          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" 
+          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
           onError={(e) => {
-            e.target.src = "https://placehold.co/600x400?text=Image+Load+Error";
+            e.target.onerror = null; 
+            e.target.src = "https://placehold.co/400x300?text=Image+Not+Found";
           }}
         />
         <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
           <button 
-            onClick={() => window.open(src, "_blank")}
+            onClick={() => window.open(src, '_blank')}
             className="p-2 bg-white text-slate-900 rounded-full hover:scale-110 transition-transform shadow-xl"
           >
             <ExternalLink size={18} />
@@ -62,7 +63,6 @@ function MerchantsPage({ token }) {
   const [feedback, setFeedback] = useState("");
   const [editingMerchant, setEditingMerchant] = useState(null);
   
-  // States for the deep-dive data
   const [fullData, setFullData] = useState(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
 
@@ -87,7 +87,6 @@ function MerchantsPage({ token }) {
     setFullData(null);
     try {
       const response = await adminClient.get(`/merchants/${merchant._id}`, { headers });
-      // response.data.data contains { profile, shop, documents, kycStatus }
       setFullData(response.data.data);
       console.log(response.data)
     } catch (err) {
@@ -99,7 +98,6 @@ function MerchantsPage({ token }) {
     try {
       await adminClient.put(`/merchants/${editingMerchant._id}/${endpoint}`, payload, { headers });
       await loadMerchants();
-      // Refresh current panel
       const res = await adminClient.get(`/merchants/${editingMerchant._id}`, { headers });
       setFullData(res.data.data);
       setEditingMerchant(res.data.data.profile);
@@ -183,11 +181,11 @@ function MerchantsPage({ token }) {
                 <td className="px-8 py-5">
                    <div className="flex gap-1.5">
                       <div className={`w-2 h-2 rounded-full ${m.isVerified ? 'bg-emerald-500' : 'bg-slate-200'}`} title="Verified Status"/>
-                      <div className={`w-2 h-2 rounded-full ${m.status !== 'banned' ? 'bg-indigo-500' : 'bg-red-500'}`} title="Account Status"/>
+                      <div className={`w-2 h-2 rounded-full ${m.status !== 'rejected' ? 'bg-indigo-500' : 'bg-red-500'}`} title="Account Status"/>
                    </div>
                 </td>
                 <td className="px-8 py-5">
-                  <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${m.status === 'banned' ? 'bg-red-50 text-red-600 border-red-100' : 'bg-emerald-50 text-emerald-700 border-emerald-100'}`}>
+                  <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${m.status === 'rejected' ? 'bg-red-50 text-red-600 border-red-100' : 'bg-emerald-50 text-emerald-700 border-emerald-100'}`}>
                     {m.status || 'Active'}
                   </span>
                 </td>
@@ -201,7 +199,6 @@ function MerchantsPage({ token }) {
           </tbody>
         </table>
         
-        {/* PAGINATION */}
         <div className="p-6 bg-slate-50 border-t border-slate-100 flex justify-between items-center">
             <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Page Control</p>
             <div className="flex gap-2">
@@ -214,10 +211,9 @@ function MerchantsPage({ token }) {
       {/* --- AUDIT SLIDE PANEL --- */}
       {editingMerchant && (
         <div className="fixed inset-0 z-[100] flex justify-end">
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-500" onClick={() => setEditingMerchant(null)} />
-          <div className="relative w-full max-w-4xl bg-white h-full shadow-2xl overflow-y-auto flex flex-col animate-in slide-in-from-right duration-500">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300" onClick={() => setEditingMerchant(null)} />
+          <div className="relative w-full max-w-4xl bg-white h-full shadow-2xl overflow-y-auto flex flex-col animate-in slide-in-from-right duration-300">
             
-            {/* PANEL HEADER */}
             <div className="sticky top-0 bg-white/90 backdrop-blur z-20 p-8 border-b border-slate-100 flex items-center justify-between">
               <div>
                 <h2 className="text-2xl font-black text-slate-900 uppercase">Audit Terminal</h2>
@@ -230,12 +226,12 @@ function MerchantsPage({ token }) {
               {loadingDetails ? (
                 <div className="flex flex-col items-center justify-center py-40 gap-4 text-indigo-500">
                   <Loader2 className="animate-spin" size={48} />
-                  <p className="text-sm font-black uppercase tracking-[0.3em]">Decoding Documents...</p>
+                  <p className="text-sm font-black uppercase tracking-[0.3em]">Loading Records...</p>
                 </div>
               ) : fullData && (
                 <div className="space-y-14 animate-in fade-in slide-in-from-bottom-10">
                   
-                  {/* SECTION 1: PROFILE & ACCOUNT */}
+                  {/* PROFILE & SHOP INFO */}
                   <section className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div className="space-y-6">
                         <div className="flex items-center gap-3 text-indigo-600">
@@ -261,9 +257,7 @@ function MerchantsPage({ token }) {
                              <InfoField label="Category" value={fullData.shop.categoryId?.label} icon={Hash} />
                              <InfoField label="Sub Category" value={fullData.shop.subCategoryId?.label} icon={Hash} />
                              <InfoField label="City" value={fullData.shop.city} icon={MapPin} />
-                             <div className="col-span-full">
-                                <InfoField label="Full Address" value={fullData.shop.address} icon={MapPin} />
-                             </div>
+                             <InfoField label="Full Address" value={fullData.shop.address} icon={MapPin} />
                           </div>
                         ) : (
                           <div className="h-full flex items-center justify-center bg-slate-50 border-2 border-dashed rounded-3xl text-slate-400 font-bold text-xs uppercase italic">No Shop Linked</div>
@@ -271,7 +265,7 @@ function MerchantsPage({ token }) {
                     </div>
                   </section>
 
-                  {/* SECTION 2: SHOP MEDIA */}
+                  {/* SHOP MEDIA */}
                   {fullData.shop && (
                     <section className="space-y-6">
                       <div className="flex items-center gap-3 text-pink-600">
@@ -287,7 +281,7 @@ function MerchantsPage({ token }) {
                     </section>
                   )}
 
-                  {/* SECTION 3: PERSONAL KYC */}
+                  {/* PERSONAL KYC */}
                   <section className="space-y-6">
                       <div className="flex items-center gap-3 text-indigo-600">
                           <UserKeyIcon size={20}/>
@@ -303,7 +297,7 @@ function MerchantsPage({ token }) {
                       )}
                   </section>
 
-                  {/* SECTION 4: BUSINESS KYC */}
+                  {/* BUSINESS KYC */}
                   <section className="space-y-6">
                       <div className="flex items-center gap-3 text-emerald-600">
                           <FileBadge size={20}/>
@@ -322,7 +316,7 @@ function MerchantsPage({ token }) {
                       )}
                   </section>
 
-                  {/* SECTION 5: ACTIONS */}
+                  {/* ACTIONS */}
                   <section className="bg-slate-900 rounded-[40px] p-10 shadow-2xl space-y-10 border border-white/5">
                     <div className="flex flex-col md:flex-row justify-between gap-6">
                       <div>
@@ -337,10 +331,10 @@ function MerchantsPage({ token }) {
                            <ShieldCheck size={18} /> {editingMerchant.isVerified ? 'Revoke Verified' : 'Verify Merchant'}
                          </button>
                          <button 
-                            onClick={() => updateStatus('status', { status: editingMerchant.status === 'banned' ? 'active' : 'banned' })}
-                            className={`flex items-center gap-3 px-8 py-4 rounded-[20px] font-black text-xs uppercase tracking-widest transition-all ${editingMerchant.status === 'banned' ? 'bg-emerald-500 text-white' : 'bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-500 hover:text-white'}`}
+                            onClick={() => updateStatus('status', { status: editingMerchant.status === 'rejected' ? 'verified' : 'rejected' })}
+                            className={`flex items-center gap-3 px-8 py-4 rounded-[20px] font-black text-xs uppercase tracking-widest transition-all ${editingMerchant.status === 'rejected' ? 'bg-emerald-500 text-white' : 'bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-500 hover:text-white'}`}
                          >
-                           <ShieldAlert size={18} /> {editingMerchant.status === 'banned' ? 'Unban Account' : 'Ban Merchant'}
+                           <ShieldAlert size={18} /> {editingMerchant.status === 'rejected' ? 'Unban Account' : 'Ban Merchant'}
                          </button>
                       </div>
                     </div>
