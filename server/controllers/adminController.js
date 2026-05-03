@@ -215,6 +215,10 @@ export const updateUserStatus = async (req, res) => {
     if (!status || !["active", "banned"].includes(status)) {
       return res.status(400).json({ message: "Invalid status" });
     }
+
+    if(status ==='banned'){
+      await User.findByIdAndUpdate(id,{isVerified: false});
+    }
     const user = await User.findByIdAndUpdate(id, { status }, { new: true }).select("-password");
     if (!user) return res.status(404).json({ message: "User not found" });
     return res.json({ success: true, message: `User ${status === "banned" ? "banned" : "unbanned"}`, user });

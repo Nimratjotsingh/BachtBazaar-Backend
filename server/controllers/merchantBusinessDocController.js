@@ -60,11 +60,15 @@ export const upsertBusinessDocs = async (req, res) => {
       return res.status(400).json({ message: "No business docs payload provided" });
     }
 
+
     const doc = await MerchantBusinessDoc.findOneAndUpdate(
       { merchantId: req.merchant._id },
       { $set: update, $setOnInsert: { merchantId: req.merchant._id } },
       { new: true, upsert: true }
     );
+    await Merchant.findByIdAndUpdate(req.merchant._id, {
+      status: "pending"
+    });
 
     return res.json({ success: true, businessDocsId: doc._id });
   } catch (error) {

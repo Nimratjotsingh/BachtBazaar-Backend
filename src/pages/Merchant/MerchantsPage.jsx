@@ -4,13 +4,13 @@ import {
   Search, UserKeyIcon, ShieldCheck, ShieldAlert, Trash2, 
   ChevronLeft, ChevronRight, Mail, Phone, RotateCcw, X,
   Store, FileBadge, MapPin, Loader2, ExternalLink, 
-  CheckCircle2, AlertCircle, Eye, Hash, Calendar, Building2, UserCircle
+  CheckCircle2, AlertCircle, Eye, Hash, Calendar, Building2, UserCircle,
+  XCircle, Ban, Hammer
 } from "lucide-react";
 
 // --- Helper: Convert Buffer to Base64 ---
 const getImageUrl = (imageObj) => {
   if (!imageObj || !imageObj.data || !imageObj.data.data) return null;
-  // Convert the array of numbers from the Buffer to a base64 string
   const base64String = btoa(
     new Uint8Array(imageObj.data.data).reduce(
       (data, byte) => data + String.fromCharCode(byte),
@@ -97,7 +97,6 @@ function MerchantsPage({ token }) {
     try {
       const response = await adminClient.get(`/merchants/${merchant._id}`, { headers });
       setFullData(response.data.data);
-      console.log(response.data)
     } catch (err) {
       setFeedback("Could not retrieve document package.");
     } finally { setLoadingDetails(false); }
@@ -160,7 +159,7 @@ function MerchantsPage({ token }) {
             <tr>
               <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Merchant Profile</th>
               <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Contact</th>
-              <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">KYC Progress</th>
+              <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Flags</th>
               <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Status</th>
               <th className="px-8 py-5 text-right"></th>
             </tr>
@@ -169,14 +168,17 @@ function MerchantsPage({ token }) {
             {loading ? (
               <tr><td colSpan="5" className="px-8 py-20 text-center"><Loader2 className="animate-spin inline-block text-indigo-500" size={32} /></td></tr>
             ) : items.map((m) => (
-              <tr key={m._id} className="hover:bg-indigo-50/30 transition-colors group">
+              <tr key={m._id} className={`hover:bg-indigo-50/30 transition-colors group ${m.isBan ? 'opacity-60 grayscale-[0.5]' : ''}`}>
                 <td className="px-8 py-5">
                   <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-[18px] bg-indigo-600 flex items-center justify-center text-white font-black text-lg shadow-lg shadow-indigo-100">
+                    <div className={`w-12 h-12 rounded-[18px] flex items-center justify-center text-white font-black text-lg shadow-lg ${m.isBan ? 'bg-slate-800' : 'bg-indigo-600'}`}>
                       {m.name?.charAt(0)}
                     </div>
                     <div>
-                      <p className="font-black text-slate-900">{m.name}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="font-black text-slate-900">{m.name}</p>
+                        {m.isBan && <Ban size={14} className="text-red-600" />}
+                      </div>
                       <p className="text-[10px] font-bold text-slate-400 font-mono tracking-tighter uppercase">{m._id}</p>
                     </div>
                   </div>
@@ -189,12 +191,15 @@ function MerchantsPage({ token }) {
                 </td>
                 <td className="px-8 py-5">
                    <div className="flex gap-1.5">
-                      <div className={`w-2 h-2 rounded-full ${m.isVerified ? 'bg-emerald-500' : 'bg-slate-200'}`} title="Verified Status"/>
-                      <div className={`w-2 h-2 rounded-full ${m.status !== 'rejected' ? 'bg-indigo-500' : 'bg-red-500'}`} title="Account Status"/>
+                      <div className={`w-2 h-2 rounded-full ${m.isVerified ? 'bg-emerald-500' : 'bg-slate-200'}`} title="Verified Badge"/>
+                      <div className={`w-2 h-2 rounded-full ${m.isBan ? 'bg-red-600' : 'bg-slate-200'}`} title="Ban Status"/>
                    </div>
                 </td>
                 <td className="px-8 py-5">
-                  <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${m.status === 'rejected' ? 'bg-red-50 text-red-600 border-red-100' : 'bg-emerald-50 text-emerald-700 border-emerald-100'}`}>
+                  <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border 
+                    ${m.status === 'rejected' ? 'bg-red-50 text-red-600 border-red-100' : 
+                      m.status === 'verified' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 
+                      'bg-slate-50 text-slate-600 border-slate-100'}`}>
                     {m.status || 'Active'}
                   </span>
                 </td>
@@ -225,7 +230,10 @@ function MerchantsPage({ token }) {
             
             <div className="sticky top-0 bg-white/90 backdrop-blur z-20 p-8 border-b border-slate-100 flex items-center justify-between">
               <div>
-                <h2 className="text-2xl font-black text-slate-900 uppercase">Audit Terminal</h2>
+                <div className="flex items-center gap-3">
+                  <h2 className="text-2xl font-black text-slate-900 uppercase">Audit Terminal</h2>
+                  {editingMerchant.isBan && <span className="bg-red-600 text-white text-[10px] px-3 py-1 rounded-full font-black">BANNED</span>}
+                </div>
                 <p className="text-xs font-bold text-slate-400 tracking-[0.2em] uppercase">UID: {editingMerchant._id}</p>
               </div>
               <button onClick={() => setEditingMerchant(null)} className="p-3 hover:bg-slate-100 rounded-full transition"><X size={28}/></button>
@@ -269,7 +277,7 @@ function MerchantsPage({ token }) {
                              <InfoField label="Full Address" value={fullData.shop.address} icon={MapPin} />
                           </div>
                         ) : (
-                          <div className="h-full flex items-center justify-center bg-slate-50 border-2 border-dashed rounded-3xl text-slate-400 font-bold text-xs uppercase italic">No Shop Linked</div>
+                          <div className="h-full flex items-center justify-center bg-slate-50 border-2 border-dashed rounded-3xl text-slate-400 font-bold text-xs uppercase italic min-h-[160px]">No Shop Linked</div>
                         )}
                     </div>
                   </section>
@@ -296,7 +304,7 @@ function MerchantsPage({ token }) {
                           <UserKeyIcon size={20}/>
                           <h3 className="font-black text-sm uppercase tracking-widest">Personal Identification</h3>
                       </div>
-                      {fullData.documents.personal ? (
+                      {fullData.documents?.personal ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                             <DataImage imageObj={fullData.documents.personal.aadharImage} label="Aadhar Card" fallbackIcon={FileBadge} />
                             <DataImage imageObj={fullData.documents.personal.panImage} label="PAN Card" fallbackIcon={FileBadge} />
@@ -312,7 +320,7 @@ function MerchantsPage({ token }) {
                           <FileBadge size={20}/>
                           <h3 className="font-black text-sm uppercase tracking-widest">Business Compliance</h3>
                       </div>
-                      {fullData.documents.business ? (
+                      {fullData.documents?.business ? (
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
                             <DataImage imageObj={fullData.documents.business.gstImage} label="GST Certificate" fallbackIcon={Building2} />
                             <DataImage imageObj={fullData.documents.business.panImage} label="Business PAN" fallbackIcon={Building2} />
@@ -327,23 +335,35 @@ function MerchantsPage({ token }) {
 
                   {/* ACTIONS */}
                   <section className="bg-slate-900 rounded-[40px] p-10 shadow-2xl space-y-10 border border-white/5">
-                    <div className="flex flex-col md:flex-row justify-between gap-6">
+                    <div className="flex flex-col gap-8">
                       <div>
                         <h3 className="text-white text-xl font-black uppercase tracking-tight">Audit Decisions</h3>
-                        <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Review results and enforce platform rules</p>
+                        <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Enforce compliance and security protocols</p>
                       </div>
-                      <div className="flex gap-3">
+                      
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                         {/* VERIFY TOGGLE (isVerified) */}
                          <button 
                             onClick={() => updateStatus('verify', { isVerified: !editingMerchant.isVerified })}
-                            className={`flex items-center gap-3 px-8 py-4 rounded-[20px] font-black text-xs uppercase tracking-widest transition-all ${editingMerchant.isVerified ? 'bg-white/10 text-white border border-white/20' : 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20 hover:scale-105'}`}
+                            className={`flex items-center justify-center gap-3 px-6 py-4 rounded-[20px] font-black text-[10px] uppercase tracking-widest transition-all ${editingMerchant.isVerified ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' : 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20'}`}
                          >
-                           <ShieldCheck size={18} /> {editingMerchant.isVerified ? 'Revoke Verified' : 'Verify Merchant'}
+                           <ShieldCheck size={16} /> {editingMerchant.isVerified ? 'Verified' : 'Verify'}
                          </button>
+
+                         {/* REJECT OPTION (status) */}
                          <button 
                             onClick={() => updateStatus('status', { status: editingMerchant.status === 'rejected' ? 'verified' : 'rejected' })}
-                            className={`flex items-center gap-3 px-8 py-4 rounded-[20px] font-black text-xs uppercase tracking-widest transition-all ${editingMerchant.status === 'rejected' ? 'bg-emerald-500 text-white' : 'bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-500 hover:text-white'}`}
+                            className={`flex items-center justify-center gap-3 px-6 py-4 rounded-[20px] font-black text-[10px] uppercase tracking-widest transition-all ${editingMerchant.status === 'rejected' ? 'bg-amber-500 text-white' : 'bg-white/5 text-slate-300 border border-white/10 hover:bg-white/10'}`}
                          >
-                           <ShieldAlert size={18} /> {editingMerchant.status === 'rejected' ? 'Unban Account' : 'Ban Merchant'}
+                           <AlertCircle size={16} /> {editingMerchant.status === 'rejected' ? 'Restore Status' : 'Reject Shop'}
+                         </button>
+
+                         {/* BAN OPTION (isBan) */}
+                         <button 
+                            onClick={() => updateStatus('ban', { isBan: !editingMerchant.isBan })}
+                            className={`flex items-center justify-center gap-3 px-6 py-4 rounded-[20px] font-black text-[10px] uppercase tracking-widest transition-all ${editingMerchant.isBan ? 'bg-red-600 text-white shadow-lg shadow-red-600/40' : 'bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-600 hover:text-white'}`}
+                         >
+                           <Ban size={16} /> {editingMerchant.isBan ? 'Unban Account' : 'Permanent Ban'}
                          </button>
                       </div>
                     </div>
