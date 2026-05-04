@@ -168,16 +168,16 @@ function MerchantsPage({ token }) {
             {loading ? (
               <tr><td colSpan="5" className="px-8 py-20 text-center"><Loader2 className="animate-spin inline-block text-indigo-500" size={32} /></td></tr>
             ) : items.map((m) => (
-              <tr key={m._id} className={`hover:bg-indigo-50/30 transition-colors group ${m.isBan ? 'opacity-60 grayscale-[0.5]' : ''}`}>
+              <tr key={m._id} className={`hover:bg-indigo-50/30 transition-colors group ${m.isBlocked ? 'opacity-60 grayscale-[0.5]' : ''}`}>
                 <td className="px-8 py-5">
                   <div className="flex items-center gap-4">
-                    <div className={`w-12 h-12 rounded-[18px] flex items-center justify-center text-white font-black text-lg shadow-lg ${m.isBan ? 'bg-slate-800' : 'bg-indigo-600'}`}>
+                    <div className={`w-12 h-12 rounded-[18px] flex items-center justify-center text-white font-black text-lg shadow-lg ${m.isBlocked ? 'bg-slate-800' : 'bg-indigo-600'}`}>
                       {m.name?.charAt(0)}
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
                         <p className="font-black text-slate-900">{m.name}</p>
-                        {m.isBan && <Ban size={14} className="text-red-600" />}
+                        {m.isBlocked && <Ban size={14} className="text-red-600" />}
                       </div>
                       <p className="text-[10px] font-bold text-slate-400 font-mono tracking-tighter uppercase">{m._id}</p>
                     </div>
@@ -192,7 +192,7 @@ function MerchantsPage({ token }) {
                 <td className="px-8 py-5">
                    <div className="flex gap-1.5">
                       <div className={`w-2 h-2 rounded-full ${m.isVerified ? 'bg-emerald-500' : 'bg-slate-200'}`} title="Verified Badge"/>
-                      <div className={`w-2 h-2 rounded-full ${m.isBan ? 'bg-red-600' : 'bg-slate-200'}`} title="Ban Status"/>
+                      <div className={`w-2 h-2 rounded-full ${m.isBlocked ? 'bg-red-600' : 'bg-slate-200'}`} title="Ban Status"/>
                    </div>
                 </td>
                 <td className="px-8 py-5">
@@ -232,7 +232,7 @@ function MerchantsPage({ token }) {
               <div>
                 <div className="flex items-center gap-3">
                   <h2 className="text-2xl font-black text-slate-900 uppercase">Audit Terminal</h2>
-                  {editingMerchant.isBan && <span className="bg-red-600 text-white text-[10px] px-3 py-1 rounded-full font-black">BANNED</span>}
+                  {editingMerchant.isBlocked && <span className="bg-red-600 text-white text-[10px] px-3 py-1 rounded-full font-black">BANNED</span>}
                 </div>
                 <p className="text-xs font-bold text-slate-400 tracking-[0.2em] uppercase">UID: {editingMerchant._id}</p>
               </div>
@@ -350,20 +350,20 @@ function MerchantsPage({ token }) {
                            <ShieldCheck size={16} /> {editingMerchant.isVerified ? 'Verified' : 'Verify'}
                          </button>
 
-                         {/* REJECT OPTION (status) */}
+                         {/* REJECT OPTION (status) -> CALLS /reject API */}
                          <button 
-                            onClick={() => updateStatus('status', { status: editingMerchant.status === 'rejected' ? 'verified' : 'rejected' })}
+                            onClick={() => updateStatus('reject', { status: editingMerchant.status === 'rejected' ? 'unverified' : 'rejected' })}
                             className={`flex items-center justify-center gap-3 px-6 py-4 rounded-[20px] font-black text-[10px] uppercase tracking-widest transition-all ${editingMerchant.status === 'rejected' ? 'bg-amber-500 text-white' : 'bg-white/5 text-slate-300 border border-white/10 hover:bg-white/10'}`}
                          >
                            <AlertCircle size={16} /> {editingMerchant.status === 'rejected' ? 'Restore Status' : 'Reject Shop'}
                          </button>
 
-                         {/* BAN OPTION (isBan) */}
+                         {/* BAN OPTION (isBlocked) -> CALLS /block API */}
                          <button 
-                            onClick={() => updateStatus('ban', { isBan: !editingMerchant.isBan })}
-                            className={`flex items-center justify-center gap-3 px-6 py-4 rounded-[20px] font-black text-[10px] uppercase tracking-widest transition-all ${editingMerchant.isBan ? 'bg-red-600 text-white shadow-lg shadow-red-600/40' : 'bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-600 hover:text-white'}`}
+                            onClick={() => updateStatus('block', { isBlocked: !editingMerchant.isBlocked })}
+                            className={`flex items-center justify-center gap-3 px-6 py-4 rounded-[20px] font-black text-[10px] uppercase tracking-widest transition-all ${editingMerchant.isBlocked ? 'bg-red-600 text-white shadow-lg shadow-red-600/40' : 'bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-600 hover:text-white'}`}
                          >
-                           <Ban size={16} /> {editingMerchant.isBan ? 'Unban Account' : 'Permanent Ban'}
+                           <Ban size={16} /> {editingMerchant.isBlocked ? 'Unban Account' : 'Permanent Ban'}
                          </button>
                       </div>
                     </div>

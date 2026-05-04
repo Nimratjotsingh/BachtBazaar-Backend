@@ -17,7 +17,9 @@ import {
 	verifyMerchant,
 	updateMerchantStatus,
 	deleteMerchant,
-	getDashboardStats
+	getDashboardStats,
+	blockMerchant,
+	rejectMerchant
 } from "../controllers/adminController.js";
 
 const router = express.Router();
@@ -38,8 +40,13 @@ router.put("/users/:id/role", protectSuperAdmin, updateUserRole);
 router.get("/merchants", protectSuperAdmin, listMerchants);
 router.get("/merchants/:id", protectSuperAdmin, getMerchant);
 router.put("/merchants/:id", protectSuperAdmin, updateMerchant);
+
 router.put("/merchants/:id/verify", protectSuperAdmin, verifyMerchant);
 router.put("/merchants/:id/status", protectSuperAdmin, updateMerchantStatus);
+
+router.put("/merchants/:id/block", protectSuperAdmin, blockMerchant);
+router.put("/merchants/:id/reject", protectSuperAdmin, rejectMerchant);
+
 router.delete("/merchants/:id", protectSuperAdmin, deleteMerchant);
 router.put("/merchants/:id/role", protectSuperAdmin, updateMerchantRole);
 router.get("/stats", protectSuperAdmin, getDashboardStats);
