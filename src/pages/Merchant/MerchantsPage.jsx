@@ -167,49 +167,56 @@ function MerchantsPage({ token }) {
           <tbody className="divide-y divide-slate-50">
             {loading ? (
               <tr><td colSpan="5" className="px-8 py-20 text-center"><Loader2 className="animate-spin inline-block text-indigo-500" size={32} /></td></tr>
-            ) : items.map((m) => (
-              <tr key={m._id} className={`hover:bg-indigo-50/30 transition-colors group ${m.isBlocked ? 'opacity-60 grayscale-[0.5]' : ''}`}>
-                <td className="px-8 py-5">
-                  <div className="flex items-center gap-4">
-                    <div className={`w-12 h-12 rounded-[18px] flex items-center justify-center text-white font-black text-lg shadow-lg ${m.isBlocked ? 'bg-slate-800' : 'bg-indigo-600'}`}>
-                      {m.name?.charAt(0)}
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <p className="font-black text-slate-900">{m.name}</p>
-                        {m.isBlocked && <Ban size={14} className="text-red-600" />}
+            ) : items.map((m) => {
+              const profileImg = getImageUrl(m.profileImage);
+              return (
+                <tr key={m._id} className={`hover:bg-indigo-50/30 transition-colors group ${m.isBlocked ? 'opacity-60 grayscale-[0.5]' : ''}`}>
+                  <td className="px-8 py-5">
+                    <div className="flex items-center gap-4">
+                      <div className={`w-12 h-12 rounded-[18px] flex items-center justify-center overflow-hidden text-white font-black text-lg shadow-lg ${m.isBlocked ? 'bg-slate-800' : 'bg-indigo-600'}`}>
+                        {profileImg ? (
+                          <img src={profileImg} alt={m.name} className="w-full h-full object-cover" />
+                        ) : (
+                          m.name?.charAt(0)
+                        )}
                       </div>
-                      <p className="text-[10px] font-bold text-slate-400 font-mono tracking-tighter uppercase">{m._id}</p>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="font-black text-slate-900">{m.name}</p>
+                          {m.isBlocked && <Ban size={14} className="text-red-600" />}
+                        </div>
+                        <p className="text-[10px] font-bold text-slate-400 font-mono tracking-tighter uppercase">{m._id}</p>
+                      </div>
                     </div>
-                  </div>
-                </td>
-                <td className="px-8 py-5">
-                  <div className="flex flex-col gap-1">
-                    <div className="flex items-center gap-2 text-xs font-bold text-slate-600"><Mail size={12} className="text-slate-300"/> {m.email}</div>
-                    <div className="flex items-center gap-2 text-xs font-bold text-slate-600"><Phone size={12} className="text-slate-300"/> {m.phone}</div>
-                  </div>
-                </td>
-                <td className="px-8 py-5">
-                   <div className="flex gap-1.5">
-                      <div className={`w-2 h-2 rounded-full ${m.isVerified ? 'bg-emerald-500' : 'bg-slate-200'}`} title="Verified Badge"/>
-                      <div className={`w-2 h-2 rounded-full ${m.isBlocked ? 'bg-red-600' : 'bg-slate-200'}`} title="Ban Status"/>
-                   </div>
-                </td>
-                <td className="px-8 py-5">
-                  <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border 
-                    ${m.status === 'rejected' ? 'bg-red-50 text-red-600 border-red-100' : 
-                      m.status === 'verified' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 
-                      'bg-slate-50 text-slate-600 border-slate-100'}`}>
-                    {m.status || 'Active'}
-                  </span>
-                </td>
-                <td className="px-8 py-5 text-right">
-                  <button onClick={() => fetchMerchantAudit(m)} className="p-3 bg-slate-100 text-slate-600 rounded-2xl hover:bg-indigo-600 hover:text-white transition shadow-sm group-hover:scale-105">
-                    <Eye size={20} />
-                  </button>
-                </td>
-              </tr>
-            ))}
+                  </td>
+                  <td className="px-8 py-5">
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-2 text-xs font-bold text-slate-600"><Mail size={12} className="text-slate-300"/> {m.email}</div>
+                      <div className="flex items-center gap-2 text-xs font-bold text-slate-600"><Phone size={12} className="text-slate-300"/> {m.phone}</div>
+                    </div>
+                  </td>
+                  <td className="px-8 py-5">
+                     <div className="flex gap-1.5">
+                        <div className={`w-2 h-2 rounded-full ${m.isVerified ? 'bg-emerald-500' : 'bg-slate-200'}`} title="Verified Badge"/>
+                        <div className={`w-2 h-2 rounded-full ${m.isBlocked ? 'bg-red-600' : 'bg-slate-200'}`} title="Ban Status"/>
+                     </div>
+                  </td>
+                  <td className="px-8 py-5">
+                    <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border 
+                      ${m.status === 'rejected' ? 'bg-red-50 text-red-600 border-red-100' : 
+                        m.status === 'verified' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 
+                        'bg-slate-50 text-slate-600 border-slate-100'}`}>
+                      {m.status || 'Active'}
+                    </span>
+                  </td>
+                  <td className="px-8 py-5 text-right">
+                    <button onClick={() => fetchMerchantAudit(m)} className="p-3 bg-slate-100 text-slate-600 rounded-2xl hover:bg-indigo-600 hover:text-white transition shadow-sm group-hover:scale-105">
+                      <Eye size={20} />
+                    </button>
+                  </td>
+                </tr>
+              )
+            })}
           </tbody>
         </table>
         
@@ -256,6 +263,17 @@ function MerchantsPage({ token }) {
                           <h3 className="font-black text-sm uppercase tracking-widest">Account Profile</h3>
                         </div>
                         <div className="grid grid-cols-1 gap-4">
+                            <div className="flex flex-col items-center mb-4">
+                              <div className="w-24 h-24 rounded-3xl overflow-hidden shadow-xl border-4 border-white">
+                                {getImageUrl(fullData.profile.profileImage) ? (
+                                  <img src={getImageUrl(fullData.profile.profileImage)} alt="Profile" className="w-full h-full object-cover" />
+                                ) : (
+                                  <div className="w-full h-full bg-slate-200 flex items-center justify-center text-slate-400">
+                                    <UserCircle size={40} />
+                                  </div>
+                                )}
+                              </div>
+                            </div>
                             <InfoField label="Full Name" value={fullData.profile.name} icon={UserCircle} />
                             <InfoField label="Email Address" value={fullData.profile.email} icon={Mail} />
                             <InfoField label="Phone Number" value={fullData.profile.phone} icon={Phone} />

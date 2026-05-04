@@ -48,7 +48,6 @@ const merchantSchema = new mongoose.Schema({
   isBlocked: {
     type: Boolean,
   },
-
   email: {
     type: String,
     unique: true,
