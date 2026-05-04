@@ -45,6 +45,9 @@ const merchantSchema = new mongoose.Schema({
     enum: ["verified", "unverified", "rejected"],
     default: "unverified"
   },
+  isBlocked: {
+    type: Boolean,
+  },
 
   email: {
     type: String,

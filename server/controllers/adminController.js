@@ -134,6 +134,63 @@ export const updateMerchantStatus = async (req, res) => {
   }
 };
 
+// Block/Unblock merchant (using isBlocked boolean)
+export const blockMerchant = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { isBlocked } = req.body;
+
+    if (typeof isBlocked !== "boolean") {
+      return res.status(400).json({ message: "isBlocked must be a boolean" });
+    }
+
+    const merchant = await Merchant.findByIdAndUpdate(
+      id, 
+      { isBlocked }, 
+      { new: true }
+    ).select("-password");
+
+    if (!merchant) return res.status(404).json({ message: "Merchant not found" });
+
+    return res.json({ 
+      success: true, 
+      message: isBlocked ? "Merchant blocked" : "Merchant unblocked", 
+      merchant 
+    });
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to update block status" });
+  }
+};
+
+// Reject merchant (using status enum)
+export const rejectMerchant = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    // Validating against your specific model enum
+    if (!["unverified", "verified", "rejected"].includes(status)) {
+      return res.status(400).json({ message: "Invalid status. Must be unverified, verified, or rejected." });
+    }
+
+    const merchant = await Merchant.findByIdAndUpdate(
+      id, 
+      { status }, 
+      { new: true }
+    ).select("-password");
+
+    if (!merchant) return res.status(404).json({ message: "Merchant not found" });
+
+    return res.json({ 
+      success: true, 
+      message: `Merchant status updated to ${status}`, 
+      merchant 
+    });
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to update merchant status" });
+  }
+};
+
 // Delete merchant
 export const deleteMerchant = async (req, res) => {
   try {
@@ -214,6 +271,10 @@ export const updateUserStatus = async (req, res) => {
     const { status } = req.body;
     if (!status || !["active", "banned"].includes(status)) {
       return res.status(400).json({ message: "Invalid status" });
+    }
+
+    if(status ==='banned'){
+      await User.findByIdAndUpdate(id,{isVerified: false});
     }
     const user = await User.findByIdAndUpdate(id, { status }, { new: true }).select("-password");
     if (!user) return res.status(404).json({ message: "User not found" });
