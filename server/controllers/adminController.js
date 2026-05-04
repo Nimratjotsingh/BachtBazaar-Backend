@@ -215,35 +215,22 @@ import { updateUserProfileSchema } from "../validators/appValidator.js";
 export const listUsers = async (req, res) => {
   try {
     const { page = 1, limit = 10, search = "", role, isVerified } = req.query;
-
-    const query = { isDeleted: false }; // 👈 filter added
-
+    const query = {};
     if (role) query.role = role;
     if (isVerified !== undefined) query.isVerified = isVerified === "true";
-
     if (search) {
       query.$or = [
         { name: { $regex: search, $options: "i" } },
         { phone: { $regex: search, $options: "i" } }
       ];
     }
-
     const total = await User.countDocuments(query);
-
     const users = await User.find(query)
       .select("-password")
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(Number(limit));
-
-    return res.json({
-      success: true,
-      users,
-      total,
-      page: Number(page),
-      pages: Math.ceil(total / limit)
-    });
-
+    return res.json({ success: true, users, total, page: Number(page), pages: Math.ceil(total / limit) });
   } catch (error) {
     return res.status(500).json({ message: "Failed to list users" });
   }
