@@ -9,7 +9,7 @@ dotenv.config({ path: path.resolve(process.cwd(), ".env") });
 export default defineConfig({
   plugins: [react()],
 
-  base: "/admin/",
+  base: "/",
   host: true,
   port: 5173,
   allowedHosts: "all",

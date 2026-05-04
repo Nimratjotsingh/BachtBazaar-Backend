@@ -204,7 +204,7 @@ function UsersPage({ token }) {
             <div className="flex justify-between items-center">
               <div>
                 <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Identity Audit</h2>
-                <p className="text-xs font-bold text-slate-400 uppercase tracking-[0.2em] mt-1">Verified Member File</p>
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-[0.2em] mt-1">Member File Record</p>
               </div>
               <button onClick={() => setIsDrawerOpen(false)} className="p-3 bg-slate-50 text-slate-400 hover:text-rose-600 rounded-2xl transition-all">
                 <X size={24} />
@@ -220,9 +220,6 @@ function UsersPage({ token }) {
                   </div>
                   <h3 className="text-2xl font-black text-slate-900">{selectedUser.name}</h3>
                   <div className="flex gap-2 mt-4">
-                    <span className={`px-5 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${selectedUser.isVerified ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-400 border-slate-200'}`}>
-                        {selectedUser.isVerified ? "Verified User" : "Unverified"}
-                    </span>
                     <span className={`px-5 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${selectedUser.status === 'banned' ? 'bg-rose-500 text-white' : 'bg-emerald-500 text-white'}`}>
                         {selectedUser.status}
                     </span>
@@ -279,7 +276,7 @@ function UsersPage({ token }) {
                     className="w-24 flex flex-col items-center justify-center gap-3 py-6 border-2 border-white/10 rounded-3xl text-white/30 hover:bg-rose-600 hover:text-white hover:border-rose-600 transition-all"
                   >
                     <Trash2 size={24}/>
-                    <span className="text-[10px] font-black uppercase tracking-widest">Purge</span>
+                    <span className="text-[10px] font-black uppercase tracking-widest">Delete User</span>
                   </button>
                </div>
             </div>

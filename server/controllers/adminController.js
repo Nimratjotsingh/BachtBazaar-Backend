@@ -215,22 +215,35 @@ import { updateUserProfileSchema } from "../validators/appValidator.js";
 export const listUsers = async (req, res) => {
   try {
     const { page = 1, limit = 10, search = "", role, isVerified } = req.query;
-    const query = {};
+
+    const query = { isDeleted: false }; // 👈 filter added
+
     if (role) query.role = role;
     if (isVerified !== undefined) query.isVerified = isVerified === "true";
+
     if (search) {
       query.$or = [
         { name: { $regex: search, $options: "i" } },
         { phone: { $regex: search, $options: "i" } }
       ];
     }
+
     const total = await User.countDocuments(query);
+
     const users = await User.find(query)
       .select("-password")
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(Number(limit));
-    return res.json({ success: true, users, total, page: Number(page), pages: Math.ceil(total / limit) });
+
+    return res.json({
+      success: true,
+      users,
+      total,
+      page: Number(page),
+      pages: Math.ceil(total / limit)
+    });
+
   } catch (error) {
     return res.status(500).json({ message: "Failed to list users" });
   }
@@ -288,9 +301,24 @@ export const updateUserStatus = async (req, res) => {
 export const deleteUser = async (req, res) => {
   try {
     const { id } = req.params;
-    const user = await User.findByIdAndDelete(id);
-    if (!user) return res.status(404).json({ message: "User not found" });
-    return res.json({ success: true, message: "User deleted" });
+
+    const user = await User.findByIdAndUpdate(
+      id,
+      {
+        isDeleted: true,
+        deletedAt: new Date()
+      },
+      { new: true }
+    );
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    return res.json({
+      success: true,
+      message: "User soft deleted"
+    });
   } catch (error) {
     return res.status(500).json({ message: "Failed to delete user" });
   }

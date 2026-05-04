@@ -1,11 +1,10 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Plus,
   FileText,
   Edit3,
   Trash2,
   Search,
-  Filter,
   ArrowLeft,
   Save,
   Eye,
@@ -15,6 +14,14 @@ import {
   AlertCircle,
   CheckCircle2,
   Loader2,
+  Bold,
+  Italic,
+  Heading1,
+  Heading2,
+  List,
+  ListOrdered,
+  Quote,
+  Code
 } from "lucide-react";
 
 import { accountClient, buildAuthHeaders } from "../../lib/api";
@@ -81,7 +88,7 @@ const LegalManagementPage = ({token}) => {
   const handleDelete = async (id) => {
     if (!window.confirm("Are you sure you want to delete this legal document? This action cannot be undone.")) return;
     try {
-      await accountClient.delete(`/legal/${id}`);
+      await accountClient.delete(`/legal/${id}`, {headers});
       await fetchDocuments();
     } catch (err) {
       console.error("Delete error:", err);
@@ -157,7 +164,7 @@ const ListView = ({ documents, onCreate, onEdit, onDelete, loading }) => {
             <tr className="bg-sky-50 border-b border-sky-100">
               <th className="px-6 py-4 text-xs font-bold text-sky-900 uppercase tracking-widest">Document</th>
               <th className="px-6 py-4 text-xs font-bold text-sky-900 uppercase tracking-widest text-center">Status</th>
-              <th className="px-6 py-4 text-xs font-bold text-sky-900 uppercase tracking-widest">URL Slug</th>
+              <th className="px-6 py-4 text-xs font-bold text-sky-900 uppercase tracking-widest">URL</th>
               <th className="px-6 py-4 text-xs font-bold text-sky-900 uppercase tracking-widest text-right">Actions</th>
             </tr>
           </thead>
@@ -196,7 +203,7 @@ const ListView = ({ documents, onCreate, onEdit, onDelete, loading }) => {
                       {doc.status}
                     </span>
                   </td>
-                  <td className="px-6 py-4 text-sm font-mono text-sky-500">/legal/{doc.slug}</td>
+                  <td className="px-6 py-4 text-sm font-mono text-sky-500"> http://bachatbazaar.tech/legal/{doc.slug}</td>
                   <td className="px-6 py-4 text-right">
                     <button
                       onClick={() => onEdit(doc)}
@@ -226,6 +233,7 @@ const EditorView = ({ initialData, onSave, onCancel }) => {
   const [formData, setFormData] = useState(initialData);
   const [isPreview, setIsPreview] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const textareaRef = useRef(null);
 
   const handleTitleChange = (e) => {
     const val = e.target.value;
@@ -235,6 +243,26 @@ const EditorView = ({ initialData, onSave, onCancel }) => {
       .replace(/[^\w\s-]/g, "")
       .replace(/[\s_-]+/g, "-");
     setFormData({ ...formData, title: val, slug });
+  };
+
+  // --- Toolbar Logic ---
+  const insertText = (before, after = "") => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const text = textarea.value;
+    const selected = text.substring(start, end);
+    const newText = text.substring(0, start) + before + selected + after + text.substring(end);
+
+    setFormData({ ...formData, content: newText });
+    
+    // Reset focus and selection
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start + before.length, end + before.length);
+    }, 0);
   };
 
   const internalOnSave = async () => {
@@ -272,10 +300,31 @@ const EditorView = ({ initialData, onSave, onCancel }) => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 bg-white rounded-2xl border border-sky-100 shadow-sm overflow-hidden min-h-[600px] flex flex-col">
-          <div className="p-6 border-b border-sky-50 flex justify-between items-center bg-sky-50/30">
-            <span className="text-xs font-black text-sky-900 uppercase tracking-tighter">Content Editor</span>
+        <div className="lg:col-span-2 bg-white rounded-2xl border border-sky-100 shadow-sm overflow-hidden min-h-[600px] flex flex-col transition-all">
+          
+          {/* FONT TOOLBAR */}
+          {!isPreview && (
+            <div className="p-2 border-b border-sky-50 bg-sky-50/50 flex flex-wrap gap-1">
+              <ToolbarButton icon={<Heading1 size={16}/>} label="H1" onClick={() => insertText("# ", "")} />
+              <ToolbarButton icon={<Heading2 size={16}/>} label="H2" onClick={() => insertText("## ", "")} />
+              <div className="w-px h-6 bg-sky-200 mx-1 self-center" />
+              <ToolbarButton icon={<Bold size={16}/>} label="Bold" onClick={() => insertText("**", "**")} />
+              <ToolbarButton icon={<Italic size={16}/>} label="Italic" onClick={() => insertText("*", "*")} />
+              <div className="w-px h-6 bg-sky-200 mx-1 self-center" />
+              <ToolbarButton icon={<List size={16}/>} label="Bullet List" onClick={() => insertText("- ", "")} />
+              <ToolbarButton icon={<ListOrdered size={16}/>} label="Numbered List" onClick={() => insertText("1. ", "")} />
+              <div className="w-px h-6 bg-sky-200 mx-1 self-center" />
+              <ToolbarButton icon={<Quote size={16}/>} label="Quote" onClick={() => insertText("> ", "")} />
+              <ToolbarButton icon={<Code size={16}/>} label="Code" onClick={() => insertText("`", "`")} />
+            </div>
+          )}
+
+          <div className="p-4 border-b border-sky-50 flex justify-between items-center bg-sky-50/20">
+            <span className="text-[10px] font-black text-sky-900 uppercase tracking-widest">
+              {isPreview ? "Live Preview Mode" : "Markdown Content Editor"}
+            </span>
           </div>
+
           {isPreview ? (
             <div className="p-8 prose prose-sky max-w-none">
               <h1 className="text-sky-900 font-bold text-3xl mb-4">{formData.title || "Untitled Document"}</h1>
@@ -285,7 +334,8 @@ const EditorView = ({ initialData, onSave, onCancel }) => {
             </div>
           ) : (
             <textarea
-              className="flex-1 p-8 focus:outline-none text-sky-900 leading-relaxed text-lg resize-none placeholder-sky-200"
+              ref={textareaRef}
+              className="flex-1 p-8 focus:outline-none text-sky-900 leading-relaxed text-lg resize-none placeholder-sky-200 font-serif"
               placeholder="Start typing your policy content here..."
               value={formData.content}
               onChange={(e) => setFormData({ ...formData, content: e.target.value })}
@@ -296,7 +346,7 @@ const EditorView = ({ initialData, onSave, onCancel }) => {
         <div className="space-y-6">
           <div className="bg-white p-6 rounded-2xl border border-sky-100 shadow-sm space-y-6">
             <h3 className="text-sm font-bold text-sky-900 uppercase tracking-wider flex items-center gap-2">
-              <Globe size={16} className="text-sky-500" /> SEO & Routing
+              <Globe size={16} className="text-sky-50" /> SEO & Routing
             </h3>
             <div className="space-y-4">
               <div className="space-y-1">
@@ -307,7 +357,7 @@ const EditorView = ({ initialData, onSave, onCancel }) => {
                     type="text"
                     value={formData.title}
                     onChange={handleTitleChange}
-                    className="w-full pl-10 pr-3 py-2.5 bg-sky-50/50 border border-sky-100 rounded-xl text-sm focus:ring-2 focus:ring-sky-500 transition"
+                    className="w-full pl-10 pr-3 py-2.5 bg-sky-50/50 border border-sky-100 rounded-xl text-sm focus:ring-2 focus:ring-sky-500 transition font-bold"
                   />
                 </div>
               </div>
@@ -369,5 +419,17 @@ const EditorView = ({ initialData, onSave, onCancel }) => {
     </div>
   );
 };
+
+// --- Sub-Component: Toolbar Button ---
+const ToolbarButton = ({ icon, label, onClick }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    title={label}
+    className="p-2 hover:bg-sky-200 text-sky-700 rounded-lg transition-all flex items-center justify-center"
+  >
+    {icon}
+  </button>
+);
 
 export default LegalManagementPage;

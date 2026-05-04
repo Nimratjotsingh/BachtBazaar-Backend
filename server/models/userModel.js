@@ -41,7 +41,15 @@ const userSchema=new mongoose.Schema({
     type: String,
     enum: ["active", "banned"],
     default: "active"
-  }
+  },
+  isDeleted: {
+  type: Boolean,
+  default: false
+},
+deletedAt: {
+  type: Date,
+  default: null
+}
 }, { timestamps:true });
 
 export default mongoose.model("User",userSchema);
