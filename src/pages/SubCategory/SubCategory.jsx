@@ -203,7 +203,7 @@ const SubCategoryPage = ({token}) => {
             <tr className="bg-blue-50/50 border-b border-blue-100">
               <th className="px-6 py-4 text-xs font-bold text-blue-900 uppercase tracking-widest">Sub-Category</th>
               <th className="px-6 py-4 text-xs font-bold text-blue-900 uppercase tracking-widest">Parent Category</th>
-              <th className="px-6 py-4 text-xs font-bold text-blue-900 uppercase tracking-widest">Slug</th>
+    
               <th className="px-6 py-4 text-xs font-bold text-blue-900 uppercase tracking-widest text-right">Actions</th>
             </tr>
           </thead>
@@ -225,11 +225,11 @@ const SubCategoryPage = ({token}) => {
                     </div>
                   </div>
                 </td>
-                <td className="px-6 py-4">
+                {/* <td className="px-6 py-4">
                   <span className="px-3 py-1 bg-blue-100 text-blue-600 rounded-full text-[11px] font-bold">
                     {sub.categoryId?.label || "Unassigned"}
                   </span>
-                </td>
+                </td> */}
                 <td className="px-6 py-4 text-sm font-mono text-slate-400">/{sub.value}</td>
                 <td className="px-6 py-4 text-right">
                   <button 
