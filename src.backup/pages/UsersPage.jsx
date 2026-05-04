@@ -29,6 +29,7 @@ function UsersPage({ token }) {
         headers,
         params: { page, limit: 10, search }
       });
+      console.log(response.data)
       setItems(response.data.users || []);
       setTotalPages(response.data.pages || 1);
     } catch (err) {
