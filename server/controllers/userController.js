@@ -170,7 +170,8 @@ export const loginWithPassword = async (req, res) => {
     const { phone, password } = req.body
 
     const formattedPhone = formatPhone(phone);
-    const user = await User.findOne({ phone });
+    const user = await User.findOne({ phone: formattedPhone });
+    // const user = await User.findOne({ phone });
 
     if (!user) {
       return res.status(404).json({ message: "User not found" });
