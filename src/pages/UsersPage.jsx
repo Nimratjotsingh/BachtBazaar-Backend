@@ -7,6 +7,18 @@ import {
   User as UserIcon, ShieldCheck, Hash, UserCircle
 } from "lucide-react";
 
+// --- Helper: Convert Buffer to Base64 ---
+const getImageUrl = (imageObj) => {
+  if (!imageObj || !imageObj.data || !imageObj.data.data) return null;
+  const base64String = btoa(
+    new Uint8Array(imageObj.data.data).reduce(
+      (data, byte) => data + String.fromCharCode(byte),
+      ''
+    )
+  );
+  return `data:${imageObj.contentType};base64,${base64String}`;
+};
+
 // --- Sub-Component: Info Card ---
 const InfoCard = ({ label, value, icon: Icon, colorClass }) => (
   <div className="flex items-start gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-100 transition-all hover:shadow-md hover:bg-white group">
@@ -151,35 +163,42 @@ function UsersPage({ token }) {
               ) : items.length === 0 ? (
                 <tr><td colSpan="4" className="py-32 text-center text-slate-400 font-bold uppercase text-xs tracking-widest italic">No matching identities found</td></tr>
               ) : (
-                items.map((user) => (
-                  <tr key={user._id} className="group hover:bg-indigo-50/30 transition-all">
-                    <td className="px-10 py-6">
-                      <div className="flex items-center gap-5">
-                        <div className="h-14 w-14 rounded-2xl bg-white border border-slate-200 flex items-center justify-center text-indigo-600 font-black text-xl shadow-sm group-hover:border-indigo-200 group-hover:scale-105 transition-all">
-                          {user.name?.[0]?.toUpperCase() || "U"}
+                items.map((user) => {
+                  const userImg = getImageUrl(user.profileImage);
+                  return (
+                    <tr key={user._id} className="group hover:bg-indigo-50/30 transition-all">
+                      <td className="px-10 py-6">
+                        <div className="flex items-center gap-5">
+                          <div className="h-14 w-14 rounded-2xl bg-white border border-slate-200 overflow-hidden flex items-center justify-center text-indigo-600 font-black text-xl shadow-sm group-hover:border-indigo-200 group-hover:scale-105 transition-all">
+                            {userImg ? (
+                              <img src={userImg} alt={user.name} className="w-full h-full object-cover" />
+                            ) : (
+                              user.name?.[0]?.toUpperCase() || "U"
+                            )}
+                          </div>
+                          <div>
+                            <div className="font-black text-slate-900 text-base">{user.name}</div>
+                            <div className="text-[10px] font-bold text-slate-400 font-mono tracking-tighter uppercase">{user._id}</div>
+                          </div>
                         </div>
-                        <div>
-                          <div className="font-black text-slate-900 text-base">{user.name}</div>
-                          <div className="text-[10px] font-bold text-slate-400 font-mono tracking-tighter uppercase">{user._id}</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-8 py-6 font-bold text-slate-600 text-sm">
-                        <div className="flex items-center gap-2 mb-1"><Smartphone size={12} className="text-slate-300"/> {user.phone}</div>
-                        <div className="flex items-center gap-2"><Mail size={12} className="text-slate-300"/> {user.email || "No Email"}</div>
-                    </td>
-                    <td className="px-8 py-6 text-center">
-                      <span className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${user.status === 'banned' ? 'bg-rose-50 text-rose-600 border-rose-100 shadow-sm shadow-rose-100' : 'bg-emerald-50 text-emerald-600 border-emerald-100 shadow-sm shadow-emerald-100'}`}>
-                        {user.status}
-                      </span>
-                    </td>
-                    <td className="px-10 py-6 text-right">
-                      <button onClick={() => openUserDrawer(user)} className="p-4 bg-slate-100 text-slate-400 rounded-2xl hover:bg-indigo-600 hover:text-white transition-all shadow-sm">
-                        <Eye size={20} />
-                      </button>
-                    </td>
-                  </tr>
-                ))
+                      </td>
+                      <td className="px-8 py-6 font-bold text-slate-600 text-sm">
+                          <div className="flex items-center gap-2 mb-1"><Smartphone size={12} className="text-slate-300"/> {user.phone}</div>
+                          <div className="flex items-center gap-2"><Mail size={12} className="text-slate-300"/> {user.email || "No Email"}</div>
+                      </td>
+                      <td className="px-8 py-6 text-center">
+                        <span className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${user.status === 'banned' ? 'bg-rose-50 text-rose-600 border-rose-100 shadow-sm shadow-rose-100' : 'bg-emerald-50 text-emerald-600 border-emerald-100 shadow-sm shadow-emerald-100'}`}>
+                          {user.status}
+                        </span>
+                      </td>
+                      <td className="px-10 py-6 text-right">
+                        <button onClick={() => openUserDrawer(user)} className="p-4 bg-slate-100 text-slate-400 rounded-2xl hover:bg-indigo-600 hover:text-white transition-all shadow-sm">
+                          <Eye size={20} />
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })
               )}
             </tbody>
           </table>
@@ -215,8 +234,12 @@ function UsersPage({ token }) {
             <div className="relative group">
                 <div className="absolute -inset-1 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-[3rem] blur opacity-20 group-hover:opacity-40 transition duration-1000"></div>
                 <div className="relative flex flex-col items-center p-10 bg-white rounded-[2.8rem] border border-slate-100 shadow-xl">
-                  <div className="h-28 w-28 rounded-[2.2rem] bg-indigo-600 flex items-center justify-center text-white text-5xl font-black mb-6 shadow-2xl shadow-indigo-200 ring-8 ring-indigo-50">
-                    {selectedUser.name?.[0]?.toUpperCase()}
+                  <div className="h-28 w-28 rounded-[2.2rem] bg-indigo-600 overflow-hidden flex items-center justify-center text-white text-5xl font-black mb-6 shadow-2xl shadow-indigo-200 ring-8 ring-indigo-50">
+                    {getImageUrl(selectedUser.profileImage) ? (
+                      <img src={getImageUrl(selectedUser.profileImage)} alt={selectedUser.name} className="w-full h-full object-cover" />
+                    ) : (
+                      selectedUser.name?.[0]?.toUpperCase()
+                    )}
                   </div>
                   <h3 className="text-2xl font-black text-slate-900">{selectedUser.name}</h3>
                   <div className="flex gap-2 mt-4">
