@@ -10,6 +10,7 @@ import CategoryPage from "./pages/Categories/Categories";
 import SubCategoryPage from "./pages/SubCategory/SubCategory";
 import AdminDashboard from "./pages/Dashboard/Dashboard";
 import LegalViewPage from "./pages/Slug/Slug";
+import LandingPage from "./pages/Home";
 
 const tokenStorageKey = "bb_admin_token";
 
@@ -38,6 +39,7 @@ function App() {
 
   return (
     <Routes>
+      <Route path="/"element={<LandingPage/>}/>
       <Route path="/legal/:slug" element={<LegalViewPage />} />
       {/* 🔐 Login */}
       <Route
