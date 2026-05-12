@@ -13,29 +13,31 @@ const productSchema = new mongoose.Schema(
       required: [true, "Product name is required"],
       trim: true,
     },
-    slug: {
-      type: String,
-      lowercase: true,
-      unique: true,
-    },
     description: {
       type: String,
       required: [true, "Product description is required"],
     },
+    // Changed to Array of ObjectIds
     category_id: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Category",
-      required: true,
+      type: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Category"
+      }],
+      validate: [val => val.length > 0, "At least one category is required"],
+      index: true,
     },
+    // Changed to Array of ObjectIds
     subcategory_id: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "SubCategory",
-      required: true,
+      type: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "SubCategory"
+      }],
+      validate: [val => val.length > 0, "At least one subcategory is required"],
+      index: true,
     },
     service_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Service",
-      required: true,
     },
     price: {
       type: Number,
@@ -47,7 +49,6 @@ const productSchema = new mongoose.Schema(
       default: null,
       validate: {
         validator: function (value) {
-          // Only validate if a value is provided
           return value === null || value < this.price;
         },
         message: "Discounted price must be lower than the original price",
@@ -79,7 +80,7 @@ const productSchema = new mongoose.Schema(
     },
     tags: {
       type: [String],
-      index: true, // Optimized for search queries
+      index: true,
     },
     is_active: {
       type: Boolean,
@@ -96,20 +97,9 @@ const productSchema = new mongoose.Schema(
     },
   },
   {
-    timestamps: true, // Automatically manages createdAt and updatedAt
+    timestamps: true,
   }
 );
-
-// --- Middleware: Auto-generate Slug from Name ---
-productSchema.pre("save", function (next) {
-  if (!this.isModified("name")) return next();
-  this.slug = this.name
-    .toLowerCase()
-    .replace(/[^\w\s-]/g, "")
-    .replace(/[\s_-]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  next();
-});
 
 // --- Query Middleware: Filter out soft-deleted items by default ---
 productSchema.pre(/^find/, function (next) {

@@ -46,6 +46,7 @@ export const getAllSubCategories = async (req, res) => {
       count: updated.length,
       subCategories: updated,
     });
+    console.log(updated)
   } catch (error) {
     res.status(500).json({ message: "Failed to fetch subcategories" });
   }
@@ -222,6 +223,7 @@ export const hardDeleteSubCategory = async (req, res) => {
       success: true,
       message: "SubCategory permanently deleted",
     });
+
   } catch (error) {
     res.status(500).json({ message: "Failed to delete subcategory" });
   }
