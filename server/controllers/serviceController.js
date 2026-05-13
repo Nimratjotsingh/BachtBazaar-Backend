@@ -16,22 +16,23 @@ export const createService = async (req, res) => {
       thumbnail,
       tags,
       is_active,
-      is_featured
+      is_featured,
     } = req.body;
 
     // 1. Manual Required Fields Validation
     if (!name || !description || !price || !thumbnail || !pricing_type) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "Please provide name, description, price, thumbnail, and pricing type." 
+      return res.status(400).json({
+        success: false,
+        message:
+          "Please provide name, description, price, thumbnail, and pricing type.",
       });
     }
 
     // 2. Category Array Validation
     if (!Array.isArray(category_id) || category_id.length === 0) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "At least one category is required." 
+      return res.status(400).json({
+        success: false,
+        message: "At least one category is required.",
       });
     }
 
@@ -40,9 +41,9 @@ export const createService = async (req, res) => {
     const discPrice = discounted_price ? Number(discounted_price) : null;
 
     if (discPrice !== null && discPrice >= basePrice) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "Discounted price must be lower than the base price." 
+      return res.status(400).json({
+        success: false,
+        message: "Discounted price must be lower than the base price.",
       });
     }
 
@@ -51,7 +52,7 @@ export const createService = async (req, res) => {
       merchant_id: req.merchant._id, // Assumes auth middleware populates req.merchant
       name: name.trim(),
       description: description.trim(),
-      category_id, 
+      category_id,
       subcategory_id: Array.isArray(subcategory_id) ? subcategory_id : [],
       service_id: service_id || null,
       price: basePrice,
@@ -61,17 +62,16 @@ export const createService = async (req, res) => {
       thumbnail,
       tags: Array.isArray(tags) ? tags : [],
       is_active: is_active !== undefined ? is_active : true,
-      is_featured: is_featured !== undefined ? is_featured : false
+      is_featured: is_featured !== undefined ? is_featured : false,
     });
 
     await newService.save();
-    
-    res.status(201).json({ 
-      success: true, 
-      message: "Service listed successfully", 
-      service: newService 
-    });
 
+    res.status(201).json({
+      success: true,
+      message: "Service listed successfully",
+      service: newService,
+    });
   } catch (error) {
     console.error("Create Service Error:", error);
     res.status(500).json({ success: false, message: error.message });
@@ -81,15 +81,15 @@ export const createService = async (req, res) => {
 // --- List Services (Filters & Pagination) ---
 export const listServices = async (req, res) => {
   try {
-    const { 
-      page = 1, 
-      limit = 10, 
-      search, 
-      category, 
-      minPrice, 
-      maxPrice, 
+    const {
+      page = 1,
+      limit = 10,
+      search,
+      category,
+      minPrice,
+      maxPrice,
       featured,
-      pricingType 
+      pricingType,
     } = req.query;
 
     const query = { is_deleted: false };
@@ -102,7 +102,7 @@ export const listServices = async (req, res) => {
     if (category) query.category_id = category;
     if (pricingType) query.pricing_type = pricingType;
     if (featured) query.is_featured = featured === "true";
-    
+
     if (minPrice || maxPrice) {
       query.price = {};
       if (minPrice) query.price.$gte = Number(minPrice);
@@ -112,7 +112,10 @@ export const listServices = async (req, res) => {
     const skip = (Math.max(1, Number(page)) - 1) * Number(limit);
 
     const total = await Service.countDocuments(query);
-    const services = await Service.find(query)
+    const services = await await Service.find({
+      ...query,
+      merchant_id: req.merchant_id,
+    })
       .populate("category_id", "label")
       .populate("subcategory_id", "label")
       .sort({ createdAt: -1 })
@@ -124,10 +127,12 @@ export const listServices = async (req, res) => {
       services,
       total,
       pages: Math.ceil(total / limit) || 1,
-      currentPage: Number(page)
+      currentPage: Number(page),
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: "Failed to fetch services." });
+    res
+      .status(500)
+      .json({ success: false, message: "Failed to fetch services." });
   }
 };
 
@@ -140,12 +145,16 @@ export const getServiceDetails = async (req, res) => {
       .populate("subcategory_id", "label");
 
     if (!service) {
-      return res.status(404).json({ success: false, message: "Service not found." });
+      return res
+        .status(404)
+        .json({ success: false, message: "Service not found." });
     }
 
     res.json({ success: true, service });
   } catch (error) {
-    res.status(500).json({ success: false, message: "Error retrieving service." });
+    res
+      .status(500)
+      .json({ success: false, message: "Error retrieving service." });
   }
 };
 
@@ -162,14 +171,23 @@ export const updateService = async (req, res) => {
     const service = await Service.findOneAndUpdate(
       { _id: id, merchant_id: req.merchant._id },
       { $set: updates },
-      { new: true, }
+      { new: true },
     );
 
     if (!service) {
-      return res.status(404).json({ success: false, message: "Service not found or unauthorized." });
+      return res
+        .status(404)
+        .json({
+          success: false,
+          message: "Service not found or unauthorized.",
+        });
     }
 
-    res.json({ success: true, message: "Service updated successfully.", service });
+    res.json({
+      success: true,
+      message: "Service updated successfully.",
+      service,
+    });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
   }
@@ -183,15 +201,22 @@ export const deleteService = async (req, res) => {
     const service = await Service.findOneAndUpdate(
       { _id: id, merchant_id: req.merchant._id },
       { is_deleted: true, is_active: false },
-      { new: true }
+      { new: true },
     );
 
     if (!service) {
-      return res.status(404).json({ success: false, message: "Service not found or unauthorized." });
+      return res
+        .status(404)
+        .json({
+          success: false,
+          message: "Service not found or unauthorized.",
+        });
     }
 
     res.json({ success: true, message: "Service moved to trash." });
   } catch (error) {
-    res.status(500).json({ success: false, message: "Could not delete service." });
+    res
+      .status(500)
+      .json({ success: false, message: "Could not delete service." });
   }
 };
