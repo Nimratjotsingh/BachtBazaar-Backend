@@ -18,6 +18,7 @@ import subCategory from './routes/subCategoryRoutes.js';
 import legal from './routes/legalRoutes.js';
 import path from "path";
 import product from './routes/productRoutes.js';
+import service from './routes/serviceRoutes.js'
 
 dotenv.config();
 // console.log(process.env.MONGO_URI)
@@ -51,6 +52,7 @@ app.use("/api/user", userRoutes);
 app.use("/api/users", userRoutes);
 app.use('/api/subcategories',subCategory)
 app.use('/api/merchant/products',product);
+app.use('/api/merchant/services',service)
 // Merchant routes (support both legacy and new paths)
 app.use("/api/merchant/auth", merchantAuthRoutes);
 app.use("/api/merchants", merchantAuthRoutes);

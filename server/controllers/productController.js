@@ -26,49 +26,66 @@ export const createProduct = async (req, res) => {
 // --- List All Products (with Filters & Search) ---
 export const listProducts = async (req, res) => {
   try {
+    // 1. Destructure with default values to prevent undefined errors
     const { 
       page = 1, 
       limit = 10, 
-      search, 
+      search = "", 
       category, 
       minPrice, 
       maxPrice, 
       featured 
-    } = req.query;
+    } = req.query || {}; // Safety fallback to empty object
 
     const query = { is_deleted: false };
 
-    if (search) {
+    // 2. Only build the $or query if search actually has a value
+    if (search && search.trim() !== "") {
       query.$or = [
         { name: { $regex: search, $options: "i" } },
-        { tags: { $in: [new RegExp(search, "i")] } }
+        { tags: { $in: [new RegExp(search.trim(), "i")] } }
       ];
     }
 
     if (category) query.category_id = category;
-    if (featured) query.is_featured = featured === "true";
+    
+    // 3. Handle boolean conversion strictly
+    if (featured !== undefined) {
+      query.is_featured = featured === "true";
+    }
+    
+    // 4. Build price range safely
     if (minPrice || maxPrice) {
       query.price = {};
       if (minPrice) query.price.$gte = Number(minPrice);
       if (maxPrice) query.price.$lte = Number(maxPrice);
     }
 
+    // 5. Calculate skip safely
+    const skip = (Math.max(1, Number(page)) - 1) * Number(limit);
+
     const total = await Product.countDocuments(query);
-    const products = await Product.find(query)
+    const products = await Product.find({...query, is_deleted: { $ne: true }})
       .populate("category_id", "label")
+      .populate("subcategory_id", "label")
       .sort({ createdAt: -1 })
-      .skip((page - 1) * limit)
+      .skip(skip)
       .limit(Number(limit));
 
     res.json({
       success: true,
       products,
       total,
-      pages: Math.ceil(total / limit),
+      pages: Math.ceil(total / limit) || 1,
       currentPage: Number(page)
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: "Failed to retrieve products" });
+    console.error("List Products Error:", error);
+    res.status(500).json({ 
+      success: false, 
+      message: "Failed to retrieve products",
+      error: error.message 
+    });
   }
 };
 
@@ -93,7 +110,7 @@ export const updateProduct = async (req, res) => {
 
     // Logic: Find and update, ensuring the merchant owns this product
     const product = await Product.findOneAndUpdate(
-      { _id: id, merchant_id: req.user._id },
+      { _id: id, merchant_id: req.merchant._id },
       { $set: updates },
       { new: true, runValidators: true }
     );
@@ -115,7 +132,7 @@ export const deleteProduct = async (req, res) => {
 
     // We do a soft delete to preserve order history/analytics
     const product = await Product.findOneAndUpdate(
-      { _id: id, merchant_id: req.user._id },
+      { _id: id, merchant_id: req.merchant._id },
       { is_deleted: true, is_active: false },
       { new: true }
     );
@@ -126,6 +143,7 @@ export const deleteProduct = async (req, res) => {
 
     res.json({ success: true, message: "Product moved to trash" });
   } catch (error) {
+    console.log(error)
     res.status(500).json({ message: "Failed to delete product" });
   }
 };
