@@ -13,7 +13,7 @@ const router = express.Router();
 
 router.post("/", protectMerchant, createService);
 
-router.get("/", listServices);
+router.get("/", protectMerchant,listServices);
 router.get("/:id", getServiceDetails);
 
 router.put("/:id", protectMerchant, updateService);
