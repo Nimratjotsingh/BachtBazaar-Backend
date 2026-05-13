@@ -45,7 +45,9 @@ export const getAllCategories = async (req, res) => {
       count: updated.length,
       categories: updated,
     });
+   
   } catch (error) {
+
     res.status(500).json({ message: "Failed to fetch categories" });
   }
 };

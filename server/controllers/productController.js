@@ -5,18 +5,21 @@ import { productSchema } from "../validators/productValidator.js";
 // --- Create Product ---
 export const createProduct = async (req, res) => {
   try {
-    const data = validate(productSchema, req.body);
+    const data = req.body;
+    console.log(data)
     
-    // Ensure the product is linked to the authenticated merchant
+ 
     const newProduct = new Product({
       ...data,
-      merchant_id: req.user._id 
+      merchant_id: req.merchant._id 
     });
 
     await newProduct.save();
     res.status(201).json({ success: true, message: "Product listed successfully", product: newProduct });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
+    console.log(error)
+ 
   }
 };
 
