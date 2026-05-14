@@ -46,7 +46,7 @@ export const getAllSubCategories = async (req, res) => {
       count: updated.length,
       subCategories: updated,
     });
-    console.log(updated)
+    
   } catch (error) {
     res.status(500).json({ message: "Failed to fetch subcategories" });
   }
@@ -78,7 +78,7 @@ export const getSubCategoryById = async (req, res) => {
 // ===============================
 export const addSubCategory = async (req, res) => {
   try {
-    const validatedData = validate(subCategorySchema, req.body);
+    const validatedData =  req.body;
 
     const category = await Category.findById(validatedData.categoryId);
     if (!category) {
@@ -119,7 +119,7 @@ export const addSubCategory = async (req, res) => {
 export const updateSubCategory = async (req, res) => {
   try {
     const { id } = req.params;
-    const validatedData = validate(subCategorySchema.partial(), req.body);
+    const validatedData =  req.body;
 
     const subCategory = await SubCategory.findById(id);
     if (!subCategory) {

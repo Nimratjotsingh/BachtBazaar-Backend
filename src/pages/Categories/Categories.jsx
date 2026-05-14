@@ -1,19 +1,18 @@
-import React, { useState, useEffect,useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { 
   Plus, Edit3, Trash2, Search, Image as ImageIcon, 
-  ChevronRight, ArrowLeft, Save, Loader2, X 
+  ChevronRight, ArrowLeft, Save, Loader2, X, ChevronDown 
 } from "lucide-react";
-import { accountClient,buildAuthHeaders } from "../../lib/api"; // Your axios instance
+import { accountClient, buildAuthHeaders } from "../../lib/api"; // Your axios instance
 
-const CategoryManagement = ({token}) => {
+const CategoryManagement = ({ token }) => {
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(false);
   const [view, setView] = useState("list"); // 'list', 'category-form', 'subcategory-list'
   const [selectedCategory, setSelectedCategory] = useState(null);
-  const [formData, setFormData] = useState({ value: "", label: "", description: "", image: null });
+  const [formData, setFormData] = useState({ value: "", label: "", description: "", image: null, type: "none" });
   const [imagePreview, setImagePreview] = useState(null);
   const headers = useMemo(() => buildAuthHeaders(token), [token]);
-  console.log(headers)
 
   useEffect(() => {
     fetchCategories();
@@ -22,7 +21,7 @@ const CategoryManagement = ({token}) => {
   const fetchCategories = async () => {
     try {
       setLoading(true);
-      const res = await accountClient.get("/categories",{headers});
+      const res = await accountClient.get("/categories", { headers });
       setCategories(res.data.categories || []);
     } catch (err) {
       console.error(err);
@@ -45,14 +44,15 @@ const CategoryManagement = ({token}) => {
     data.append("value", formData.value);
     data.append("label", formData.label);
     data.append("description", formData.description);
+    data.append("type", formData.type); // Appending the new type field
     if (formData.image) data.append("image", formData.image);
 
     try {
       setLoading(true);
       if (selectedCategory?._id) {
-        await accountClient.put(`/categories/${selectedCategory._id}`, data,{headers});
+        await accountClient.put(`/categories/${selectedCategory._id}`, data, { headers });
       } else {
-        await accountClient.post("/categories", data, {headers});
+        await accountClient.post("/categories", data, { headers });
       }
       fetchCategories();
       setView("list");
@@ -65,7 +65,7 @@ const CategoryManagement = ({token}) => {
   };
 
   const resetForm = () => {
-    setFormData({ value: "", label: "", description: "", image: null });
+    setFormData({ value: "", label: "", description: "", image: null, type: "none" });
     setImagePreview(null);
     setSelectedCategory(null);
   };
@@ -73,7 +73,7 @@ const CategoryManagement = ({token}) => {
   const handleDelete = async (id) => {
     if (!window.confirm("Move this category to trash?")) return;
     try {
-      await accountClient.delete(`/categories/${id}`);
+      await accountClient.delete(`/categories/${id}`, { headers });
       fetchCategories();
     } catch (err) {
       alert("Delete failed");
@@ -97,6 +97,7 @@ const CategoryManagement = ({token}) => {
     <SubcategoryManager 
       category={selectedCategory} 
       onBack={() => { setView("list"); setSelectedCategory(null); }} 
+      headers={headers}
     />
   );
 
@@ -130,6 +131,12 @@ const CategoryManagement = ({token}) => {
                   <ImageIcon size={48} />
                 </div>
               )}
+              {/* Type Badge on Image */}
+              <div className="absolute top-3 right-3">
+                <span className="px-3 py-1 bg-white/90 backdrop-blur shadow-sm text-[10px] font-black text-blue-600 rounded-full uppercase">
+                  {cat.type || 'none'}
+                </span>
+              </div>
             </div>
             <div className="p-5">
               <div className="flex justify-between items-start mb-2">
@@ -153,7 +160,12 @@ const CategoryManagement = ({token}) => {
                 <button 
                   onClick={() => {
                     setSelectedCategory(cat);
-                    setFormData({ value: cat.value, label: cat.label, description: cat.description });
+                    setFormData({ 
+                      value: cat.value, 
+                      label: cat.label, 
+                      description: cat.description,
+                      type: cat.type || "none"
+                    });
                     setView("category-form");
                   }}
                   className="p-2 text-blue-400 hover:bg-blue-50 rounded-lg transition"
@@ -208,6 +220,23 @@ const CategoryForm = ({ formData, setFormData, onSave, onCancel, imagePreview, h
           </div>
         </div>
 
+        {/* New Category Type Dropdown */}
+        <div className="space-y-1">
+          <label className="text-xs font-bold text-blue-400 uppercase tracking-widest">Category Type</label>
+          <div className="relative">
+            <select 
+              className="w-full px-4 py-3 bg-blue-50/50 border border-blue-100 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer"
+              value={formData.type}
+              onChange={(e) => setFormData({...formData, type: e.target.value})}
+            >
+              <option value="none">None (General)</option>
+              <option value="product">Product (Physical Goods)</option>
+              <option value="service">Service (Professional/Labor)</option>
+            </select>
+            <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-blue-400 pointer-events-none" size={18} />
+          </div>
+        </div>
+
         <div className="space-y-1">
           <label className="text-xs font-bold text-blue-400 uppercase tracking-widest">Description</label>
           <textarea 
@@ -222,7 +251,7 @@ const CategoryForm = ({ formData, setFormData, onSave, onCancel, imagePreview, h
           <label className="text-xs font-bold text-blue-400 uppercase tracking-widest">Category Image</label>
           <div className="flex items-center gap-4">
             <div className="w-24 h-24 rounded-2xl bg-blue-50 border-2 border-dashed border-blue-200 flex items-center justify-center overflow-hidden">
-              {imagePreview ? <img src={imagePreview} className="w-full h-full object-cover" /> : <ImageIcon className="text-blue-200" />}
+              {imagePreview ? <img src={imagePreview} className="w-full h-full object-cover" alt="preview" /> : <ImageIcon className="text-blue-200" />}
             </div>
             <input type="file" accept="image/*" onChange={handleImageChange} className="text-xs text-blue-600 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer" />
           </div>
@@ -240,7 +269,7 @@ const CategoryForm = ({ formData, setFormData, onSave, onCancel, imagePreview, h
 );
 
 // --- Subcategory Manager Component ---
-const SubcategoryManager = ({ category, onBack }) => {
+const SubcategoryManager = ({ category, onBack, headers }) => {
   const [subs, setSubs] = useState([]);
   const [loading, setLoading] = useState(false);
   const [newSub, setNewSub] = useState({ label: "", value: "" });
@@ -252,7 +281,7 @@ const SubcategoryManager = ({ category, onBack }) => {
   const fetchSubs = async () => {
     try {
       setLoading(true);
-      const res = await accountClient.get(`/categories/${category._id}/subcategories`);
+      const res = await accountClient.get(`/categories/${category._id}/subcategories`, { headers });
       setSubs(res.data.subcategories || []);
     } catch (err) { console.error(err); }
     finally { setLoading(false); }
@@ -261,8 +290,7 @@ const SubcategoryManager = ({ category, onBack }) => {
   const handleAddSub = async (e) => {
     e.preventDefault();
     try {
-      // Assuming your backend has a /subcategories endpoint
-      await accountClient.post(`/subcategories`, { ...newSub, categoryId: category._id });
+      await accountClient.post(`/subcategories`, { ...newSub, categoryId: category._id }, { headers });
       setNewSub({ label: "", value: "" });
       fetchSubs();
     } catch (err) { alert("Failed to add subcategory"); }

@@ -117,7 +117,7 @@ export const getSubcategoriesByCategory = async (req, res) => {
 // ===============================
 export const addCategory = async (req, res) => {
   try {
-    const validatedData = validate(categorySchema, req.body);
+    const validatedData =  req.body;
 
     const existingCategory = await Category.findOne({
       value: validatedData.value,
@@ -152,7 +152,7 @@ export const addCategory = async (req, res) => {
 export const updateCategory = async (req, res) => {
   try {
     const { id } = req.params;
-    const validatedData = validate(categorySchema.partial(), req.body);
+    const validatedData =  req.body;
 
     const category = await Category.findById(id);
     if (!category) {

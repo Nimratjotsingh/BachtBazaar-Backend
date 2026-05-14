@@ -16,13 +16,21 @@ const categorySchema = new mongoose.Schema(
       trim: true
     },
 
+    type: {
+      type: String,
+      enum: ["product", "service", "none"],
+      default: "none",
+      lowercase: true,
+      trim: true
+    },
+
     description: {
       type: String,
       default: ""
     },
 
     image: {
-      type: String, // 👉 stores "/uploads/filename.jpg"
+      type: String,
       default: ""
     },
 
@@ -33,5 +41,7 @@ const categorySchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+
 
 export default mongoose.model("Category", categorySchema);
