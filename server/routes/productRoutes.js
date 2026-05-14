@@ -14,7 +14,7 @@ import {protectSuperAdmin} from '../middleware/superAuthMiddleware.js'
 
 const router = express.Router();
 
-router.get("/", listProducts);
+router.get("/", protectMerchant,listProducts);
 
 
 router.get("/:id", getProduct);

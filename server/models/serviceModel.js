@@ -1,23 +1,28 @@
 import mongoose from "mongoose";
 
-const productSchema = new mongoose.Schema(
+const serviceSchema = new mongoose.Schema(
   {
     merchant_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Merchant",
-      required: [true, "Product must belong to a merchant"],
+      required: [true, "Service must belong to a merchant"],
       index: true,
+    },
+    type: {
+      type: String,
+      default: "service",
+      immutable: true, // Ensures this model always identifies as a service
     },
     name: {
       type: String,
-      required: [true, "Product name is required"],
+      required: [true, "Service name is required"],
       trim: true,
     },
     description: {
       type: String,
-      required: [true, "Product description is required"],
+      required: [true, "Service description is required"],
     },
-    // Changed to Array of ObjectIds
+    // Supporting multiple categories
     category_id: {
       type: [{
         type: mongoose.Schema.Types.ObjectId,
@@ -26,18 +31,16 @@ const productSchema = new mongoose.Schema(
       validate: [val => val.length > 0, "At least one category is required"],
       index: true,
     },
-    // Changed to Array of ObjectIds
     subcategory_id: {
       type: [{
         type: mongoose.Schema.Types.ObjectId,
         ref: "SubCategory"
       }],
-      validate: [val => val.length > 0, "At least one subcategory is required"],
       index: true,
     },
     service_id: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Service",
+      ref: "ServiceReference", // Optional reference to a master service list
     },
     price: {
       type: Number,
@@ -47,31 +50,26 @@ const productSchema = new mongoose.Schema(
     discounted_price: {
       type: Number,
       default: null,
-      
+      validate: {
+        validator: function (value) {
+          return value === null || value < this.price;
+        },
+        message: "Discounted price must be lower than the base price",
+      },
     },
-    stock: {
-      type: Number,
-      required: [true, "Stock quantity is required"],
-      default: 0,
-      min: 0,
-    },
-    sku: {
+    pricing_type: {
       type: String,
-      unique: true,
-      trim: true,
-      uppercase: true,
-      required: [true, "SKU is required for inventory tracking"],
+      enum: ["fixed", "starting_from", "hourly", "per_visit", "package", "custom"],
+      required: [true, "Pricing type is required for services"],
+      default: "fixed",
     },
     images: {
       type: [String],
-      validate: [
-        (val) => val.length <= 10,
-        "Maximum 10 images allowed per product",
-      ],
+      validate: [val => val.length <= 10, "Maximum 10 images allowed"],
     },
     thumbnail: {
       type: String,
-      required: [true, "A main thumbnail image is required"],
+      required: [true, "Service thumbnail is required"],
     },
     tags: {
       type: [String],
@@ -96,12 +94,8 @@ const productSchema = new mongoose.Schema(
   }
 );
 
-// --- Query Middleware: Filter out soft-deleted items by default ---
-// productSchema.pre(/^find/, function (next) {
-//   this.find({ is_deleted: { $ne: true } });
-//   next();
-// });
 
-const Product = mongoose.model("Product", productSchema);
 
-export default Product;
+const Service = mongoose.model("Service", serviceSchema);
+
+export default Service;
