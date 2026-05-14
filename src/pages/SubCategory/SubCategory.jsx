@@ -1,11 +1,11 @@
-import React, { useState, useEffect,useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { 
   Plus, Edit3, Trash2, Search, Image as ImageIcon, 
-  Save, Loader2, ArrowLeft, Filter, Layers
+  Save, Loader2, ArrowLeft, Filter, Layers, ChevronDown
 } from "lucide-react";
-import { accountClient,buildAuthHeaders } from "../../lib/api";
+import { accountClient, buildAuthHeaders } from "../../lib/api";
 
-const SubCategoryPage = ({token}) => {
+const SubCategoryPage = ({ token }) => {
   const [subCategories, setSubCategories] = useState([]);
   const [categories, setCategories] = useState([]); // For the parent category dropdown
   const [loading, setLoading] = useState(false);
@@ -20,7 +20,8 @@ const SubCategoryPage = ({token}) => {
     label: "", 
     description: "", 
     categoryId: "", 
-    image: null 
+    image: null,
+    type: "none" // New field
   });
   const [imagePreview, setImagePreview] = useState(null);
 
@@ -32,8 +33,8 @@ const SubCategoryPage = ({token}) => {
     try {
       setLoading(true);
       const [subRes, catRes] = await Promise.all([
-        accountClient.get("/subcategories",{headers}),
-        accountClient.get("/categories",{headers})
+        accountClient.get("/subcategories", { headers }),
+        accountClient.get("/categories", { headers })
       ]);
       setSubCategories(subRes.data.subCategories || []);
       setCategories(catRes.data.categories || []);
@@ -59,14 +60,15 @@ const SubCategoryPage = ({token}) => {
     data.append("label", formData.label);
     data.append("description", formData.description);
     data.append("categoryId", formData.categoryId);
+    data.append("type", formData.type); // New field appended
     if (formData.image) data.append("image", formData.image);
 
     try {
       setLoading(true);
       if (selectedSub?._id) {
-        await accountClient.put(`/subcategories/${selectedSub._id}`, data,{headers});
+        await accountClient.put(`/subcategories/${selectedSub._id}`, data, { headers });
       } else {
-        await accountClient.post("/subcategories", data,{headers});
+        await accountClient.post("/subcategories", data, { headers });
       }
       fetchInitialData();
       setView("list");
@@ -79,7 +81,7 @@ const SubCategoryPage = ({token}) => {
   };
 
   const resetForm = () => {
-    setFormData({ value: "", label: "", description: "", categoryId: "", image: null });
+    setFormData({ value: "", label: "", description: "", categoryId: "", image: null, type: "none" });
     setImagePreview(null);
     setSelectedSub(null);
   };
@@ -87,7 +89,7 @@ const SubCategoryPage = ({token}) => {
   const handleDelete = async (id) => {
     if (!window.confirm("Soft delete this sub-category?")) return;
     try {
-      await accountClient.delete(`/subcategories/${id}`,{headers});
+      await accountClient.delete(`/subcategories/${id}`, { headers });
       fetchInitialData();
     } catch (err) {
       alert("Delete failed");
@@ -110,17 +112,35 @@ const SubCategoryPage = ({token}) => {
       <div className="bg-white p-8 rounded-[32px] border border-blue-100 shadow-2xl space-y-6">
         <h2 className="text-2xl font-bold text-blue-950">{selectedSub ? "Edit" : "Create"} Sub-Category</h2>
         <form onSubmit={handleSave} className="space-y-5">
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-blue-400 uppercase tracking-widest">Parent Category</label>
-            <select 
-              required
-              className="w-full px-4 py-3 bg-blue-50/50 border border-blue-100 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
-              value={formData.categoryId}
-              onChange={(e) => setFormData({...formData, categoryId: e.target.value})}
-            >
-              <option value="">Select a Category</option>
-              {categories.map(cat => <option key={cat._id} value={cat._id}>{cat.label}</option>)}
-            </select>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-blue-400 uppercase tracking-widest">Parent Category</label>
+              <select 
+                required
+                className="w-full px-4 py-3 bg-blue-50/50 border border-blue-100 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
+                value={formData.categoryId}
+                onChange={(e) => setFormData({...formData, categoryId: e.target.value})}
+              >
+                <option value="">Select a Category</option>
+                {categories.map(cat => <option key={cat._id} value={cat._id}>{cat.label}</option>)}
+              </select>
+            </div>
+            {/* New Sub-Category Type Select */}
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-blue-400 uppercase tracking-widest">Sub-Category Type</label>
+              <div className="relative">
+                <select 
+                  className="w-full px-4 py-3 bg-blue-50/50 border border-blue-100 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer"
+                  value={formData.type}
+                  onChange={(e) => setFormData({...formData, type: e.target.value})}
+                >
+                  <option value="none">None (General)</option>
+                  <option value="product">Product (Physical Goods)</option>
+                  <option value="service">Service (Professional/Labor)</option>
+                </select>
+                <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-blue-400 pointer-events-none" size={18} />
+              </div>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -143,7 +163,7 @@ const SubCategoryPage = ({token}) => {
             <label className="text-xs font-bold text-blue-400 uppercase tracking-widest">Sub-Category Image</label>
             <div className="flex items-center gap-6 p-4 bg-blue-50/30 border border-dashed border-blue-200 rounded-2xl">
               <div className="w-20 h-20 rounded-xl bg-white flex items-center justify-center overflow-hidden border border-blue-100 shadow-inner">
-                {imagePreview ? <img src={imagePreview} className="w-full h-full object-cover" /> : <ImageIcon className="text-blue-200" />}
+                {imagePreview ? <img src={imagePreview} className="w-full h-full object-cover" alt="preview" /> : <ImageIcon className="text-blue-200" />}
               </div>
               <input type="file" accept="image/*" onChange={handleImageChange} className="text-xs text-blue-600 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:bg-blue-600 file:text-white hover:file:bg-blue-700 cursor-pointer" />
             </div>
@@ -202,8 +222,8 @@ const SubCategoryPage = ({token}) => {
           <thead>
             <tr className="bg-blue-50/50 border-b border-blue-100">
               <th className="px-6 py-4 text-xs font-bold text-blue-900 uppercase tracking-widest">Sub-Category</th>
+              <th className="px-6 py-4 text-xs font-bold text-blue-900 uppercase tracking-widest">Type</th>
               <th className="px-6 py-4 text-xs font-bold text-blue-900 uppercase tracking-widest">Parent Category</th>
-    
               <th className="px-6 py-4 text-xs font-bold text-blue-900 uppercase tracking-widest text-right">Actions</th>
             </tr>
           </thead>
@@ -217,7 +237,7 @@ const SubCategoryPage = ({token}) => {
                 <td className="px-6 py-4">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center overflow-hidden">
-                      {sub.image ? <img src={sub.image} className="w-full h-full object-cover" /> : <ImageIcon size={16} className="text-blue-400" />}
+                      {sub.image ? <img src={sub.image} className="w-full h-full object-cover" alt={sub.label} /> : <ImageIcon size={16} className="text-blue-400" />}
                     </div>
                     <div>
                       <div className="font-bold text-blue-950">{sub.label}</div>
@@ -225,12 +245,16 @@ const SubCategoryPage = ({token}) => {
                     </div>
                   </div>
                 </td>
-                {/* <td className="px-6 py-4">
-                  <span className="px-3 py-1 bg-blue-100 text-blue-600 rounded-full text-[11px] font-bold">
-                    {sub.categoryId?.label || "Unassigned"}
+                
+                {/* Type Column */}
+                <td className="px-6 py-4">
+                  <span className="px-2 py-1 bg-blue-50 text-blue-600 rounded-md text-[10px] font-black uppercase tracking-widest border border-blue-100">
+                    {sub.type || 'none'}
                   </span>
-                </td> */}
-                <td className="px-6 py-4 text-sm font-mono text-slate-400">/{sub.value}</td>
+                </td>
+
+                <td className="px-6 py-4 text-sm font-bold text-slate-500">{sub.categoryId?.label || "Uncategorized"}</td>
+                
                 <td className="px-6 py-4 text-right">
                   <button 
                     onClick={() => {
@@ -239,7 +263,8 @@ const SubCategoryPage = ({token}) => {
                         label: sub.label, 
                         value: sub.value, 
                         description: sub.description || "", 
-                        categoryId: sub.categoryId?._id || "" 
+                        categoryId: sub.categoryId?._id || "",
+                        type: sub.type || "none" // Set initial type for editing
                       });
                       setView("form");
                     }}

@@ -14,6 +14,13 @@ const subCategorySchema = new mongoose.Schema(
       required: true,
       trim: true
     },
+    type: {
+      type: String,
+      enum: ["product", "service", "none"],
+      default: "none",
+      lowercase: true,
+      trim: true
+    },
 
     description: {
       type: String,
