@@ -3,23 +3,41 @@ import { validate } from "../validators/validate.js"; // Assuming you have a val
 import { productSchema } from "../validators/productValidator.js";
 
 // --- Create Product ---
+// controllers/productController.js
 export const createProduct = async (req, res) => {
   try {
     const data = req.body;
-    console.log(data)
-    
- 
+
+    // 1. Handle Thumbnail
+    if (req.files && req.files.thumbnail) {
+      // Save the relative path for the database
+      data.thumbnail = `/uploads/${req.files.thumbnail[0].filename}`;
+    }
+
+    // 2. Handle Image Array
+    if (req.files && req.files.images) {
+      data.images = req.files.images.map(file => `/uploads/${file.filename}`);
+    }
+
+    // 3. Manual validation for categories (Multer sends arrays as strings/individual items sometimes)
+    // Ensure category_id and subcategory_id are arrays
+    if (typeof data.category_id === 'string') data.category_id = [data.category_id];
+    if (typeof data.subcategory_id === 'string') data.subcategory_id = [data.subcategory_id];
+
     const newProduct = new Product({
       ...data,
       merchant_id: req.merchant._id 
     });
 
     await newProduct.save();
-    res.status(201).json({ success: true, message: "Product listed successfully", product: newProduct });
+    
+    res.status(201).json({ 
+      success: true, 
+      message: "Product listed successfully", 
+      product: newProduct 
+    });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
-    console.log(error)
- 
   }
 };
 
@@ -104,12 +122,41 @@ export const getProduct = async (req, res) => {
 };
 
 // --- Update Product ---
+// controllers/productController.js
+
+
 export const updateProduct = async (req, res) => {
   try {
     const { id } = req.params;
-    const updates = req.body;
+    let updates = { ...req.body };
 
-    // Logic: Find and update, ensuring the merchant owns this product
+    // 1. Handle New Thumbnail Upload
+    if (req.files && req.files.thumbnail) {
+      updates.thumbnail = `/uploads/${req.files.thumbnail[0].filename}`;
+    }
+
+    // 2. Handle New Gallery Images Upload
+    if (req.files && req.files.images) {
+      const newImagePaths = req.files.images.map(file => `/uploads/${file.filename}`);
+      
+      // OPTIONAL: Decide if you want to REPLACE all images or APPEND them
+      // To REPLACE:
+      updates.images = newImagePaths;
+      
+      // To APPEND to existing images (requires fetching current product first):
+      // const currentProduct = await Product.findById(id);
+      // updates.images = [...currentProduct.images, ...newImagePaths];
+    }
+
+    // 3. Fix Multi-select arrays (Multer issues)
+    if (updates.category_id && typeof updates.category_id === 'string') {
+        updates.category_id = [updates.category_id];
+    }
+    if (updates.subcategory_id && typeof updates.subcategory_id === 'string') {
+        updates.subcategory_id = [updates.subcategory_id];
+    }
+
+    // 4. Perform Update
     const product = await Product.findOneAndUpdate(
       { _id: id, merchant_id: req.merchant._id },
       { $set: updates },
@@ -117,12 +164,23 @@ export const updateProduct = async (req, res) => {
     );
 
     if (!product) {
-      return res.status(404).json({ message: "Product not found or unauthorized" });
+      return res.status(404).json({ 
+        success: false, 
+        message: "Product not found or unauthorized to edit" 
+      });
     }
 
-    res.json({ success: true, message: "Product updated", product });
+    res.json({ 
+      success: true, 
+      message: "Product updated successfully", 
+      product 
+    });
+
   } catch (error) {
-    res.status(400).json({ message: error.message });
+    res.status(400).json({ 
+      success: false, 
+      message: error.message 
+    });
   }
 };
 

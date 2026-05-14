@@ -10,7 +10,8 @@ import {
 
 // Assuming you have these middleware already created
 import { protectMerchant } from "../middleware/authMiddleware.js";
-import {protectSuperAdmin} from '../middleware/superAuthMiddleware.js'
+import {protectSuperAdmin} from '../middleware/superAuthMiddleware.js';
+import upload from '../middleware/uploadSec.js'
 
 const router = express.Router();
 
@@ -20,10 +21,17 @@ router.get("/", protectMerchant,listProducts);
 router.get("/:id", getProduct);
 
 
-router.post("/", protectMerchant, createProduct);
+router.post("/", protectMerchant, 
+  upload.fields([
+    { name: "thumbnail", maxCount: 1 },
+    { name: "images", maxCount: 10 }
+  ]),createProduct);
 
 
-router.put("/:id", protectMerchant, updateProduct);
+router.put("/:id", protectMerchant, upload.fields([
+    { name: "thumbnail", maxCount: 1 },
+    { name: "images", maxCount: 10 }
+  ]),updateProduct);
 
 
 router.delete("/:id", protectMerchant, deleteProduct);

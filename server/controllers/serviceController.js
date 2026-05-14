@@ -1,42 +1,56 @@
 import Service from "../models/serviceModel.js";
 
 // --- Create Service Listing ---
+
+
 export const createService = async (req, res) => {
   try {
+    const data = { ...req.body };
+
+    // 1. Handle Thumbnail Upload
+    if (req.files && req.files.thumbnail) {
+      data.thumbnail = `/uploads/${req.files.thumbnail[0].filename}`;
+    }
+
+    // 2. Handle Gallery Images Upload
+    if (req.files && req.files.images) {
+      data.images = req.files.images.map(file => `/uploads/${file.filename}`);
+    }
+
+    // 3. Extraction & Manual Validation
     const {
       name,
       description,
       category_id,
       subcategory_id,
-      service_id,
       price,
       discounted_price,
       pricing_type,
-      images,
-      thumbnail,
-      tags,
-      is_active,
-      is_featured,
-    } = req.body;
+    } = data;
 
-    // 1. Manual Required Fields Validation
-    if (!name || !description || !price || !thumbnail || !pricing_type) {
+    if (!name || !description || !price || !data.thumbnail || !pricing_type) {
       return res.status(400).json({
         success: false,
-        message:
-          "Please provide name, description, price, thumbnail, and pricing type.",
+        message: "Please provide name, description, price, thumbnail, and pricing type.",
       });
     }
 
-    // 2. Category Array Validation
-    if (!Array.isArray(category_id) || category_id.length === 0) {
+    // 4. Handle Multer Array Conversion
+    // When sending via Form-Data, arrays often arrive as strings or single items
+    let categories = category_id;
+    if (typeof categories === 'string') categories = [categories];
+    
+    let subcategories = subcategory_id || [];
+    if (typeof subcategories === 'string') subcategories = [subcategories];
+
+    if (!Array.isArray(categories) || categories.length === 0) {
       return res.status(400).json({
         success: false,
         message: "At least one category is required.",
       });
     }
 
-    // 3. Pricing Logic Validation
+    // 5. Pricing Logic
     const basePrice = Number(price);
     const discPrice = discounted_price ? Number(discounted_price) : null;
 
@@ -47,22 +61,19 @@ export const createService = async (req, res) => {
       });
     }
 
-    // 4. Initialization
+    // 6. Initialization
     const newService = new Service({
-      merchant_id: req.merchant._id, // Assumes auth middleware populates req.merchant
+      ...data,
+      merchant_id: req.merchant._id,
       name: name.trim(),
       description: description.trim(),
-      category_id,
-      subcategory_id: Array.isArray(subcategory_id) ? subcategory_id : [],
-      service_id: service_id || null,
+      category_id: categories,
+      subcategory_id: subcategories,
       price: basePrice,
       discounted_price: discPrice,
-      pricing_type, // "fixed", "hourly", "starting_from", etc.
-      images: Array.isArray(images) ? images : [],
-      thumbnail,
-      tags: Array.isArray(tags) ? tags : [],
-      is_active: is_active !== undefined ? is_active : true,
-      is_featured: is_featured !== undefined ? is_featured : false,
+      images: data.images || [],
+      // tags might also need string-to-array conversion if sent from frontend
+      tags: typeof data.tags === 'string' ? data.tags.split(',') : (data.tags || []),
     });
 
     await newService.save();
@@ -114,7 +125,7 @@ export const listServices = async (req, res) => {
     const total = await Service.countDocuments(query);
     const services = await await Service.find({
       ...query,
-      merchant_id: req.merchant_id,
+      merchant_id: req.merchant._id,
     })
       .populate("category_id", "label")
       .populate("subcategory_id", "label")
@@ -158,29 +169,48 @@ export const getServiceDetails = async (req, res) => {
   }
 };
 
-// --- Update Service ---
+
+
 export const updateService = async (req, res) => {
   try {
     const { id } = req.params;
-    const updates = req.body;
+    let updates = { ...req.body };
 
-    // Cast numeric fields if they exist in the update body
-    // if (updates.price) updates.price = Number(updates.price);
-    // if (updates.discounted_price) updates.discounted_price = Number(updates.discounted_price);
+    // 1. Handle New Thumbnail Upload
+    if (req.files && req.files.thumbnail) {
+      updates.thumbnail = `/uploads/${req.files.thumbnail[0].filename}`;
+    }
 
+    // 2. Handle New Gallery Images Upload
+    if (req.files && req.files.images) {
+      updates.images = req.files.images.map(file => `/uploads/${file.filename}`);
+    }
+
+    // 3. Cast numeric fields for safety
+    if (updates.price) updates.price = Number(updates.price);
+    if (updates.discounted_price) updates.discounted_price = Number(updates.discounted_price);
+
+    // 4. Handle Multer Array Stringification
+    // Ensure category and subcategory are arrays even if one item is sent via form-data
+    if (updates.category_id && typeof updates.category_id === 'string') {
+        updates.category_id = [updates.category_id];
+    }
+    if (updates.subcategory_id && typeof updates.subcategory_id === 'string') {
+        updates.subcategory_id = [updates.subcategory_id];
+    }
+
+    // 5. Update the Database
     const service = await Service.findOneAndUpdate(
       { _id: id, merchant_id: req.merchant._id },
       { $set: updates },
-      { new: true },
+      { new: true, runValidators: true }
     );
 
     if (!service) {
-      return res
-        .status(404)
-        .json({
-          success: false,
-          message: "Service not found or unauthorized.",
-        });
+      return res.status(404).json({
+        success: false,
+        message: "Service not found or unauthorized.",
+      });
     }
 
     res.json({
