@@ -65,7 +65,7 @@ export const listProducts = async (req, res) => {
     const skip = (Math.max(1, Number(page)) - 1) * Number(limit);
 
     const total = await Product.countDocuments(query);
-    const products = await Product.find({...query,  merchant_id: req.merchant_id,,is_deleted: { $ne: true }})
+    const products = await Product.find({...query,  merchant_id: req.merchant_id,is_deleted: { $ne: true }})
       .populate("category_id", "label")
       .populate("subcategory_id", "label")
       .sort({ createdAt: -1 })
