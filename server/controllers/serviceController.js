@@ -203,7 +203,7 @@ export const updateService = async (req, res) => {
     const service = await Service.findOneAndUpdate(
       { _id: id, merchant_id: req.merchant._id },
       { $set: updates },
-      { new: true, runValidators: true }
+      { new: true }
     );
 
     if (!service) {
