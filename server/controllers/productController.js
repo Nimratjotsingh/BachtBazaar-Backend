@@ -18,9 +18,6 @@ export const createProduct = async (req, res) => {
     if (req.files && req.files.images) {
       data.images = req.files.images.map(file => `/uploads/${file.filename}`);
     }
-
-    // 3. Manual validation for categories (Multer sends arrays as strings/individual items sometimes)
-    // Ensure category_id and subcategory_id are arrays
     if (typeof data.category_id === 'string') data.category_id = [data.category_id];
     if (typeof data.subcategory_id === 'string') data.subcategory_id = [data.subcategory_id];
 

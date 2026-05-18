@@ -20,7 +20,8 @@ import path from "path";
 import product from './routes/productRoutes.js';
 import service from './routes/serviceRoutes.js';
 import userHome from './routes/userHomeRoutes.js';
-
+import offerType from './routes/offerTypeRoutes.js';
+import templateRoute from './routes/templateRoutes.js';
 dotenv.config();
 // console.log(process.env.MONGO_URI)
 
@@ -69,9 +70,11 @@ app.use("/api/merchants/business-docs", merchantBusinessDocRoutes);
 app.use("/api/merchant/shop", merchantShopRoutes);
 app.use("/api/merchants/shop", merchantShopRoutes);
 app.use("/api/categories", categoryRoutes);
+app.use('/api/offer-types', offerType)
 app.use("/api/admin", adminRoutes);
 app.use("/api/profile", profileRoutes);
 app.use("/api/kyc", kycRoutes);
+app.use('/api/templates',templateRoute);
 
 app.get("/health", (req, res) => {
   res.json({ message: "Server is healthy!" });
