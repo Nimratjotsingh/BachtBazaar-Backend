@@ -229,8 +229,8 @@ const LandingPage = () => {
             <div className="space-y-6">
                 <h4 className="font-black text-xs uppercase tracking-widest text-slate-400">Legal</h4>
                 <ul className="space-y-4 text-sm font-bold text-slate-600 uppercase tracking-tighter">
-                    <li><a href="#" className="hover:text-indigo-600">Privacy Policy</a></li>
-                    <li><a href="#" className="hover:text-indigo-600">Terms of Service</a></li>
+                    <li><a href="http://bachatbazaar.tech/legal/privacy-policy" className="hover:text-indigo-600">Privacy Policy</a></li>
+                    <li><a href="http://bachatbazaar.tech/legal/terms-and-condition" className="hover:text-indigo-600">Terms of Service</a></li>
                     <li><a href="#" className="hover:text-indigo-600">KYC Guidelines</a></li>
                 </ul>
             </div>
