@@ -238,6 +238,7 @@ const SubCategoryPage = ({ token }) => {
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center overflow-hidden">
                       {sub.image ? <img src={sub.image} className="w-full h-full object-cover" alt={sub.label} /> : <ImageIcon size={16} className="text-blue-400" />}
+                      
                     </div>
                     <div>
                       <div className="font-bold text-blue-950">{sub.label}</div>

@@ -11,37 +11,36 @@ import SubCategoryPage from "./pages/SubCategory/SubCategory";
 import AdminDashboard from "./pages/Dashboard/Dashboard";
 import LegalViewPage from "./pages/Slug/Slug";
 import LandingPage from "./pages/Home";
+import AdminOfferTypeManagement from "./pages/OfferType/OfferType";
+import AdminTemplateImageManagement from "./pages/TemplateUpload/Template";
 
-const tokenStorageKey = "bb_admin_token";
+const TOKEN_STORAGE_KEY = "bb_admin_token";
 
 function App() {
-  const [token, setToken] = useState(
-    localStorage.getItem(tokenStorageKey) || ""
+  const [token, setToken] = useState(() => 
+    localStorage.getItem(TOKEN_STORAGE_KEY) || ""
   );
 
   useEffect(() => {
     if (token) {
-      localStorage.setItem(tokenStorageKey, token);
+      localStorage.setItem(TOKEN_STORAGE_KEY, token);
     } else {
-      localStorage.removeItem(tokenStorageKey);
+      localStorage.removeItem(TOKEN_STORAGE_KEY);
     }
   }, [token]);
 
-  const handleLogin = (nextToken) => {
-    setToken(nextToken);
-  };
-
-  const handleLogout = () => {
-    setToken("");
-  };
+  const handleLogin = (nextToken) => setToken(nextToken);
+  const handleLogout = () => setToken("");
 
   const isAuthenticated = !!token;
 
   return (
     <Routes>
-      <Route path="/"element={<LandingPage/>}/>
+      {/* 🌐 Public Routes */}
+      <Route path="/" element={<LandingPage />} />
       <Route path="/legal/:slug" element={<LegalViewPage />} />
-      {/* 🔐 Login */}
+
+      {/* 🔐 Auth Route */}
       <Route
         path="/login"
         element={
@@ -53,7 +52,7 @@ function App() {
         }
       />
 
-      {/* 🛡️ Protected Dashboard */}
+      {/* 🛡️ Protected Dashboard Layout */}
       <Route
         path="/dashboard"
         element={
@@ -64,32 +63,25 @@ function App() {
           )
         }
       >
+        {/* Default dashboard path redirects /dashboard directly to /dashboard/users */}
         <Route index element={<Navigate to="users" replace />} />
+        
+        {/* Dashboard Sub-routes */}
         <Route path="users" element={<UsersPage token={token} />} />
         <Route path="main" element={<AdminDashboard token={token} />} />
         <Route path="merchants" element={<MerchantsPage token={token} />} />
         <Route path="privacy" element={<PolicyEditor token={token} />} />
         <Route path="categories" element={<CategoryPage token={token} />} />
         <Route path="subcategories" element={<SubCategoryPage token={token} />} />
-        
+        <Route path="offer-type" element={<AdminOfferTypeManagement token={token} />} />
+        <Route path="templates" element={<AdminTemplateImageManagement token={token} />} />
       </Route>
-      {/* 🔁 Redirects */}
-      <Route
-        path="/"
-        element={
-          <Navigate
-            to={isAuthenticated ? "/dashboard/users" : "/login"}
-            replace
-          />
-        }
-      />
+
+      {/* 🔁 Fallback Catch-All for unknown URLs */}
       <Route
         path="*"
         element={
-          <Navigate
-            to={isAuthenticated ? "/dashboard/users" : "/login"}
-            replace
-          />
+          <Navigate to={isAuthenticated ? "/dashboard/users" : "/login"} replace />
         }
       />
     </Routes>

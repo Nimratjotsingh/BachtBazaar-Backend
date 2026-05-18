@@ -10,7 +10,8 @@ import {
   LogOut,
   ChevronRight,
   Workflow,
-  LucideWorkflow
+  LucideWorkflow,
+  BookTemplate
 } from "lucide-react";
 
 const navItems = [
@@ -20,6 +21,8 @@ const navItems = [
   { label: "Privacy Policies", to: "/dashboard/privacy", icon: ShieldCheck },
   { label: "Categories", to: "/dashboard/categories", icon: Workflow },
   { label: "SubCategories", to: "/dashboard/subcategories", icon: LucideWorkflow },
+  { label: "Offer Type", to: "/dashboard/offer-type", icon: LucideWorkflow },
+  { label: "Templates", to: "/dashboard/templates", icon: BookTemplate },
   
 ];
 
