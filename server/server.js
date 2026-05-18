@@ -22,9 +22,15 @@ import service from './routes/serviceRoutes.js';
 import userHome from './routes/userHomeRoutes.js';
 import offerType from './routes/offerTypeRoutes.js';
 import templateRoute from './routes/templateRoutes.js';
+
+import { fileURLToPath } from "url";
+
 dotenv.config();
 // console.log(process.env.MONGO_URI)
 
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = Number(process.env.PORT) || 5001;
 const isDevelopment = (process.env.NODE_ENV || "")
@@ -105,8 +111,8 @@ function printRoutes(app) {
 app.use(express.static(path.join(__dirname, "../dist")));
 
 // SPA fallback LAST
-app.get("*", (req, res) => {
-  res.sendFile(path.join(__dirname, "../dist", "index.html"));
+app.use((req, res) => {
+  res.sendFile(path.join(__dirname, "../dist/index.html"));
 });
 
 // Centralized error handler
