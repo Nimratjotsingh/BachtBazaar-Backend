@@ -95,12 +95,12 @@ function printRoutes(app) {
   console.log('=== END ROUTES ===');
 }
 // Handle unknown routes
-app.use((req, res) => {
-  res.status(404).json({
-    success: false,
-    message: `Route not found: ${req.method} ${req.originalUrl}`
-  });
-});
+// app.use((req, res) => {
+//   res.status(404).json({
+//     success: false,
+//     message: `Route not found: ${req.method} ${req.originalUrl}`
+//   });
+// });
 
 // Centralized error handler
 app.use((err, req, res, next) => {
