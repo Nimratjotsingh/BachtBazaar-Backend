@@ -25,6 +25,12 @@ const templateImageSchema = new mongoose.Schema(
       default: null,
       index: true,
     },
+    offertype_id:{
+        type: mongoose.Schema.Types.ObjectId,
+      ref: "OfferType",
+      default: null,
+      index: true,
+    },
     // Useful for admin dashboard categorization (e.g., "Minimalist", "Festive", "Dark Mode")
     theme_style: {
       type: String,
