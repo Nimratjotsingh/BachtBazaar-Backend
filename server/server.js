@@ -102,6 +102,13 @@ function printRoutes(app) {
 //   });
 // });
 
+app.use(express.static(path.join(__dirname, "../dist")));
+
+// SPA fallback LAST
+app.get("*", (req, res) => {
+  res.sendFile(path.join(__dirname, "../dist", "index.html"));
+});
+
 // Centralized error handler
 app.use((err, req, res, next) => {
   console.error(`[${new Date().toISOString()}] Unhandled error:`, err.message);
