@@ -20,6 +20,11 @@ const offerSchema = new mongoose.Schema(
       ref: "OfferType",
       index: true,
     },
+    product_id:{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Product",
+        index: true,
+    },
     title: {
       type: String,
       trim: true,
@@ -27,6 +32,7 @@ const offerSchema = new mongoose.Schema(
     description: {
       type: String,
     },
+
     thumbnail: {
       type: String, // Stores local server relative paths (e.g., "/uploads/filename.jpg")
     },

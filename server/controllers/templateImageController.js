@@ -143,3 +143,59 @@ export const incrementTemplateUsage = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+// --- Read/List Templates (Merchant Custom Catalog View) ---
+export const getTemplateImagesMerchant = async (req, res) => {
+  try {
+    const { category_id, subcategory_id, offertype_id, theme, ratio } = req.query;
+
+    // Base query targeting active, non-deleted template assets
+    let query = { 
+      isDeleted: false,
+      isActive: true 
+    };
+
+    // 1. Core Structural Filtering Logic
+    // If specific contextual matching IDs are sent, filter down to them or look for system general designs (null)
+    if (category_id) {
+      query.category_id = { $in: [category_id, null] };
+    }
+    
+    if (subcategory_id) {
+      query.subcategory_id = { $in: [subcategory_id, null] };
+    }
+
+    if (offertype_id) {
+      query.offertype_id = { $in: [offertype_id, null] };
+    }
+
+    // 2. Secondary Design Profile Layout parameters
+    if (theme) {
+      query.theme_style = theme.toLowerCase().trim();
+    }
+    
+    if (ratio) {
+      query.aspect_ratio = ratio.trim();
+    }
+
+    // 3. Fetch matching template configurations
+    const templates = await TemplateImage.find(query)
+      .populate("category_id", "label value")
+      .populate("subcategory_id", "label value")
+      .populate("offertype_id", "label value")
+      .sort({ use_count: -1, createdAt: -1 }); // Prioritize high-performing/popular graphics
+
+    res.status(200).json({
+      success: true,
+      count: templates.length,
+      data: templates
+    });
+
+  } catch (error) {
+    console.error("Merchant Template Query Error:", error);
+    res.status(500).json({ 
+      success: false, 
+      message: "Failed to assemble tailored template catalog views." 
+    });
+  }
+};

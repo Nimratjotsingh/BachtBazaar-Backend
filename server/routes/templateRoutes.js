@@ -5,8 +5,11 @@ import {
   createTemplateImage,
   getTemplateImagesAdmin,
   updateTemplateImage,
-  deleteTemplateImage
+  deleteTemplateImage,
+  getTemplateImagesMerchant,
+  incrementTemplateUsage
 } from "../controllers/templateImageController.js";
+import {protectMerchant} from '../middleware/authMiddleware.js'
 
 const router = express.Router();
 
@@ -15,4 +18,6 @@ router.post("/admin", protectSuperAdmin, upload.single("image"), createTemplateI
 router.put("/admin/:id", protectSuperAdmin, upload.single("image"), updateTemplateImage);
 router.delete("/admin/:id", protectSuperAdmin, deleteTemplateImage);
 
+router.get("/discover", protectMerchant, getTemplateImagesMerchant);
+router.patch("/:id/use", protectMerchant, incrementTemplateUsage);
 export default router;
