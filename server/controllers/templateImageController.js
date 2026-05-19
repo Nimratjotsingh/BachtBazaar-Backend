@@ -64,10 +64,12 @@ export const getTemplateImagesAdmin = async (req, res) => {
     const templates = await TemplateImage.find(query)
       .populate("category_id", "label")
       .populate("subcategory_id", "label")
+      .populate("offertype_id", "label value")
       .sort({ createdAt: -1 });
 
     res.status(200).json({ success: true, count: templates.length, data: templates });
   } catch (error) {
+    console.log(error)
     res.status(500).json({ success: false, message: error.message });
   }
 };
