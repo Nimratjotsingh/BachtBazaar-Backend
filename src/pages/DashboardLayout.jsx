@@ -11,7 +11,8 @@ import {
   ChevronRight,
   Workflow,
   LucideWorkflow,
-  BookTemplate
+  BookTemplate,
+  Calendar
 } from "lucide-react";
 
 const navItems = [
@@ -23,6 +24,7 @@ const navItems = [
   { label: "SubCategories", to: "/dashboard/subcategories", icon: LucideWorkflow },
   { label: "Offer Type", to: "/dashboard/offer-type", icon: LucideWorkflow },
   { label: "Templates", to: "/dashboard/templates", icon: BookTemplate },
+  { label: "Calender", to: "/dashboard/calendar", icon: Calendar },
   
 ];
 

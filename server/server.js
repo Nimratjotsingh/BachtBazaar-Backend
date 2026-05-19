@@ -22,8 +22,9 @@ import service from './routes/serviceRoutes.js';
 import userHome from './routes/userHomeRoutes.js';
 import offerType from './routes/offerTypeRoutes.js';
 import templateRoute from './routes/templateRoutes.js';
-
+import calenderRoutes from './routes/calenderConfigRoutes.js';
 import { fileURLToPath } from "url";
+import offerRoutes from './routes/offerRoutes.js'
 
 dotenv.config();
 // console.log(process.env.MONGO_URI)
@@ -81,6 +82,8 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/profile", profileRoutes);
 app.use("/api/kyc", kycRoutes);
 app.use('/api/templates',templateRoute);
+app.use('/api/calender-config', calenderRoutes);
+app.use('/api/offers',offerRoutes);
 
 app.get("/health", (req, res) => {
   res.json({ message: "Server is healthy!" });

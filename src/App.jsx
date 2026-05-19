@@ -13,6 +13,7 @@ import LegalViewPage from "./pages/Slug/Slug";
 import LandingPage from "./pages/Home";
 import AdminOfferTypeManagement from "./pages/OfferType/OfferType";
 import AdminTemplateImageManagement from "./pages/TemplateUpload/Template";
+import AdminCalendarConfig from "./pages/Calender/Calender";
 
 const TOKEN_STORAGE_KEY = "bb_admin_token";
 
@@ -75,6 +76,7 @@ function App() {
         <Route path="subcategories" element={<SubCategoryPage token={token} />} />
         <Route path="offer-type" element={<AdminOfferTypeManagement token={token} />} />
         <Route path="templates" element={<AdminTemplateImageManagement token={token} />} />
+        <Route path="calendar" element={<AdminCalendarConfig token={token}/>}/>
       </Route>
 
       {/* 🔁 Fallback Catch-All for unknown URLs */}
