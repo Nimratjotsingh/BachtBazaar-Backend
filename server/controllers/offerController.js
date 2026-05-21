@@ -427,3 +427,204 @@ export const getActiveOffersForToday = async (req, res) => {
     });
   }
 };
+
+// ==========================================
+// ADMINISTRATIVE PLATFORM OVERVIEWS
+// ==========================================
+
+// --- 1. Read Master Offers Queue (Admin Dashboard view) ---
+export const getAllOffersAdmin = async (req, res) => {
+  try {
+    const { 
+      page = 1, 
+      limit = 10, 
+      search = "", 
+      display_type, 
+      status // e.g. 'active' or 'expired'
+    } = req.query;
+
+    // Base query filter tracking non-deleted system entries
+    let query = { is_deleted: false };
+
+    // Handle optional text queries matching title parameters or tag flags
+    if (search && search.trim() !== "") {
+      const searchRegex = new RegExp(search.trim(), "i");
+      query.$or = [
+        { title: { $regex: searchRegex } },
+        { description: { $regex: searchRegex } },
+        { tags: { $in: [search.trim().toLowerCase()] } }
+      ];
+    }
+
+    // Apply layout presentation constraints if passed
+    if (display_type && display_type !== "all") {
+      query.display_type = display_type;
+    }
+
+    // Filter by live temporal execution timelines
+    const now = new Date();
+    if (status === "active") {
+      query.is_active = true;
+      query.start_date = { $lte: now };
+      query.end_date = { $gte: now };
+    } else if (status === "expired") {
+      query.$or = [
+        { is_active: false },
+        { end_date: { $lt: now } }
+      ];
+    }
+
+    const skip = (Math.max(1, Number(page)) - 1) * Number(limit);
+
+    // Run parallel aggregation tasks to prevent bottleneck queries
+    const [offers, totalCount] = await Promise.all([
+      Offer.find(query)
+        .populate("merchant_id", "store_name email contact_phone logo")
+        .populate("offer_type_id", "label value")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(Number(limit)),
+      Offer.countDocuments(query)
+    ]);
+
+    res.status(200).json({
+      success: true,
+      count: offers.length,
+      pagination: {
+        totalItems: totalCount,
+        totalPages: Math.ceil(totalCount / limit) || 1,
+        currentPage: Number(page)
+      },
+      data: offers
+    });
+
+  } catch (error) {
+    console.error("Admin Catalog Retrieval Error:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// --- 2. Read Deep Offer & Merchant Correlation (Admin Detail View) ---
+export const getOfferDetailWithMerchantAdmin = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Finds target campaign and resolves full parent entity parameters
+    const offerDetails = await Offer.findOne({ _id: id, is_deleted: false })
+      .populate({
+        path: "merchant_id",
+        select: "store_name owner_name email contact_phone alternative_phone address business_type is_verified createdAt"
+      })
+      .populate("offer_type_id", "label value");
+
+    if (!offerDetails) {
+      return res.status(404).json({ 
+        success: false, 
+        message: "The requested campaign data footprint does not exist or has been deleted." 
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: offerDetails
+    });
+
+  } catch (error) {
+    console.error("Admin Complete Identity Resolve Failure:", error);
+    res.status(500).json({ success: false, message: "Internal metadata populating routine error." });
+  }
+};
+
+// --- Revive Past/Archived Offer Campaign (Merchant Action) ---
+export const revivePastOffer = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { start_date, end_date } = req.body;
+
+    if (!start_date || !end_date) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Both new start and end dates are required to revive a campaign." 
+      });
+    }
+
+    // 1. Isolate target offer and ensure it belongs to the logged-in merchant
+    const existingOffer = await Offer.findOne({ _id: id, merchant_id: req.merchant._id });
+    if (!existingOffer) {
+      return res.status(404).json({ success: false, message: "Target campaign asset not found." });
+    }
+
+    // 2. Strict Timezone Normalization matching BachatBazarr engine rules
+    const finalStartDate = new Date(start_date);
+    finalStartDate.setUTCHours(0, 0, 0, 0);
+
+    const finalEndDate = new Date(end_date);
+    finalEndDate.setUTCHours(23, 59, 59, 999);
+
+    if (finalEndDate < finalStartDate) {
+      return res.status(400).json({ success: false, message: "End date cannot occur before the start date." });
+    }
+
+    // 3. Conditional Calendar Allocation Check (Only if layout configuration is 'calendar')
+    if (existingOffer.display_type === "calendar") {
+      const dateRule = await CalendarConfig.findOne({ date: finalStartDate });
+      const globalDefaultLimit = 5;
+
+      if (dateRule) {
+        if (dateRule.is_locked) {
+          return res.status(400).json({ 
+            success: false, 
+            message: "Campaign creations for this target date have been locked by administration." 
+          });
+        }
+        if (dateRule.current_booked_count >= dateRule.max_allowed_offers) {
+          return res.status(400).json({ 
+            success: false, 
+            message: `The calendar limit for this date has been reached (${dateRule.max_allowed_offers} max). Please pick a different day.` 
+          });
+        }
+      } else {
+        const activeLiveBookings = await Offer.countDocuments({
+          display_type: "calendar",
+          start_date: finalStartDate,
+          is_active: true,
+          is_deleted: false
+        });
+
+        if (activeLiveBookings >= globalDefaultLimit) {
+          return res.status(400).json({ 
+            success: false, 
+            message: `All standard baseline slots (${globalDefaultLimit}) for this date are full.` 
+          });
+        }
+      }
+    }
+
+    // 4. Perform atomic update: Reset flags, clear deletion status, and load new timestamps
+    existingOffer.start_date = finalStartDate;
+    existingOffer.end_date = finalEndDate;
+    existingOffer.is_active = true;
+    existingOffer.is_deleted = false; // Restores item cleanly if it was previously trashed
+
+    await existingOffer.save();
+
+    // 5. Increment tracker ticker if slot is a calendar position
+    if (existingOffer.display_type === "calendar") {
+      await CalendarConfig.findOneAndUpdate(
+        { date: finalStartDate },
+        { $inc: { current_booked_count: 1 } },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Campaign revived and re-listed successfully.",
+      data: existingOffer
+    });
+
+  } catch (error) {
+    console.error("Offer Revival Processing Failure:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};

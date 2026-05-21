@@ -21,27 +21,6 @@ const AdminCalendarConfig = ({ token }) => {
 
   const headers = useMemo(() => buildAuthHeaders(token), [token]);
 
-  // --- START: CALENDAR TIME BOUNDARY THRESHOLD CALCULATIONS ---
-  // Establishes a zeroed-out local baseline target for the current day to evaluate historical items
-  const todayMidnightThreshold = useMemo(() => {
-    const d = new Date();
-    d.setHours(0, 0, 0, 0);
-    return d;
-  }, []);
-
-  // Check if a specific date cell falls entirely in the past (prior to today)
-  const isPastDate = (date) => {
-    const target = new Date(date);
-    target.setHours(0, 0, 0, 0);
-    return target < todayMidnightThreshold;
-  };
-
-  // Determine if the currently highlighted entry belongs to a historical window
-  const isSelectedDateInPast = useMemo(() => {
-    return isPastDate(selectedDate);
-  }, [selectedDate, todayMidnightThreshold]);
-  // --- END: CALENDAR TIME BOUNDARY THRESHOLD CALCULATIONS ---
-
   // Helper to generate a reliable string key (YYYY-MM-DD) from local dates without shifting timezones
   const formatDateKey = (date) => {
     const d = new Date(date);
@@ -55,13 +34,33 @@ const AdminCalendarConfig = ({ token }) => {
     return formatDateKey(selectedDate);
   }, [selectedDate]);
 
+  // --- START: CALENDAR TIME BOUNDARY THRESHOLD CALCULATIONS ---
+  const todayMidnightThreshold = useMemo(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }, []);
+
+  const isPastDate = (date) => {
+    const target = new Date(date);
+    target.setHours(0, 0, 0, 0);
+    return target < todayMidnightThreshold;
+  };
+
+  const isSelectedDateInPast = useMemo(() => {
+    return isPastDate(selectedDate);
+  }, [selectedDate, todayMidnightThreshold]);
+  // --- END: CALENDAR TIME BOUNDARY THRESHOLD CALCULATIONS ---
+
+  // Fetch the full month when month changes
   useEffect(() => {
     fetchMonthSchedule();
   }, [currentMonth]);
 
+  // Make sure form data updates immediately whenever the selection OR the master schedule data updates
   useEffect(() => {
     fetchSelectedDateDetails();
-  }, [selectedDate, schedule]);
+  }, [formattedSelectedDate, schedule]); 
 
   const fetchMonthSchedule = async () => {
     try {
@@ -76,7 +75,6 @@ const AdminCalendarConfig = ({ token }) => {
         },
         headers
       });
-      console.log(res.data)
 
       const scheduleMap = {};
       res.data.data?.forEach(item => {
@@ -102,10 +100,12 @@ const AdminCalendarConfig = ({ token }) => {
       });
     } else {
       try {
+        // FIX: Send YYYY-MM-DD instead of .toISOString() to avoid timezone shifting
         const res = await accountClient.get("calendar-config/availability", {
-          params: { date: selectedDate.toISOString() },
+          params: { date: formattedSelectedDate },
           headers
         });
+
         setFormData({
           max_allowed_offers: res.data.max_slots,
           notes: "",
@@ -120,18 +120,28 @@ const AdminCalendarConfig = ({ token }) => {
 
   const handleSaveConfig = async (e) => {
     e.preventDefault();
-    if (isSelectedDateInPast) return; // Fail-safe UI guard block
+    if (isSelectedDateInPast) return; 
     
     try {
       setActionLoading(true);
-      await accountClient.post("/calendar-config/admin/limit", {
-        date: selectedDate.toISOString(),
+      // FIX: Send formattedSelectedDate (YYYY-MM-DD string literal) to lock the date parameter in place
+      const res = await accountClient.post("/calendar-config/admin/limit", {
+        date: formattedSelectedDate,
         max_allowed_offers: Number(formData.max_allowed_offers),
         notes: formData.notes,
         is_locked: formData.is_locked
       }, { headers });
+      
+      if (res.data.success && res.data.data) {
+        const updatedItem = res.data.data;
+        const dateKey = updatedItem.date.split("T")[0];
+        setSchedule(prev => ({
+          ...prev,
+          [dateKey]: updatedItem
+        }));
+      }
 
-      await fetchMonthSchedule();
+      await fetchMonthSchedule(); 
       alert(`Configurations applied for ${formattedSelectedDate}`);
     } catch (err) {
       alert(err.response?.data?.message || "Failed to update day variables.");
@@ -143,7 +153,8 @@ const AdminCalendarConfig = ({ token }) => {
   const handleSyncCounter = async () => {
     try {
       setActionLoading(true);
-      await accountClient.post("/calendar-config/admin/sync", { date: selectedDate.toISOString() }, { headers });
+      // FIX: Synchronize using formattedSelectedDate string mapping to preserve midnight blocks
+      await accountClient.post("/calendar-config/admin/sync", { date: formattedSelectedDate }, { headers });
       await fetchMonthSchedule();
       alert("Counter synchronized against live database entries.");
     } catch (err) {
@@ -180,8 +191,6 @@ const AdminCalendarConfig = ({ token }) => {
       const bookedCount = customRule?.current_booked_count || 0;
       const maxSlots = customRule?.max_allowed_offers || 5;
       const isFull = bookedCount >= maxSlots;
-      
-      // Check if this explicit iteration belongs to yesterday or older
       const isHistory = isPastDate(activeLoopDate);
 
       cells.push(
@@ -323,7 +332,7 @@ const AdminCalendarConfig = ({ token }) => {
                 type="number"
                 min="0"
                 required
-                disabled={isSelectedDateInPast} // Read-only for past elements
+                disabled={isSelectedDateInPast} 
                 className="w-full px-4 py-2.5 bg-blue-50/50 border border-blue-100 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-blue-950 disabled:opacity-50 disabled:cursor-not-allowed"
                 value={formData.max_allowed_offers}
                 onChange={(e) => setFormData({ ...formData, max_allowed_offers: e.target.value })}
@@ -334,7 +343,7 @@ const AdminCalendarConfig = ({ token }) => {
               <label className="text-xs font-bold text-blue-400 uppercase tracking-widest">Internal Allocation Notes</label>
               <textarea
                 rows="3"
-                disabled={isSelectedDateInPast} // Read-only for past elements
+                disabled={isSelectedDateInPast} 
                 className="w-full px-4 py-2.5 bg-blue-50/50 border border-blue-100 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-sm text-slate-600 resize-none disabled:opacity-50 disabled:cursor-not-allowed"
                 placeholder="e.g., Extended seasonal limits for holiday peak traffic windows..."
                 value={formData.notes}
@@ -349,7 +358,7 @@ const AdminCalendarConfig = ({ token }) => {
               </div>
               <button
                 type="button"
-                disabled={isSelectedDateInPast} // Read-only for past elements
+                disabled={isSelectedDateInPast} 
                 onClick={() => setFormData({ ...formData, is_locked: !formData.is_locked })}
                 className={`w-12 h-7 flex items-center rounded-full p-1 transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed ${formData.is_locked ? 'bg-amber-500 justify-end' : 'bg-slate-200 justify-start'}`}
               >

@@ -9,17 +9,25 @@ import {
   updateOffer,
   deleteOffer,
   searchOffersByDisplayType,
-  getActiveOffersForToday
+  getActiveOffersForToday,
+  getAllOffersAdmin,
+  getOfferDetailWithMerchantAdmin,
+  revivePastOffer
 } from "../controllers/offerController.js";
+
+import { protectSuperAdmin } from "../middleware/superAuthMiddleware.js";
 
 const router = express.Router();
 
 router.get("/today", getActiveOffersForToday);
+router.get("/admin/master-list", protectSuperAdmin, getAllOffersAdmin);
+router.get("/admin/detail/:id", protectSuperAdmin, getOfferDetailWithMerchantAdmin);
 
 // Base profile actions bound to authorization layers
 router.post("/", protectMerchant, upload.single("thumbnail"), createOffer);
 router.get("/", protectMerchant, getMerchantOffers);
 router.get("/search/:display_type", protectMerchant, searchOffersByDisplayType);
+router.patch("/merchant/revive/:id", protectMerchant, revivePastOffer);
 
 // Parametized reference routes
 router.get("/:id", protectMerchant, getOfferDetails);

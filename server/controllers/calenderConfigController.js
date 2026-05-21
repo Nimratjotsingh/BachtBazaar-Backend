@@ -2,10 +2,22 @@ import CalendarConfig from "../models/calenderConfigModel.js";
 import Offer from "../models/offerModel.js";
 
 // Helper to clean up time data and set it strictly to UTC Midnight
+// --- FIXED TIMEZONE-SAFE HELPER ---
 const normalizeToMidnight = (dateString) => {
   if (!dateString) return null;
-  const targetDate = new Date(dateString);
-  targetDate.setUTCHours(0, 0, 0, 0);
+
+  // If the frontend sends a full ISO string (contains 'T'), isolate the date segment
+  const cleanDateString = dateString.includes("T") 
+    ? dateString.split("T")[0] 
+    : dateString;
+
+  // Split by '-' and force integers to build an absolute UTC date profile.
+  // This completely eliminates local server timezone distortion offsets.
+  const [year, month, day] = cleanDateString.split("-").map(Number);
+  
+  // Create a strict UTC date constructor instance matching the exact inputs
+  const targetDate = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
+  
   return targetDate;
 };
 
@@ -14,18 +26,21 @@ export const setDailySlotLimit = async (req, res) => {
   try {
     const { date, max_allowed_offers, notes, is_locked } = req.body;
 
+    console.log(date)
+
     if (!date) {
       return res.status(400).json({ success: false, message: "A targeted date is required." });
     }
 
+    // Process the input date safely without shifting days backward or forward
     const targetDate = normalizeToMidnight(date);
 
     // Find if a rule configuration already exists for this day
     let dateRule = await CalendarConfig.findOne({ date: targetDate });
 
     if (dateRule) {
-      // Update existing day configuration rule
-      if (max_allowed_offers !== undefined) dateRule.max_allowed_offers = max_allowed_offers;
+      // Update existing day configuration rule safely
+      if (max_allowed_offers !== undefined) dateRule.max_allowed_offers = Number(max_allowed_offers);
       if (notes !== undefined) dateRule.notes = notes;
       if (is_locked !== undefined) dateRule.is_locked = is_locked;
       
@@ -33,8 +48,7 @@ export const setDailySlotLimit = async (req, res) => {
       return res.status(200).json({ success: true, message: "Daily slot rule modified.", data: dateRule });
     }
 
-    // Otherwise, create a brand new rule configuration for this date
-    // Calculate current bookings reactively if offers already exist for this date
+    // Otherwise, calculate current bookings reactively if offers already exist for this exact date
     const preExistingBookings = await Offer.countDocuments({
       display_type: "calendar",
       start_date: targetDate,
@@ -44,15 +58,17 @@ export const setDailySlotLimit = async (req, res) => {
 
     const newRule = new CalendarConfig({
       date: targetDate,
-      max_allowed_offers: max_allowed_offers ?? 5,
+      max_allowed_offers: max_allowed_offers !== undefined ? Number(max_allowed_offers) : 5,
       current_booked_count: preExistingBookings,
-      notes: notes?.trim(),
+      notes: notes?.trim() || "",
       is_locked: is_locked ?? false
     });
 
     await newRule.save();
+   
     res.status(201).json({ success: true, message: "Daily slot rule configured successfully.", data: newRule });
   } catch (error) {
+    console.error("Set Daily Slot Limit Error:", error);
     res.status(400).json({ success: false, message: error.message });
   }
 };
@@ -116,10 +132,12 @@ export const getCalendarScheduleAdmin = async (req, res) => {
       const dateKey = currentStepDate.toISOString().split("T")[0];
       const savedConfig = configMap[dateKey];
       const liveBookingVolume = liveBookingsMap[dateKey] || 0;
+  
+
 
       comprehensiveSchedule.push({
         date: currentStepDate.toISOString(),
-        max_allowed_offers: savedConfig ? savedConfig.max_allowed_offers : 5, // fallback global limit
+        max_allowed_offers: savedConfig ? savedConfig.max_allowed_offers : '5', // fallback global limit
         current_booked_count: Math.max(liveBookingVolume, savedConfig ? savedConfig.current_booked_count : 0),
         notes: savedConfig ? savedConfig.notes : "",
         is_locked: savedConfig ? savedConfig.is_locked : false
