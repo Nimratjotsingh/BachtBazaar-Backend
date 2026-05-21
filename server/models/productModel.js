@@ -17,7 +17,6 @@ const productSchema = new mongoose.Schema(
       type: String,
       required: [true, "Product description is required"],
     },
-    // Changed to Array of ObjectIds
     category_id: {
       type: [{
         type: mongoose.Schema.Types.ObjectId,
@@ -26,7 +25,6 @@ const productSchema = new mongoose.Schema(
       validate: [val => val.length > 0, "At least one category is required"],
       index: true,
     },
-    // Changed to Array of ObjectIds
     subcategory_id: {
       type: [{
         type: mongoose.Schema.Types.ObjectId,
@@ -47,7 +45,6 @@ const productSchema = new mongoose.Schema(
     discounted_price: {
       type: Number,
       default: null,
-      
     },
     stock: {
       type: Number,
@@ -77,6 +74,28 @@ const productSchema = new mongoose.Schema(
       type: [String],
       index: true,
     },
+    
+    // --- Admin Approval Fields ---
+    approval_status: {
+      type: String,
+      enum: ["pending", "approved", "rejected"],
+      default: "pending",
+      index: true,
+    },
+    approved_by: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Admin", // Assumes your admin model name is 'Admin'
+      default: null,
+    },
+    approval_date: {
+      type: Date,
+      default: null,
+    },
+    rejection_reason: {
+      type: String,
+      default: "", // Useful for giving merchants feedback on why it was rejected
+    },
+
     is_active: {
       type: Boolean,
       default: true,
@@ -96,11 +115,9 @@ const productSchema = new mongoose.Schema(
   }
 );
 
-// --- Query Middleware: Filter out soft-deleted items by default ---
-// productSchema.pre(/^find/, function (next) {
-//   this.find({ is_deleted: { $ne: true } });
-//   next();
-// });
+// --- Indexing for Performance ---
+// Speeds up marketplace queries that only display active, non-deleted, and approved products
+productSchema.index({ is_deleted: 1, is_active: 1, approval_status: 1 });
 
 const Product = mongoose.model("Product", productSchema);
 

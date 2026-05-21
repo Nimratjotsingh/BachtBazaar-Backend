@@ -362,3 +362,68 @@ export const searchOffersByDisplayType = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+// --- Get Active Present-Day Campaigns (Customer View) ---
+// --- Get Active Present-Day Campaigns (Customer View optimized for IST) ---
+// --- Get Active Present-Day Campaigns (Customer View optimized for IST) ---
+export const getActiveOffersForToday = async (req, res) => {
+  try {
+    const { display_type } = req.query; // Optional filter: 'banner', 'calendar', or 'all'
+    
+    // 1. Calculate Today's start and end boundaries explicitly in IST (+5:30)
+    const now = new Date();
+    
+    
+    // Convert current UTC time to IST components
+    const istTime = new Date(now.getTime() + (5.5 * 60 * 60 * 1000));
+    
+    // Create the exact start boundary of "Today" in IST (00:00:00.000)
+    const todayStartIST = new Date(Date.UTC(
+      istTime.getUTCFullYear(),
+      istTime.getUTCMonth(),
+      istTime.getUTCDate(),
+      0, 0, 0, 0
+    ));
+
+    // Shift back by 5.5 hours to get the exact UTC timestamp for IST midnight
+    const searchThresholdUTC = new Date(todayStartIST.getTime() - (5.5 * 60 * 60 * 1000));
+
+    // 2. Build the query object
+    // Rules: 
+    // - Must be active and not deleted
+    // - start_date must be less than or equal to current time (it has already started)
+    // - end_date must be greater than or equal to the START of today in IST (it hasn't expired before today)
+    let query = {
+      is_deleted: false,
+      is_active: true,
+      start_date: { $lte: now },                  // Campaign has officially kicked off
+      end_date: { $gte: searchThresholdUTC }      // Campaign ends sometime today or anytime in the future
+    };
+
+    // 3. Handle optional display layout structures
+    if (display_type && display_type !== "all") {
+      query.display_type = display_type;
+    }
+
+    // 4. Execute lookups
+    const liveOffers = await Offer.find(query)
+      .populate("merchant_id", "store_name logo address contact_phone")
+      .populate("offer_type_id", "label value")
+      .sort({ is_featured: -1, createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      count: liveOffers.length,
+      timezone: "IST (Asia/Kolkata)",
+      evaluated_date_start: searchThresholdUTC.toISOString(),
+      data: liveOffers
+    });
+
+  } catch (error) {
+    console.error("IST Daily Offers Extraction Failure:", error);
+    res.status(500).json({ 
+      success: false, 
+      message: "Unable to retrieve today's campaign catalog streams." 
+    });
+  }
+};

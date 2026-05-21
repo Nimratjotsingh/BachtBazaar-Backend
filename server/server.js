@@ -83,7 +83,7 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/profile", profileRoutes);
 app.use("/api/kyc", kycRoutes);
 app.use('/api/templates',templateRoute);
-app.use('/api/calender-config', calenderRoutes);
+app.use('/api/calendar-config', calenderRoutes);
 app.use('/api/offers',offerRoutes);
 app.use('/api/ai',openai)
 

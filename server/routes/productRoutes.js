@@ -5,7 +5,10 @@ import {
   getProduct, 
   updateProduct, 
   deleteProduct, 
-  toggleFeatured 
+  toggleFeatured,
+  getPendingProductsAdmin,
+  reviewProductAdmin,
+  listProductsAll
 } from "../controllers/productController.js";
 
 // Assuming you have these middleware already created
@@ -17,6 +20,10 @@ const router = express.Router();
 
 router.get("/", protectMerchant,listProducts);
 
+router.get('/all',protectSuperAdmin,listProductsAll)
+
+router.get("/review-queue", protectSuperAdmin, getPendingProductsAdmin);
+router.patch("/:id/review", protectSuperAdmin, reviewProductAdmin);
 
 router.get("/:id", getProduct);
 
@@ -35,6 +42,8 @@ router.put("/:id", protectMerchant, upload.fields([
 
 
 router.delete("/:id", protectMerchant, deleteProduct);
+
+router.patch("/:id/featured", protectSuperAdmin, toggleFeatured);
 
 
 router.patch("/:id/featured", protectSuperAdmin, toggleFeatured);

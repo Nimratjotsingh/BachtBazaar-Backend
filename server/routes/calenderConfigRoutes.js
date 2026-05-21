@@ -20,6 +20,6 @@ router.post("/admin/sync", protectSuperAdmin, syncCalendarCounts);
 
 // --- SHARED / MERCHANT ENDPOINTS ---
 // Used by merchants to see how many slots are remaining before picking a day
-router.get("/availability", protectMerchant, checkDateAvailability);
+router.get("/availability",  checkDateAvailability);
 
 export default router;

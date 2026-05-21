@@ -8,10 +8,13 @@ import {
   getOfferDetails,
   updateOffer,
   deleteOffer,
-  searchOffersByDisplayType
+  searchOffersByDisplayType,
+  getActiveOffersForToday
 } from "../controllers/offerController.js";
 
 const router = express.Router();
+
+router.get("/today", getActiveOffersForToday);
 
 // Base profile actions bound to authorization layers
 router.post("/", protectMerchant, upload.single("thumbnail"), createOffer);

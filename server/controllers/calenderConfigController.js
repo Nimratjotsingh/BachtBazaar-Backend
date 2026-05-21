@@ -59,25 +59,81 @@ export const setDailySlotLimit = async (req, res) => {
 
 // --- Get Calendar Slot List / View Schedule (Admin View) ---
 export const getCalendarScheduleAdmin = async (req, res) => {
+  console.log('hi')
   try {
     const { start, end } = req.query;
-    let query = {};
-
-    // Allow filtering down to a specific date range window (e.g., viewing a specific month)
-    if (start && end) {
-      query.date = {
-        $gte: normalizeToMidnight(start),
-        $lte: normalizeToMidnight(end)
-      };
+    if (!start || !end) {
+      return res.status(400).json({ success: false, message: "Start and end dates are required query fields." });
     }
 
-    const schedule = await CalendarConfig.find(query).sort({ date: 1 });
-    res.status(200).json({ success: true, data: schedule });
+    const startDate = normalizeToMidnight(start);
+    const endDate = normalizeToMidnight(end);
+
+    // 1. Fetch any explicit override configs saved by the admin
+    const adminConfigs = await CalendarConfig.find({
+      date: { $gte: startDate, $lte: endDate }
+    });
+
+    // 2. Aggregate organic live merchant bookings running during this month window
+    const liveOffersAggregation = await Offer.aggregate([
+      {
+        $match: {
+          display_type: "calendar",
+          is_deleted: false,
+          is_active: true,
+          start_date: { $gte: startDate, $lte: endDate }
+        }
+      },
+      {
+        $group: {
+          _id: "$start_date",
+          count: { $sum: 1 }
+        }
+      }
+    ]);
+
+    // Map live aggregations into a convenient map dictionary: { 'YYYY-MM-DD': count }
+    const liveBookingsMap = {};
+    liveOffersAggregation.forEach(item => {
+      if (item._id) {
+        const dateString = new Date(item._id).toISOString().split("T")[0];
+        liveBookingsMap[dateString] = item.count;
+      }
+    });
+
+    // Map administrative configurations into a dictionary: { 'YYYY-MM-DD': configObject }
+    const configMap = {};
+    adminConfigs.forEach(config => {
+      const dateString = new Date(config.date).toISOString().split("T")[0];
+      configMap[dateString] = config;
+    });
+
+    // 3. Build a complete layout grid array for every day within the query frame range
+    const comprehensiveSchedule = [];
+    let currentStepDate = new Date(startDate);
+
+    while (currentStepDate <= endDate) {
+      const dateKey = currentStepDate.toISOString().split("T")[0];
+      const savedConfig = configMap[dateKey];
+      const liveBookingVolume = liveBookingsMap[dateKey] || 0;
+
+      comprehensiveSchedule.push({
+        date: currentStepDate.toISOString(),
+        max_allowed_offers: savedConfig ? savedConfig.max_allowed_offers : 5, // fallback global limit
+        current_booked_count: Math.max(liveBookingVolume, savedConfig ? savedConfig.current_booked_count : 0),
+        notes: savedConfig ? savedConfig.notes : "",
+        is_locked: savedConfig ? savedConfig.is_locked : false
+      });
+
+      // Advance by 1 day cleanly
+      currentStepDate.setUTCDate(currentStepDate.getUTCDate() + 1);
+    }
+
+    res.status(200).json({ success: true, data: comprehensiveSchedule });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 };
-
 // --- Check specific availability availability (Called by Merchant Form UI) ---
 export const checkDateAvailability = async (req, res) => {
   try {
@@ -119,6 +175,7 @@ export const checkDateAvailability = async (req, res) => {
       slots_remaining: Math.max(0, globalDefaultLimit - liveBookedCount)
     });
   } catch (error) {
+    console.log(error)
     res.status(500).json({ success: false, message: error.message });
   }
 };

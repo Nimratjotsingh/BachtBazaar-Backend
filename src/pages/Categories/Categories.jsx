@@ -23,6 +23,7 @@ const CategoryManagement = ({ token }) => {
       setLoading(true);
       const res = await accountClient.get("/categories", { headers });
       setCategories(res.data.categories || []);
+      console.log(res.data)
     } catch (err) {
       console.error(err);
     } finally {
