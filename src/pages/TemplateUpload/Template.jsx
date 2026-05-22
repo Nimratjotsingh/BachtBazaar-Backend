@@ -327,10 +327,12 @@ const AdminTemplateImageManagement = ({ token }) => {
           <div key={template._id} className="bg-white rounded-2xl border border-blue-100 shadow-sm overflow-hidden group hover:shadow-md transition-all flex flex-col justify-between">
             <div className="h-48 bg-slate-900 relative overflow-hidden flex items-center justify-center">
               {template.url ? (
-                <img src={`${window.location.origin}${template.url}`} className="w-full h-full object-contain group-hover:scale-105 transition duration-500" alt={template.name} />
+                <img src={template.url} className="w-full h-full object-contain group-hover:scale-105 transition duration-500" alt={template.name} />
               ) : (
                 <ImageIcon size={32} className="text-slate-700" />
               )}
+              {console.log(template.url)}
+              
               
               <div className="absolute top-3 left-3 flex gap-1.5 flex-wrap">
                 <span className="px-2 py-0.5 bg-blue-600 text-white text-[9px] font-black rounded-md shadow-sm uppercase tracking-wider">

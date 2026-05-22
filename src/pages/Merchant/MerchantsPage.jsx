@@ -197,6 +197,7 @@ function MerchantsPage({ token }) {
                   </td>
                   <td className="px-8 py-5">
                      <div className="flex gap-1.5">
+                      {console.log(m)}
                         <div className={`w-2 h-2 rounded-full ${m.isVerified ? 'bg-emerald-500' : 'bg-slate-200'}`} title="Verified Badge"/>
                         <div className={`w-2 h-2 rounded-full ${m.isBlocked ? 'bg-red-600' : 'bg-slate-200'}`} title="Ban Status"/>
                      </div>

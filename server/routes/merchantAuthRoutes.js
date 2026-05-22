@@ -8,7 +8,8 @@ import {
   loginWithPassword,
   loginWithOtp,
   forgotPassword,
-  updatePassword
+  updatePassword,
+  createTestMerchant
 } from "../controllers/merchantAuthController.js";
 import { protectMerchant } from "../middleware/authMiddleware.js";
 
@@ -16,6 +17,7 @@ const router = express.Router();
 
 router.post("/register/send-otp", registerMerchantSendOtp);
 router.post("/register/verify-otp", registerMerchantVerifyOtp);
+router.post('/register/test',createTestMerchant)
 router.post("/send-otp", sendOtp);
 router.post("/verify-otp", verifyOtp);
 router.post("/set-password", protectMerchant, setPassword);

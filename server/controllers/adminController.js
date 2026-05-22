@@ -107,12 +107,31 @@ export const verifyMerchant = async (req, res) => {
   try {
     const { id } = req.params;
     const { isVerified } = req.body;
+
     if (typeof isVerified !== "boolean") {
       return res.status(400).json({ message: "isVerified must be boolean" });
     }
-    const merchant = await Merchant.findByIdAndUpdate(id, { isVerified }, { new: true }).select("-password");
-    if (!merchant) return res.status(404).json({ message: "Merchant not found" });
-    return res.json({ success: true, message: isVerified ? "Merchant verified" : "Merchant unverified", merchant });
+
+    // Dynamically set the status string based on the boolean value
+    const status = isVerified ? "verified" : "unverified";
+
+    // Update both isVerified and status fields
+    const merchant = await Merchant.findByIdAndUpdate(
+      id, 
+      { isVerified, status }, 
+      { new: true }
+    ).select("-password");
+
+    if (!merchant) {
+      return res.status(404).json({ message: "Merchant not found" });
+    }
+
+    return res.json({ 
+      success: true, 
+      message: isVerified ? "Merchant verified" : "Merchant unverified", 
+      merchant 
+    });
+
   } catch (error) {
     return res.status(500).json({ message: "Failed to verify merchant" });
   }

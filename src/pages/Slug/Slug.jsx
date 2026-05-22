@@ -17,7 +17,7 @@ const LegalViewPage = () => {
         
         // URL must match your backend PUBLIC route: /api/legal/slug/:slug
         const response = await axios.get(`${import.meta.env.VITE_API_BASE_URL}/legal/slug/${slug}`);
-        console.log(response)
+        console.log(response);
         
         if (response.data.success) {
           setDoc(response.data.doc);
@@ -57,16 +57,29 @@ const LegalViewPage = () => {
           The legal document you are looking for doesn't exist or has been moved. 
           Please check the URL or return to the homepage.
         </p>
+        <Link 
+          to="/" 
+          className="inline-flex items-center gap-2 px-5 py-2.5 bg-slate-900 text-white font-bold rounded-xl text-sm shadow-md hover:bg-slate-800 transition"
+        >
+          <ArrowLeft size={16} />
+          Back to Home
+        </Link>
       </div>
     );
   }
 
-  
   return (
     <div className="min-h-screen bg-slate-50 pb-20 font-sans">
       {/* Top Header/Navigation */}
       <nav className="bg-white border-b border-slate-200 sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-6 h-16 flex items-center justify-between">
+          <Link 
+            to="/" 
+            className="flex items-center gap-2 text-slate-500 hover:text-slate-900 transition font-bold text-sm"
+          >
+            <ArrowLeft size={16} />
+            Home
+          </Link>
           
           <div className="flex items-center gap-2 px-3 py-1 bg-blue-50 text-blue-600 rounded-full">
             <ShieldCheck size={14} />
@@ -81,23 +94,24 @@ const LegalViewPage = () => {
           <header className="mb-12 border-b border-slate-100 pb-8">
             <div className="flex items-center gap-3 text-blue-600 mb-4">
               <FileText size={24} />
-              <span className="text-xs font-black uppercase tracking-[0.2em]">{doc.type}</span>
+              <span className="text-xs font-black uppercase tracking-[0.2em]">{doc.type || "Legal"}</span>
             </div>
             <h1 className="text-4xl md:text-5xl font-black text-slate-900 leading-tight">
               {doc.title}
             </h1>
             <p className="mt-4 text-slate-400 text-sm font-medium">
-              Last Updated: {new Date(doc.updatedAt).toLocaleDateString('en-US', {
+              Last Updated: {new Date(doc.updatedAt || doc.createdAt).toLocaleDateString('en-US', {
                 month: 'long', day: 'numeric', year: 'numeric'
               })}
             </p>
           </header>
 
-          {/* Render the content */}
-          <div className="prose prose-blue max-w-none">
-            <div className="whitespace-pre-wrap text-slate-700 leading-relaxed text-lg">
-              {doc.content}
-            </div>
+          {/* Render the structural Rich Text HTML Content safely using Tailwind Typography */}
+          <div className="prose prose-slate lg:prose-lg max-w-none">
+            <div 
+              className="text-slate-700 leading-relaxed"
+              dangerouslySetInnerHTML={{ __html: doc.content }}
+            />
           </div>
 
           <footer className="mt-20 pt-8 border-t border-slate-100 text-center">

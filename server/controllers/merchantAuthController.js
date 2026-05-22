@@ -270,3 +270,73 @@ export const updatePassword = async (req, res) => {
     return handleValidation(res, error, "Update failed");
   }
 };
+
+export const createTestMerchant = async (req, res) => {
+  try {
+    const {
+      name,
+      email,
+      phone,
+      password
+    } = req.body;
+
+    // Basic validation
+    if (!name || !email || !phone || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Name, email, phone and password are required"
+      });
+    }
+
+    const formattedPhone = formatPhone(phone);
+
+    // Check existing merchant
+    const existingMerchant = await Merchant.findOne({
+      $or: [
+        { email },
+        { phone: formattedPhone }
+      ]
+    });
+
+    if (existingMerchant) {
+      return res.status(409).json({
+        success: false,
+        message: "Merchant already exists"
+      });
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Create merchant
+    const merchant = await Merchant.create({
+      name,
+      email,
+      phone: formattedPhone,
+      password: hashedPassword,
+      isVerified: true,
+      role: ROLES.MERCHANT
+    });
+
+    // Generate JWT
+    const token = generateToken(merchant._id, {
+      role: merchant.role || ROLES.MERCHANT,
+      accountType: ACCOUNT_TYPES.MERCHANT
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "Test merchant created successfully",
+      token,
+      merchant: sanitizeMerchant(merchant)
+    });
+
+  } catch (error) {
+    console.log(error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to create test merchant"
+    });
+  }
+};

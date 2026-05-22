@@ -7,7 +7,7 @@ export const createTemplateImage = async (req, res) => {
 
     // 1. Process File Upload path from Multer
     if (req.file) {
-      data.url = `/uploads/templates/${req.file.filename}`;
+      data.url = `/uploads/${req.file.filename}`;
     } else if (req.files && req.files.image) {
       // Fallback if using upload.fields instead of upload.single
       data.url = `/uploads/${req.files.image[0].filename}`;
@@ -80,16 +80,19 @@ export const updateTemplateImage = async (req, res) => {
     const { id } = req.params;
     let updates = { ...req.body };
 
+    console.log(updates)
+
     // 1. Process replacement layout image if uploaded
     if (req.file) {
       updates.url = `/uploads/${req.file.filename}`;
     } else if (req.files && req.files.image) {
-      updates.url = `/uploads/templates/${req.files.image[0].filename}`;
+      updates.url = `/uploads/${req.files.image[0].filename}`;
     }
 
     // 2. Maintain standard null structures for unassigned fields
     if (updates.category_id === "none" || updates.category_id === "") updates.category_id = null;
     if (updates.subcategory_id === "none" || updates.subcategory_id === "") updates.subcategory_id = null;
+    if (updates.offertype_id === "none" || updates.offertype_id === "") updates.offertype_id = null;
 
     // 3. Process stringified tags
     if (typeof updates.tags === "string") {
@@ -147,7 +150,7 @@ export const incrementTemplateUsage = async (req, res) => {
 // --- Read/List Templates (Merchant Custom Catalog View) ---
 export const getTemplateImagesMerchant = async (req, res) => {
   try {
-    const { category_id, subcategory_id, offertype_id, theme, ratio } = req.query;
+    const { category_id, subcategory_id, offertype_id, theme, ratio,product_id } = req.query;
 
     // Base query targeting active, non-deleted template assets
     let query = { 

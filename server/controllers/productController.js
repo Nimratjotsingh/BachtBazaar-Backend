@@ -262,6 +262,7 @@ export const updateProduct = async (req, res) => {
   try {
     const { id } = req.params;
     let updates = { ...req.body };
+    
 
     if (req.files && req.files.thumbnail) {
       updates.thumbnail = `/uploads/${req.files.thumbnail[0].filename}`;
@@ -277,6 +278,7 @@ export const updateProduct = async (req, res) => {
     if (updates.subcategory_id && typeof updates.subcategory_id === 'string') {
         updates.subcategory_id = [updates.subcategory_id];
     }
+
 
     // CRITICAL SECURITY FLUX: Reset status to pending upon modifications
     updates.approval_status = "pending";
