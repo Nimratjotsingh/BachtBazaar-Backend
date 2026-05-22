@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { adminClient, buildAuthHeaders } from "../lib/api";
 import { 
   Search, RotateCcw, Ban, Trash2, 
   ChevronLeft, ChevronRight, ShieldAlert, Loader2,
   X, Mail, MapPin, Calendar, Smartphone, Eye, 
-  User as UserIcon, ShieldCheck, Hash, UserCircle
+  User as UserIcon, ShieldCheck, Hash, UserCircle, AlertCircle
 } from "lucide-react";
 
 // --- Helper: Convert Buffer to Base64 ---
@@ -40,9 +40,14 @@ function UsersPage({ token }) {
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState("");
   
-  // Sidebar State
+  // Sidebar Drawer States
   const [selectedUser, setSelectedUser] = useState(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+
+  // Ban Reason Popup Modal States
+  const [isBanModalOpen, setIsBanModalOpen] = useState(false);
+  const [banReasonInput, setBanReasonInput] = useState("");
+  const [submittingAction, setSubmittingAction] = useState(false);
 
   const headers = useMemo(() => buildAuthHeaders(token), [token]);
 
@@ -56,7 +61,6 @@ function UsersPage({ token }) {
       setItems(response.data.users || []);
       setTotalPages(response.data.pages || 1);
       
-      // CRITICAL: Re-sync the selected user data if the drawer is open
       if (selectedUser) {
         const freshUserData = (response.data.users || []).find(u => u._id === selectedUser._id);
         if (freshUserData) setSelectedUser(freshUserData);
@@ -76,12 +80,43 @@ function UsersPage({ token }) {
     setFeedback("");
     try {
       await actionFn();
-      // Instantly reload to ensure "Truth" from server
       await loadUsers();
       return true;
     } catch (err) {
       setFeedback(err.response?.data?.message || "Action failed");
       return false;
+    }
+  };
+
+  // Triggers the decision flow step logic safely
+  const handleSecurityStatusToggle = () => {
+    if (selectedUser.status === "banned") {
+      // If user is already banned, unban directly without asking for a justification reason
+      runAction(() => 
+        adminClient.put(`/users/${selectedUser._id}/status`, { status: "active" }, { headers })
+      );
+    } else {
+      // Open the administrative reason context input modal overlay
+      setBanReasonInput("");
+      setIsBanModalOpen(true);
+    }
+  };
+
+  const handleConfirmBanSubmit = async (e) => {
+    e.preventDefault();
+    setSubmittingAction(true);
+    
+    const success = await runAction(() => 
+      adminClient.put(
+        `/users/${selectedUser._id}/status`, 
+        { status: "banned", bannedReason: banReasonInput }, 
+        { headers }
+      )
+    );
+
+    setSubmittingAction(false);
+    if (success) {
+      setIsBanModalOpen(false);
     }
   };
 
@@ -97,7 +132,7 @@ function UsersPage({ token }) {
   };
 
   return (
-    <div className="max-w-[1600px] mx-auto p-6 space-y-8 min-h-screen bg-[#F8FAFC]">
+    <div className="max-w-[1600px] mx-auto p-6 space-y-8 min-h-screen bg-[#F8FAFC] relative">
       
       {/* --- Dashboard Header --- */}
       <header className="flex flex-col lg:flex-row lg:items-end justify-between gap-6">
@@ -107,16 +142,16 @@ function UsersPage({ token }) {
         </div>
         
         <div className="flex items-center gap-3">
-            <div className="bg-white border border-slate-200 px-6 py-3 rounded-2xl shadow-sm">
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Users</p>
-                <p className="text-xl font-black text-slate-900">{items.length * totalPages}</p>
-            </div>
-            <button 
-                onClick={() => {setSearch(""); setPage(1); loadUsers();}} 
-                className="p-4 bg-white border border-slate-200 rounded-2xl hover:bg-slate-50 text-indigo-600 transition shadow-sm"
-            >
-                <RotateCcw size={20} />
-            </button>
+          <div className="bg-white border border-slate-200 px-6 py-3 rounded-2xl shadow-sm">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Users</p>
+            <p className="text-xl font-black text-slate-900">{items.length * totalPages}</p>
+          </div>
+          <button 
+            onClick={() => {setSearch(""); setPage(1); loadUsers();}} 
+            className="p-4 bg-white border border-slate-200 rounded-2xl hover:bg-slate-50 text-indigo-600 transition shadow-sm cursor-pointer"
+          >
+            <RotateCcw size={20} />
+          </button>
         </div>
       </header>
 
@@ -125,14 +160,14 @@ function UsersPage({ token }) {
         <form className="relative flex-1 group" onSubmit={submitSearch}>
           <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-indigo-500 transition-colors" size={20} />
           <input
-            className="w-full pl-14 pr-6 py-4 bg-slate-50 border-transparent rounded-[1.5rem] text-sm font-bold outline-none transition-all focus:bg-white focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-500"
+            className="w-full pl-14 pr-6 py-4 bg-slate-50 border-transparent rounded-[1.5rem] text-sm font-bold outline-none transition-all focus:bg-white focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-500 text-slate-700"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by name, phone, or unique ID..."
           />
         </form>
-        <button onClick={submitSearch} className="px-10 py-4 bg-slate-900 text-white rounded-[1.5rem] font-black text-xs uppercase tracking-widest hover:bg-indigo-600 transition-all shadow-lg shadow-slate-200">
-            Apply Filters
+        <button onClick={submitSearch} className="px-10 py-4 bg-slate-900 text-white rounded-[1.5rem] font-black text-xs uppercase tracking-widest hover:bg-indigo-600 transition-all shadow-lg shadow-slate-200 cursor-pointer">
+          Apply Filters
         </button>
       </div>
 
@@ -156,12 +191,16 @@ function UsersPage({ token }) {
             </thead>
             <tbody className="divide-y divide-slate-50">
               {loading ? (
-                <tr><td colSpan="4" className="py-32 text-center">
+                <tr>
+                  <td colSpan="4" className="py-32 text-center">
                     <Loader2 className="animate-spin inline-block text-indigo-600 mb-4" size={40} />
                     <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Fetching Platform Identities...</p>
-                </td></tr>
+                  </td>
+                </tr>
               ) : items.length === 0 ? (
-                <tr><td colSpan="4" className="py-32 text-center text-slate-400 font-bold uppercase text-xs tracking-widest italic">No matching identities found</td></tr>
+                <tr>
+                  <td colSpan="4" className="py-32 text-center text-slate-400 font-bold uppercase text-xs tracking-widest italic">No matching identities found</td>
+                </tr>
               ) : (
                 items.map((user) => {
                   const userImg = getImageUrl(user.profileImage);
@@ -183,8 +222,8 @@ function UsersPage({ token }) {
                         </div>
                       </td>
                       <td className="px-8 py-6 font-bold text-slate-600 text-sm">
-                          <div className="flex items-center gap-2 mb-1"><Smartphone size={12} className="text-slate-300"/> {user.phone}</div>
-                          <div className="flex items-center gap-2"><Mail size={12} className="text-slate-300"/> {user.email || "No Email"}</div>
+                        <div className="flex items-center gap-2 mb-1"><Smartphone size={12} className="text-slate-300"/> {user.phone}</div>
+                        <div className="flex items-center gap-2"><Mail size={12} className="text-slate-300"/> {user.email || "No Email"}</div>
                       </td>
                       <td className="px-8 py-6 text-center">
                         <span className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${user.status === 'banned' ? 'bg-rose-50 text-rose-600 border-rose-100 shadow-sm shadow-rose-100' : 'bg-emerald-50 text-emerald-600 border-emerald-100 shadow-sm shadow-emerald-100'}`}>
@@ -192,12 +231,12 @@ function UsersPage({ token }) {
                         </span>
                       </td>
                       <td className="px-10 py-6 text-right">
-                        <button onClick={() => openUserDrawer(user)} className="p-4 bg-slate-100 text-slate-400 rounded-2xl hover:bg-indigo-600 hover:text-white transition-all shadow-sm">
+                        <button onClick={() => openUserDrawer(user)} className="p-4 bg-slate-100 text-slate-400 rounded-2xl hover:bg-indigo-600 hover:text-white transition-all shadow-sm cursor-pointer">
                           <Eye size={20} />
                         </button>
                       </td>
                     </tr>
-                  )
+                  );
                 })
               )}
             </tbody>
@@ -208,8 +247,8 @@ function UsersPage({ token }) {
         <div className="bg-slate-50/80 px-10 py-6 flex items-center justify-between border-t border-slate-100">
            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Identities {((page - 1) * 10) + 1} - {page * items.length}</span>
            <div className="flex gap-3">
-             <button disabled={page === 1} onClick={() => setPage(p => p - 1)} className="p-3 bg-white border border-slate-200 rounded-xl disabled:opacity-30 hover:bg-slate-50 shadow-sm transition-all"><ChevronLeft size={20}/></button>
-             <button disabled={page === totalPages} onClick={() => setPage(p => p + 1)} className="p-3 bg-white border border-slate-200 rounded-xl disabled:opacity-30 hover:bg-slate-50 shadow-sm transition-all"><ChevronRight size={20}/></button>
+             <button disabled={page === 1} onClick={() => setPage(p => p - 1)} className="p-3 bg-white border border-slate-200 rounded-xl disabled:opacity-30 hover:bg-slate-50 shadow-sm transition-all cursor-pointer"><ChevronLeft size={20}/></button>
+             <button disabled={page === totalPages} onClick={() => setPage(p => p + 1)} className="p-3 bg-white border border-slate-200 rounded-xl disabled:opacity-30 hover:bg-slate-50 shadow-sm transition-all cursor-pointer"><ChevronRight size={20}/></button>
            </div>
         </div>
       </div>
@@ -225,29 +264,35 @@ function UsersPage({ token }) {
                 <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Identity Audit</h2>
                 <p className="text-xs font-bold text-slate-400 uppercase tracking-[0.2em] mt-1">Member File Record</p>
               </div>
-              <button onClick={() => setIsDrawerOpen(false)} className="p-3 bg-slate-50 text-slate-400 hover:text-rose-600 rounded-2xl transition-all">
+              <button onClick={() => setIsDrawerOpen(false)} className="p-3 bg-slate-50 text-slate-400 hover:text-rose-600 rounded-2xl transition-all cursor-pointer">
                 <X size={24} />
               </button>
             </div>
 
             {/* Profile Avatar Section */}
             <div className="relative group">
-                <div className="absolute -inset-1 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-[3rem] blur opacity-20 group-hover:opacity-40 transition duration-1000"></div>
-                <div className="relative flex flex-col items-center p-10 bg-white rounded-[2.8rem] border border-slate-100 shadow-xl">
-                  <div className="h-28 w-28 rounded-[2.2rem] bg-indigo-600 overflow-hidden flex items-center justify-center text-white text-5xl font-black mb-6 shadow-2xl shadow-indigo-200 ring-8 ring-indigo-50">
-                    {getImageUrl(selectedUser.profileImage) ? (
-                      <img src={getImageUrl(selectedUser.profileImage)} alt={selectedUser.name} className="w-full h-full object-cover" />
-                    ) : (
-                      selectedUser.name?.[0]?.toUpperCase()
-                    )}
-                  </div>
-                  <h3 className="text-2xl font-black text-slate-900">{selectedUser.name}</h3>
-                  <div className="flex gap-2 mt-4">
-                    <span className={`px-5 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${selectedUser.status === 'banned' ? 'bg-rose-500 text-white' : 'bg-emerald-500 text-white'}`}>
-                        {selectedUser.status}
-                    </span>
-                  </div>
+              <div className="absolute -inset-1 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-[3rem] blur opacity-20 group-hover:opacity-40 transition duration-1000"></div>
+              <div className="relative flex flex-col items-center p-10 bg-white rounded-[2.8rem] border border-slate-100 shadow-xl">
+                <div className="h-28 w-28 rounded-[2.2rem] bg-indigo-600 overflow-hidden flex items-center justify-center text-white text-5xl font-black mb-6 shadow-2xl shadow-indigo-200 ring-8 ring-indigo-50">
+                  {getImageUrl(selectedUser.profileImage) ? (
+                    <img src={getImageUrl(selectedUser.profileImage)} alt={selectedUser.name} className="w-full h-full object-cover" />
+                  ) : (
+                    selectedUser.name?.[0]?.toUpperCase()
+                  )}
                 </div>
+                <h3 className="text-2xl font-black text-slate-900">{selectedUser.name}</h3>
+                <div className="flex gap-2 mt-4">
+                  <span className={`px-5 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${selectedUser.status === 'banned' ? 'bg-rose-500 text-white' : 'bg-emerald-500 text-white'}`}>
+                    {selectedUser.status}
+                  </span>
+                </div>
+                {selectedUser.status === "banned" && selectedUser.bannedReason && (
+                  <div className="w-full mt-5 p-3.5 bg-rose-50 border border-rose-100 text-rose-700 text-xs rounded-xl font-medium leading-relaxed">
+                    <span className="font-bold uppercase tracking-wide block text-[10px] text-rose-500 mb-1">Reason for Ban:</span>
+                    "{selectedUser.bannedReason}"
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Core Identity Records */}
@@ -267,15 +312,15 @@ function UsersPage({ token }) {
 
             {/* Location Data */}
             <div className="space-y-4">
-                <div className="flex items-center gap-3 px-2 mb-2">
-                    <MapPin size={18} className="text-rose-500" />
-                    <h4 className="text-xs font-black text-slate-900 uppercase tracking-widest">Primary Residence</h4>
-                </div>
-                <div className="p-6 bg-rose-50/30 border border-rose-100 rounded-3xl">
-                    <p className="text-sm font-bold text-slate-700 leading-relaxed italic">
-                        "{selectedUser.address || "No residence address recorded in profile metadata."}"
-                    </p>
-                </div>
+              <div className="flex items-center gap-3 px-2 mb-2">
+                <MapPin size={18} className="text-rose-500" />
+                <h4 className="text-xs font-black text-slate-900 uppercase tracking-widest">Primary Residence</h4>
+              </div>
+              <div className="p-6 bg-rose-50/30 border border-rose-100 rounded-3xl">
+                <p className="text-sm font-bold text-slate-700 leading-relaxed italic">
+                  "{selectedUser.address || "No residence address recorded in profile metadata."}"
+                </p>
+              </div>
             </div>
 
             {/* Platform Security Console */}
@@ -287,8 +332,8 @@ function UsersPage({ token }) {
                
                <div className="flex gap-4">
                   <button 
-                    onClick={() => runAction(() => adminClient.put(`/users/${selectedUser._id}/status`, { status: selectedUser.status === "banned" ? "active" : "banned" }, { headers }))}
-                    className={`flex-1 flex flex-col items-center justify-center gap-3 py-6 rounded-3xl border-2 transition-all ${selectedUser.status === 'banned' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-500' : 'border-rose-500/30 bg-rose-500/10 text-rose-500 hover:bg-rose-500 hover:text-white'}`}
+                    onClick={handleSecurityStatusToggle}
+                    className={`flex-1 flex flex-col items-center justify-center gap-3 py-6 rounded-3xl border-2 transition-all cursor-pointer ${selectedUser.status === 'banned' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-500 hover:bg-emerald-600 hover:text-white hover:border-emerald-600' : 'border-rose-500/30 bg-rose-500/10 text-rose-500 hover:bg-rose-500 hover:text-white hover:border-rose-500'}`}
                   >
                     <Ban size={24}/> 
                     <span className="text-[10px] font-black uppercase tracking-widest">{selectedUser.status === 'banned' ? 'Revoke Ban' : 'Enforce Ban'}</span>
@@ -296,7 +341,7 @@ function UsersPage({ token }) {
                   
                   <button 
                     onClick={() => { if(window.confirm("FATAL ACTION: Delete identity permanently?")) runAction(() => adminClient.delete(`/users/${selectedUser._id}`, { headers })).then(() => setIsDrawerOpen(false)); }}
-                    className="w-24 flex flex-col items-center justify-center gap-3 py-6 border-2 border-white/10 rounded-3xl text-white/30 hover:bg-rose-600 hover:text-white hover:border-rose-600 transition-all"
+                    className="w-24 flex flex-col items-center justify-center gap-3 py-6 border-2 border-white/10 rounded-3xl text-white/30 hover:bg-rose-600 hover:text-white hover:border-rose-600 transition-all cursor-pointer"
                   >
                     <Trash2 size={24}/>
                     <span className="text-[10px] font-black uppercase tracking-widest">Delete User</span>
@@ -306,6 +351,62 @@ function UsersPage({ token }) {
           </div>
         )}
       </aside>
+
+      {/* --- ADMINISTRATIVE BAN REASON OVERLAY MODAL --- */}
+      {isBanModalOpen && (
+        <div className="fixed inset-0 z-[200] bg-slate-900/50 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <form 
+            onSubmit={handleConfirmBanSubmit}
+            className="bg-white border border-slate-100 p-6 rounded-[2rem] max-w-md w-full shadow-2xl space-y-4 transform scale-in duration-200"
+          >
+            <div className="flex items-start gap-3 text-rose-600">
+              <div className="p-2 bg-rose-50 rounded-xl">
+                <AlertCircle size={22} />
+              </div>
+              <div>
+                <h3 className="text-lg font-black text-slate-900 leading-tight">Enforce Account Ban</h3>
+                <p className="text-xs text-slate-400 mt-0.5">State the operational reason for locking this member profile record.</p>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Justification Reason</label>
+              <textarea
+                required
+                rows="3"
+                value={banReasonInput}
+                onChange={(e) => setBanReasonInput(e.target.value)}
+                placeholder="e.g., Repeated fraudulent coupon application, platform guideline violation..."
+                className="w-full text-sm font-semibold p-3.5 bg-slate-50 border border-slate-100 rounded-xl outline-none focus:ring-2 focus:ring-rose-500 text-slate-700 resize-none transition-all placeholder-slate-300"
+              />
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsBanModalOpen(false)}
+                disabled={submittingAction}
+                className="flex-1 h-11 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs uppercase tracking-wider transition cursor-pointer"
+              >
+                Dismiss
+              </button>
+              <button
+                type="submit"
+                disabled={submittingAction}
+                className="flex-1 h-11 bg-rose-600 hover:bg-rose-700 text-white font-black rounded-xl text-xs uppercase tracking-wider transition shadow-lg shadow-rose-100 flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                {submittingAction ? (
+                  <Loader2 className="animate-spin" size={14} />
+                ) : (
+                  <>
+                    <Ban size={14} /> Commit Ban Run
+                  </>
+                )}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {/* --- Backdrop Blur for Drawer --- */}
       {isDrawerOpen && <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[90] animate-in fade-in" onClick={() => setIsDrawerOpen(false)} />}

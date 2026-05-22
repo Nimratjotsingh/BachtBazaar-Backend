@@ -287,22 +287,45 @@ export const updateUser = async (req, res) => {
 export const updateUserStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const { status } = req.body;
+    const { status, bannedReason } = req.body; // Extracted bannedReason from request body
+
     if (!status || !["active", "banned"].includes(status)) {
       return res.status(400).json({ message: "Invalid status" });
     }
 
-    if(status ==='banned'){
-      await User.findByIdAndUpdate(id,{isVerified: false});
+    // Build the dynamic update payload
+    let updateFields = { status };
+
+    if (status === "banned") {
+      updateFields.isVerified = false; // Demote verification status on ban
+      updateFields.bannedReason = bannedReason?.trim() || "Violated platform community guidelines.";
+    } else {
+      // If switching back to active, strip out the historic restriction reason
+      updateFields.bannedReason = null; 
     }
-    const user = await User.findByIdAndUpdate(id, { status }, { new: true }).select("-password");
-    if (!user) return res.status(404).json({ message: "User not found" });
-    return res.json({ success: true, message: `User ${status === "banned" ? "banned" : "unbanned"}`, user });
+
+    // Update everything cleanly in a single execution block
+    const user = await User.findByIdAndUpdate(
+      id, 
+      updateFields, 
+      { new: true }
+    ).select("-password");
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    return res.json({ 
+      success: true, 
+      message: `User successfully ${status === "banned" ? "banned" : "unbanned"}.`, 
+      user 
+    });
+
   } catch (error) {
+    console.error("User Status Update Error:", error);
     return res.status(500).json({ message: "Failed to update user status" });
   }
 };
-
 // Delete user
 export const deleteUser = async (req, res) => {
   try {

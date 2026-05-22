@@ -1,25 +1,25 @@
 import mongoose from "mongoose";
 import { ROLES } from "../constants/roles.js";
 
-const userSchema=new mongoose.Schema({
+const userSchema = new mongoose.Schema({
   phone: {
-    type:String,
-    required:true,
-    unique:true
+    type: String,
+    required: true,
+    unique: true
   },
   password: {
-    type:String
+    type: String
   },
   isVerified: {
-    type:Boolean,
-    default:false
+    type: Boolean,
+    default: false
   },
   role: {
     type: String,
     enum: [ROLES.USER, ROLES.SUPER_ADMIN],
     default: ROLES.USER
   },
-   name: {
+  name: {
     type: String
   },
   gender: {
@@ -29,7 +29,7 @@ const userSchema=new mongoose.Schema({
   address: {
     type: String
   },
-  email:{
+  email: {
     unique: true,
     type: String
   },
@@ -42,14 +42,19 @@ const userSchema=new mongoose.Schema({
     enum: ["active", "banned"],
     default: "active"
   },
+  // Added field to log administrative block justifications
+  bannedReason: {
+    type: String,
+    default: null
+  },
   isDeleted: {
-  type: Boolean,
-  default: false
-},
-deletedAt: {
-  type: Date,
-  default: null
-}
-}, { timestamps:true });
+    type: Boolean,
+    default: false
+  },
+  deletedAt: {
+    type: Date,
+    default: null
+  }
+}, { timestamps: true });
 
-export default mongoose.model("User",userSchema);
+export default mongoose.model("User", userSchema);

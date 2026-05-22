@@ -21,18 +21,14 @@ const getImageUrl = (imageObj) => {
 };
 
 // --- Sub-Component: Image Display ---
-const DataImage = ({ imageObj, label, fallbackIcon: Icon }) => {
+const DataImage = ({ imageObj, label }) => {
   const src = getImageUrl(imageObj);
 
-  if (!src) return (
-    <div className="flex flex-col items-center justify-center p-6 bg-slate-100 rounded-2xl border-2 border-dashed border-slate-200 text-slate-400">
-      <Icon size={24} className="mb-2 opacity-50" />
-      <span className="text-[10px] font-bold uppercase tracking-tighter">No {label}</span>
-    </div>
-  );
+  // CRITICAL FIX: Retain null if image doesn't exist so parent grid components can handle hiding it entirely
+  if (!src) return null;
 
   return (
-    <div className="space-y-2 group">
+    <div className="space-y-2 group w-full animate-in fade-in duration-300">
       <div className="relative aspect-video rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 shadow-sm">
         <img src={src} alt={label} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
         <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
@@ -41,7 +37,7 @@ const DataImage = ({ imageObj, label, fallbackIcon: Icon }) => {
               const win = window.open();
               win.document.write(`<title>${label}</title><body style="margin:0; background:#000; display:flex; align-items:center; justify-content:center;"><img src="${src}" style="max-width:100%; max-height:100vh; shadow: 0 0 50px rgba(0,0,0,0.5);"></body>`);
             }}
-            className="p-2 bg-white text-slate-900 rounded-full hover:scale-110 transition-transform shadow-xl"
+            className="p-2 bg-white text-slate-900 rounded-full hover:scale-110 transition-transform shadow-xl cursor-pointer"
           >
             <ExternalLink size={18} />
           </button>
@@ -134,7 +130,7 @@ function MerchantsPage({ token }) {
               <p className="text-sm font-black text-slate-900">{page} / {totalPages}</p>
             </div>
           </div>
-          <button onClick={loadMerchants} className="p-4 bg-white border rounded-2xl hover:bg-slate-50 text-slate-600 transition shadow-sm">
+          <button onClick={loadMerchants} className="p-4 bg-white border rounded-2xl hover:bg-slate-50 text-slate-600 transition shadow-sm cursor-pointer">
             <RotateCcw size={20} />
           </button>
         </div>
@@ -147,7 +143,7 @@ function MerchantsPage({ token }) {
           className="w-full pl-14 pr-6 py-4 bg-white border border-slate-200 rounded-[24px] shadow-sm outline-none focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-500 transition-all text-slate-700 font-medium"
           placeholder="Search by name, email, or merchant UID..."
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) => setSearchTerm(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && loadMerchants()}
         />
       </div>
@@ -211,7 +207,7 @@ function MerchantsPage({ token }) {
                     </span>
                   </td>
                   <td className="px-8 py-5 text-right">
-                    <button onClick={() => fetchMerchantAudit(m)} className="p-3 bg-slate-100 text-slate-600 rounded-2xl hover:bg-indigo-600 hover:text-white transition shadow-sm group-hover:scale-105">
+                    <button onClick={() => fetchMerchantAudit(m)} className="p-3 bg-slate-100 text-slate-600 rounded-2xl hover:bg-indigo-600 hover:text-white transition shadow-sm group-hover:scale-105 cursor-pointer">
                       <Eye size={20} />
                     </button>
                   </td>
@@ -224,8 +220,8 @@ function MerchantsPage({ token }) {
         <div className="p-6 bg-slate-50 border-t border-slate-100 flex justify-between items-center">
             <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Page Control</p>
             <div className="flex gap-2">
-                <button disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="p-2.5 bg-white border rounded-xl shadow-sm hover:bg-slate-50 disabled:opacity-30 transition"><ChevronLeft size={20}/></button>
-                <button disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} className="p-2.5 bg-white border rounded-xl shadow-sm hover:bg-slate-50 disabled:opacity-30 transition"><ChevronRight size={20}/></button>
+                <button disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="p-2.5 bg-white border rounded-xl shadow-sm hover:bg-slate-50 disabled:opacity-30 transition cursor-pointer"><ChevronLeft size={20}/></button>
+                <button disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} className="p-2.5 bg-white border rounded-xl shadow-sm hover:bg-slate-50 disabled:opacity-30 transition cursor-pointer"><ChevronRight size={20}/></button>
             </div>
         </div>
       </div>
@@ -244,7 +240,7 @@ function MerchantsPage({ token }) {
                 </div>
                 <p className="text-xs font-bold text-slate-400 tracking-[0.2em] uppercase">UID: {editingMerchant._id}</p>
               </div>
-              <button onClick={() => setEditingMerchant(null)} className="p-3 hover:bg-slate-100 rounded-full transition"><X size={28}/></button>
+              <button onClick={() => setEditingMerchant(null)} className="p-3 hover:bg-slate-100 rounded-full transition cursor-pointer"><X size={28}/></button>
             </div>
 
             <div className="p-10 space-y-12">
@@ -303,18 +299,23 @@ function MerchantsPage({ token }) {
 
                   {/* SHOP MEDIA */}
                   {fullData.shop && (
-                    <section className="space-y-6">
-                      <div className="flex items-center gap-3 text-pink-600">
-                          <Eye size={20}/>
-                          <h3 className="font-black text-sm uppercase tracking-widest">Store Branding</h3>
-                      </div>
-                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                          <DataImage imageObj={fullData.shop.banner} label="Shop Banner" fallbackIcon={Store} />
-                          <div className="max-w-xs">
-                             <DataImage imageObj={fullData.shop.logo} label="Store Logo" fallbackIcon={Store} />
-                          </div>
-                      </div>
-                    </section>
+                    // CRITICAL FIX: Conditionally display entire row container section only if banner OR logo media assets are present in DB
+                    (getImageUrl(fullData.shop.banner) || getImageUrl(fullData.shop.logo)) ? (
+                      <section className="space-y-6">
+                        <div className="flex items-center gap-3 text-pink-600">
+                            <Eye size={20}/>
+                            <h3 className="font-black text-sm uppercase tracking-widest">Store Branding</h3>
+                        </div>
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+                            {getImageUrl(fullData.shop.banner) && <DataImage imageObj={fullData.shop.banner} label="Shop Banner" />}
+                            {getImageUrl(fullData.shop.logo) && (
+                              <div className="max-w-xs">
+                                 <DataImage imageObj={fullData.shop.logo} label="Store Logo" />
+                              </div>
+                            )}
+                        </div>
+                      </section>
+                    ) : null
                   )}
 
                   {/* PERSONAL KYC */}
@@ -323,10 +324,10 @@ function MerchantsPage({ token }) {
                           <UserKeyIcon size={20}/>
                           <h3 className="font-black text-sm uppercase tracking-widest">Personal Identification</h3>
                       </div>
-                      {fullData.documents?.personal ? (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                            <DataImage imageObj={fullData.documents.personal.aadharImage} label="Aadhar Card" fallbackIcon={FileBadge} />
-                            <DataImage imageObj={fullData.documents.personal.panImage} label="PAN Card" fallbackIcon={FileBadge} />
+                      {fullData.documents?.personal && (getImageUrl(fullData.documents.personal.aadharImage) || getImageUrl(fullData.documents.personal.panImage)) ? (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
+                            {getImageUrl(fullData.documents.personal.aadharImage) && <DataImage imageObj={fullData.documents.personal.aadharImage} label="Aadhar Card" />}
+                            {getImageUrl(fullData.documents.personal.panImage) && <DataImage imageObj={fullData.documents.personal.panImage} label="PAN Card" />}
                         </div>
                       ) : (
                         <div className="p-8 bg-red-50 border border-red-100 rounded-3xl text-red-600 font-bold text-center text-xs uppercase tracking-widest">Missing Personal Documents</div>
@@ -339,13 +340,18 @@ function MerchantsPage({ token }) {
                           <FileBadge size={20}/>
                           <h3 className="font-black text-sm uppercase tracking-widest">Business Compliance</h3>
                       </div>
-                      {fullData.documents?.business ? (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
-                            <DataImage imageObj={fullData.documents.business.gstImage} label="GST Certificate" fallbackIcon={Building2} />
-                            <DataImage imageObj={fullData.documents.business.panImage} label="Business PAN" fallbackIcon={Building2} />
-                            <DataImage imageObj={fullData.documents.business.tradeLicenseImage} label="Trade License" fallbackIcon={Building2} />
-                            <DataImage imageObj={fullData.documents.business.fssaiImage} label="FSSAI License" fallbackIcon={Building2} />
-                            <DataImage imageObj={fullData.documents.business.shopRegistrationImage} label="Shop Registration" fallbackIcon={Building2} />
+                      {fullData.documents?.business && 
+                      (getImageUrl(fullData.documents.business.gstImage) || 
+                       getImageUrl(fullData.documents.business.panImage) || 
+                       getImageUrl(fullData.documents.business.tradeLicenseImage) || 
+                       getImageUrl(fullData.documents.business.fssaiImage) || 
+                       getImageUrl(fullData.documents.business.shopRegistrationImage)) ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 items-start">
+                            {getImageUrl(fullData.documents.business.gstImage) && <DataImage imageObj={fullData.documents.business.gstImage} label="GST Certificate" />}
+                            {getImageUrl(fullData.documents.business.panImage) && <DataImage imageObj={fullData.documents.business.panImage} label="Business PAN" />}
+                            {getImageUrl(fullData.documents.business.tradeLicenseImage) && <DataImage imageObj={fullData.documents.business.tradeLicenseImage} label="Trade License" />}
+                            {getImageUrl(fullData.documents.business.fssaiImage) && <DataImage imageObj={fullData.documents.business.fssaiImage} label="FSSAI License" />}
+                            {getImageUrl(fullData.documents.business.shopRegistrationImage) && <DataImage imageObj={fullData.documents.business.shopRegistrationImage} label="Shop Registration" />}
                         </div>
                       ) : (
                         <div className="p-8 bg-red-50 border border-red-100 rounded-3xl text-red-600 font-bold text-center text-xs uppercase tracking-widest">Missing Business Documents</div>
@@ -364,15 +370,15 @@ function MerchantsPage({ token }) {
                          {/* VERIFY TOGGLE (isVerified) */}
                          <button 
                             onClick={() => updateStatus('verify', { isVerified: !editingMerchant.isVerified })}
-                            className={`flex items-center justify-center gap-3 px-6 py-4 rounded-[20px] font-black text-[10px] uppercase tracking-widest transition-all ${editingMerchant.isVerified ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' : 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20'}`}
+                            className={`flex items-center justify-center gap-3 px-6 py-4 rounded-[20px] font-black text-[10px] uppercase tracking-widest transition-all cursor-pointer ${editingMerchant.isVerified ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' : 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20'}`}
                          >
-                           <ShieldCheck size={16} /> {editingMerchant.isVerified ? 'Verified' : 'Verify'}
+                           <ShieldCheck size={16} /> {editingMerchant.status ==='verified' ? 'Verified' : 'Verify'}
                          </button>
 
                          {/* REJECT OPTION (status) -> CALLS /reject API */}
                          <button 
                             onClick={() => updateStatus('reject', { status: editingMerchant.status === 'rejected' ? 'unverified' : 'rejected' })}
-                            className={`flex items-center justify-center gap-3 px-6 py-4 rounded-[20px] font-black text-[10px] uppercase tracking-widest transition-all ${editingMerchant.status === 'rejected' ? 'bg-amber-500 text-white' : 'bg-white/5 text-slate-300 border border-white/10 hover:bg-white/10'}`}
+                            className={`flex items-center justify-center gap-3 px-6 py-4 rounded-[20px] font-black text-[10px] uppercase tracking-widest transition-all cursor-pointer ${editingMerchant.status === 'rejected' ? 'bg-amber-500 text-white' : 'bg-white/5 text-slate-300 border border-white/10 hover:bg-white/10'}`}
                          >
                            <AlertCircle size={16} /> {editingMerchant.status === 'rejected' ? 'Restore Status' : 'Reject Shop'}
                          </button>
@@ -380,7 +386,7 @@ function MerchantsPage({ token }) {
                          {/* BAN OPTION (isBlocked) -> CALLS /block API */}
                          <button 
                             onClick={() => updateStatus('block', { isBlocked: !editingMerchant.isBlocked })}
-                            className={`flex items-center justify-center gap-3 px-6 py-4 rounded-[20px] font-black text-[10px] uppercase tracking-widest transition-all ${editingMerchant.isBlocked ? 'bg-red-600 text-white shadow-lg shadow-red-600/40' : 'bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-600 hover:text-white'}`}
+                            className={`flex items-center justify-center gap-3 px-6 py-4 rounded-[20px] font-black text-[10px] uppercase tracking-widest transition-all cursor-pointer ${editingMerchant.isBlocked ? 'bg-red-600 text-white shadow-lg shadow-red-600/40' : 'bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-600 hover:text-white'}`}
                          >
                            <Ban size={16} /> {editingMerchant.isBlocked ? 'Unban Account' : 'Permanent Ban'}
                          </button>
@@ -392,7 +398,7 @@ function MerchantsPage({ token }) {
             </div>
 
             <div className="p-10 border-t bg-slate-50">
-                <button onClick={() => setEditingMerchant(null)} className="w-full py-5 bg-white border border-slate-200 text-slate-900 rounded-3xl font-black uppercase tracking-widest hover:bg-slate-100 transition shadow-sm">
+                <button onClick={() => setEditingMerchant(null)} className="w-full py-5 bg-white border border-slate-200 text-slate-900 rounded-3xl font-black uppercase tracking-widest hover:bg-slate-100 transition shadow-sm cursor-pointer">
                   Close Audit Panel
                 </button>
             </div>

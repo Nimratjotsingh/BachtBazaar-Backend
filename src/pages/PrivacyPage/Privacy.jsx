@@ -196,11 +196,11 @@ const EditorView = ({ initialData = { title: "", slug: "", status: "Draft", cont
     bold: false,
     italic: false,
     underline: false,
-    insertOrderedList: false,
-    insertUnorderedList: false,
-    h1: false,
-    h2: false,
-    blockquote: false,
+    // insertOrderedList: false,
+    // insertUnorderedList: false,
+    // h1: false,
+    // h2: false,
+    // blockquote: false,
   });
 
   const editorRef = useRef(null);
@@ -224,10 +224,10 @@ const EditorView = ({ initialData = { title: "", slug: "", status: "Draft", cont
       bold: document.queryCommandState("bold"),
       italic: document.queryCommandState("italic"),
       underline: document.queryCommandState("underline"),
-      insertOrderedList: document.queryCommandState("insertOrderedList"),
-      insertUnorderedList: document.queryCommandState("insertUnorderedList"),
-      h1: isBlockActive("h1"),
-      h2: isBlockActive("h2"),
+      // insertOrderedList: document.queryCommandState("insertOrderedList"),
+      // insertUnorderedList: document.queryCommandState("insertUnorderedList"),
+      // h1: isBlockActive("h1"),
+      // h2: isBlockActive("h2"),
       blockquote: isBlockActive("blockquote"),
     });
   };
@@ -354,7 +354,7 @@ const EditorView = ({ initialData = { title: "", slug: "", status: "Draft", cont
           {/* TOOLBAR */}
           <div className="p-2.5 border-b border-slate-100 bg-slate-50 flex flex-wrap gap-1 items-center">
 
-            <ToolbarButton
+            {/* <ToolbarButton
               active={activeFormats.h1}
               icon={<Heading1 size={15} />}
               label="Heading 1"
@@ -366,7 +366,7 @@ const EditorView = ({ initialData = { title: "", slug: "", status: "Draft", cont
               icon={<Heading2 size={15} />}
               label="Heading 2"
               onClick={() => executeCommand("formatBlock", "<h2>")}
-            />
+            /> */}
 
             <div className="w-px h-5 bg-slate-200 mx-1.5" />
 
@@ -393,7 +393,7 @@ const EditorView = ({ initialData = { title: "", slug: "", status: "Draft", cont
 
             <div className="w-px h-5 bg-slate-200 mx-1.5" />
 
-            <ToolbarButton
+            {/* <ToolbarButton
               active={activeFormats.insertUnorderedList}
               icon={<List size={15} />}
               label="Bullet List"
@@ -405,16 +405,16 @@ const EditorView = ({ initialData = { title: "", slug: "", status: "Draft", cont
               icon={<ListOrdered size={15} />}
               label="Number List"
               onClick={() => executeCommand("insertOrderedList")}
-            />
+            /> */}
 
             <div className="w-px h-5 bg-slate-200 mx-1.5" />
 
-            <ToolbarButton
+            {/* <ToolbarButton
               active={activeFormats.blockquote}
               icon={<Quote size={15} />}
               label="Quote"
               onClick={() => executeCommand("formatBlock", "<blockquote>")}
-            />
+            /> */}
           </div>
 
           {/* EDITOR CANVAS */}
