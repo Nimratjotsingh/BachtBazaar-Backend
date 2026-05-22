@@ -178,6 +178,7 @@ const AdminOffersDashboard = ({ token }) => {
                               ) : (
                                 <Percent className="text-slate-400 w-5 h-5" />
                               )}
+                              
                             </div>
                             <div>
                               <div className="font-bold text-blue-950 text-sm group-hover:text-blue-600 transition-colors line-clamp-1">{offer.title}</div>

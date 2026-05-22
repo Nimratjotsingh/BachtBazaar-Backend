@@ -3,7 +3,8 @@ import {
   setDailySlotLimit, 
   getCalendarScheduleAdmin, 
   checkDateAvailability,
-  syncCalendarCounts
+  syncCalendarCounts,
+  getCalendarScheduleByParams
 } from "../controllers/calenderConfigController.js";
 import { protectSuperAdmin } from "../middleware/superAuthMiddleware.js";
 import { protectMerchant } from "../middleware/authMiddleware.js";
@@ -21,5 +22,7 @@ router.post("/admin/sync", protectSuperAdmin, syncCalendarCounts);
 // --- SHARED / MERCHANT ENDPOINTS ---
 // Used by merchants to see how many slots are remaining before picking a day
 router.get("/availability",  checkDateAvailability);
+
+router.get('/available-dates', getCalendarScheduleAdmin)
 
 export default router;

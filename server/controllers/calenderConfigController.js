@@ -224,3 +224,93 @@ export const syncCalendarCounts = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+// --- Get Calendar Schedule by Route Parameters (Admin Dynamic View) ---
+// Route shape example: /api/calendar-config/admin/schedule/:start/:end
+export const getCalendarScheduleByParams = async (req, res) => {
+  try {
+    const { start, end } = req.params; // Read from path parameters instead of queries
+    
+    if (!start || !end) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Start and end dates must be provided within the URL path layout rules." 
+      });
+    }
+
+    const startDate = normalizeToMidnight(start);
+    const endDate = normalizeToMidnight(end);
+
+    if (endDate < startDate) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "The end date perimeter cannot be historically behind the start date." 
+      });
+    }
+
+    // 1. Fetch explicit override configs saved by the admin within this range
+    const adminConfigs = await CalendarConfig.find({
+      date: { $gte: startDate, $lte: endDate }
+    });
+
+    // 2. Aggregate organic live merchant bookings running during this window
+    const liveOffersAggregation = await Offer.aggregate([
+      {
+        $match: {
+          display_type: "calendar",
+          is_deleted: false,
+          is_active: true,
+          start_date: { $gte: startDate, $lte: endDate }
+        }
+      },
+      {
+        $group: {
+          _id: "$start_date",
+          count: { $sum: 1 }
+        }
+      }
+    ]);
+
+    // Map live aggregations into a lookup dictionary: { 'YYYY-MM-DD': count }
+    const liveBookingsMap = {};
+    liveOffersAggregation.forEach(item => {
+      if (item._id) {
+        const dateString = new Date(item._id).toISOString().split("T")[0];
+        liveBookingsMap[dateString] = item.count;
+      }
+    });
+
+    // Map administrative configurations into a dictionary: { 'YYYY-MM-DD': configObject }
+    const configMap = {};
+    adminConfigs.forEach(config => {
+      const dateString = new Date(config.date).toISOString().split("T")[0];
+      configMap[dateString] = config;
+    });
+
+    // 3. Build the complete grid layout output
+    const comprehensiveSchedule = [];
+    let currentStepDate = new Date(startDate);
+
+    while (currentStepDate <= endDate) {
+      const dateKey = currentStepDate.toISOString().split("T")[0];
+      const savedConfig = configMap[dateKey];
+      const liveBookingVolume = liveBookingsMap[dateKey] || 0;
+
+      comprehensiveSchedule.push({
+        date: currentStepDate.toISOString(),
+        max_allowed_offers: savedConfig ? savedConfig.max_allowed_offers : 5, // safe integer fallback
+        current_booked_count: Math.max(liveBookingVolume, savedConfig ? savedConfig.current_booked_count : 0),
+        notes: savedConfig ? savedConfig.notes : "",
+        is_locked: savedConfig ? savedConfig.is_locked : false
+      });
+
+      // Advance by 1 day cleanly via UTC date boundaries
+      currentStepDate.setUTCDate(currentStepDate.getUTCDate() + 1);
+    }
+
+    return res.status(200).json({ success: true, data: comprehensiveSchedule });
+  } catch (error) {
+    console.error("Parametric Range Range Audit Error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
