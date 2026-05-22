@@ -191,7 +191,7 @@ const AdminOffersDashboard = ({ token }) => {
 
                         <td className="px-6 py-4">
                           <div className="font-bold text-slate-700 text-xs flex items-center gap-1.5">
-                            <Store size={13} className="text-slate-400" /> {offer.merchant_id?.store_name || "Unknown Business"}
+                            <Store size={13} className="text-slate-400" /> {offer.merchant_id?.name || "Unknown Business"}
                           </div>
                           <div className="text-[11px] text-slate-400 mt-0.5">{offer.merchant_id?.email || "N/A"}</div>
                         </td>

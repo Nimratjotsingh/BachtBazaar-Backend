@@ -479,7 +479,7 @@ export const getAllOffersAdmin = async (req, res) => {
     // Run parallel aggregation tasks to prevent bottleneck queries
     const [offers, totalCount] = await Promise.all([
       Offer.find(query)
-        .populate("merchant_id", "store_name email contact_phone logo")
+        .populate("merchant_id", "name email phone logo")
         .populate("offer_type_id", "label value")
         .sort({ createdAt: -1 })
         .skip(skip)
