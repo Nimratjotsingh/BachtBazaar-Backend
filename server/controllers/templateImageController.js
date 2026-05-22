@@ -80,7 +80,7 @@ export const updateTemplateImage = async (req, res) => {
     const { id } = req.params;
     let updates = { ...req.body };
 
-    console.log(updates)
+   
 
     // 1. Process replacement layout image if uploaded
     if (req.file) {
