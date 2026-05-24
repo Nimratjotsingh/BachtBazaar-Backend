@@ -407,7 +407,7 @@ function MerchantsPage({ token }) {
                          {/* VERIFY TOGGLE (isVerified) */}
                          <button 
                             onClick={() => updateStatus('verify', { isVerified: !editingMerchant.isVerified })}
-                            className={`flex items-center justify-center gap-3 px-6 py-4 rounded-[20px] font-black text-[10px] uppercase tracking-widest transition-all cursor-pointer ${editingMerchant.isVerified ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' : 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20'}`}
+                            className={`flex items-center justify-center gap-3 px-6 py-4 rounded-[20px] font-black text-[10px] uppercase tracking-widest transition-all cursor-pointer ${editingMerchant.status === 'verified' ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' : 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20'}`}
                          >
                            <ShieldCheck size={16} /> {editingMerchant.status ==='verified' ? 'Verified' : 'Verify'}
                          </button>
