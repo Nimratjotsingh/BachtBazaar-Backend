@@ -45,6 +45,11 @@ const merchantSchema = new mongoose.Schema({
     enum: ["verified", "unverified", "rejected"],
     default: "unverified"
   },
+  // Added field to log administrative rejection reasons
+  rejectedReason: {
+    type: String,
+    default: null
+  },
   isBlocked: {
     type: Boolean,
     default: false,
@@ -57,6 +62,5 @@ const merchantSchema = new mongoose.Schema({
     trim: true
   },
 }, { timestamps: true });
-
 
 export default mongoose.model("Merchant", merchantSchema);

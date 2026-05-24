@@ -71,6 +71,11 @@ function MerchantsPage({ token }) {
   const [fullData, setFullData] = useState(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
 
+  // Rejection Modal State Managers
+  const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
+  const [rejectReasonInput, setRejectReasonInput] = useState("");
+  const [submittingAction, setSubmittingAction] = useState(false);
+
   const headers = useMemo(() => buildAuthHeaders(token), [token]);
 
   const loadMerchants = async () => {
@@ -110,10 +115,43 @@ function MerchantsPage({ token }) {
     }
   };
 
+  // Intermediate status toggle intercept engine
+  const handleRejectClickToggle = () => {
+    if (editingMerchant.status === "rejected") {
+      updateStatus('reject', { status: 'unverified' });
+    } else {
+      setRejectReasonInput("");
+      setIsRejectModalOpen(true);
+    }
+  };
+
+  // CRITICAL NAME FIX: Matches submission handler function variable naming perfectly
+  const handleConfirmRejectionSubmit = async (e) => {
+    e.preventDefault();
+    setSubmittingAction(true);
+    
+    try {
+      await adminClient.put(`/merchants/${editingMerchant._id}/reject`, { 
+        status: 'rejected',
+        rejectedReason: rejectReasonInput 
+      }, { headers });
+      
+      await loadMerchants();
+      const res = await adminClient.get(`/merchants/${editingMerchant._id}`, { headers });
+      setFullData(res.data.data);
+      setEditingMerchant(res.data.data.profile);
+      setIsRejectModalOpen(false);
+    } catch (err) {
+      setFeedback("Failed to log verification rejection parameters.");
+    } finally {
+      setSubmittingAction(false);
+    }
+  };
+
   useEffect(() => { loadMerchants(); }, [page]);
 
   return (
-    <div className="p-8 max-w-[1600px] mx-auto space-y-8 bg-[#FDFDFD] min-h-screen">
+    <div className="p-8 max-w-[1600px] mx-auto space-y-8 bg-[#FDFDFD] min-h-screen relative">
       
       {/* HEADER AREA */}
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -143,7 +181,7 @@ function MerchantsPage({ token }) {
           className="w-full pl-14 pr-6 py-4 bg-white border border-slate-200 rounded-[24px] shadow-sm outline-none focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-500 transition-all text-slate-700 font-medium"
           placeholder="Search by name, email, or merchant UID..."
           value={search}
-          onChange={(e) => setSearchTerm(e.target.value)}
+          onChange={(e) => setSearch(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && loadMerchants()}
         />
       </div>
@@ -299,7 +337,6 @@ function MerchantsPage({ token }) {
 
                   {/* SHOP MEDIA */}
                   {fullData.shop && (
-                    // CRITICAL FIX: Conditionally display entire row container section only if banner OR logo media assets are present in DB
                     (getImageUrl(fullData.shop.banner) || getImageUrl(fullData.shop.logo)) ? (
                       <section className="space-y-6">
                         <div className="flex items-center gap-3 text-pink-600">
@@ -375,9 +412,9 @@ function MerchantsPage({ token }) {
                            <ShieldCheck size={16} /> {editingMerchant.status ==='verified' ? 'Verified' : 'Verify'}
                          </button>
 
-                         {/* REJECT OPTION (status) -> CALLS /reject API */}
+                         {/* REJECT OPTION (status) -> INTERCEPTED BY DYNAMIC MODAL OVERLAY */}
                          <button 
-                            onClick={() => updateStatus('reject', { status: editingMerchant.status === 'rejected' ? 'unverified' : 'rejected' })}
+                            onClick={handleRejectClickToggle}
                             className={`flex items-center justify-center gap-3 px-6 py-4 rounded-[20px] font-black text-[10px] uppercase tracking-widest transition-all cursor-pointer ${editingMerchant.status === 'rejected' ? 'bg-amber-500 text-white' : 'bg-white/5 text-slate-300 border border-white/10 hover:bg-white/10'}`}
                          >
                            <AlertCircle size={16} /> {editingMerchant.status === 'rejected' ? 'Restore Status' : 'Reject Shop'}
@@ -403,6 +440,60 @@ function MerchantsPage({ token }) {
                 </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* --- REJECTION INPUT JUSTIFICATION MODAL --- */}
+      {isRejectModalOpen && (
+        <div className="fixed inset-0 z-[200] bg-slate-900/50 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <form 
+            onSubmit={handleConfirmRejectionSubmit}
+            className="bg-white border border-slate-100 p-6 rounded-[2rem] max-w-md w-full shadow-2xl space-y-4"
+          >
+            <div className="flex items-start gap-3 text-amber-600">
+              <div className="p-2 bg-amber-50 rounded-xl">
+                <AlertCircle size={22} />
+              </div>
+              <div>
+                <h3 className="text-lg font-black text-slate-900 leading-tight">Reject Registration Request</h3>
+                <p className="text-xs text-slate-400 mt-0.5">State the specific compliance issue causing the documentation package to fail verification.</p>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Rejection Justification</label>
+              <textarea
+                required
+                rows="3"
+                value={rejectReasonInput}
+                onChange={(e) => setRejectReasonInput(e.target.value)}
+                placeholder="e.g., Business trade license has expired, blurry or unreadable compliance certificate image file..."
+                className="w-full text-sm font-semibold p-3.5 bg-slate-50 border border-slate-100 rounded-xl outline-none focus:ring-2 focus:ring-amber-500 text-slate-700 resize-none transition-all placeholder-slate-300"
+              />
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsRejectModalOpen(false)}
+                disabled={submittingAction}
+                className="flex-1 h-11 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs uppercase tracking-wider transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={submittingAction}
+                className="flex-1 h-11 bg-amber-500 hover:bg-amber-600 text-white font-black rounded-xl text-xs uppercase tracking-wider transition shadow-lg shadow-amber-100 flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                {submittingAction ? (
+                  <Loader2 className="animate-spin" size={14} />
+                ) : (
+                  "Submit Rejection"
+                )}
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </div>
