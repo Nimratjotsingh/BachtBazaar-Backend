@@ -26,7 +26,7 @@ import calenderRoutes from './routes/calenderConfigRoutes.js';
 import { fileURLToPath } from "url";
 import offerRoutes from './routes/offerRoutes.js'
 import openai from './routes/openaiRoutes.js';
-
+import dashboardRoutes from './routes/dashboardRoutes.js';
 dotenv.config();
 // console.log(process.env.MONGO_URI)
 
@@ -83,6 +83,7 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/profile", profileRoutes);
 app.use("/api/kyc", kycRoutes);
 app.use('/api/templates',templateRoute);
+app.use('/api/admin/dashboard',dashboardRoutes);
 app.use('/api/calendar-config', calenderRoutes);
 app.use('/api/offers',offerRoutes);
 app.use('/api/ai',openai)

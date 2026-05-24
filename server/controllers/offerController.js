@@ -5,26 +5,62 @@ import CalendarConfig from "../models/calenderConfigModel.js";
 export const createOffer = async (req, res) => {
   try {
     const data = { ...req.body };
+    
     // 1. Process File Upload path from Multer
     if (req.file) {
-      // Stores local server relative path (e.g., "/uploads/1715760000-banner.jpg")
       data.thumbnail = `/uploads/${req.file.filename}`;
     }
 
     const { display_type, start_date, end_date } = data;
 
+    // Standardize text inputs into robust clean Date instances
+    const finalStartDate = start_date ? new Date(start_date) : undefined;
+    const finalEndDate = end_date ? new Date(end_date) : undefined;
+    
+    if (finalStartDate) finalStartDate.setUTCHours(0, 0, 0, 0);
+    if (finalEndDate) finalEndDate.setUTCHours(23, 59, 59, 999);
+
     // --- START: CONDITIONAL CALENDAR LIMITATION VALIDATION ---
     if (display_type === "calendar") {
-      if (!start_date) {
+      if (!finalStartDate || !finalEndDate) {
         return res.status(400).json({
           success: false,
-          message: "A start date must be selected to request a calendar visibility slot.",
+          message: "Both start and end dates must be selected to request a calendar visibility slot.",
         });
       }
 
-      const targetDate = new Date(start_date);
-      targetDate.setUTCHours(0, 0, 0, 0);
+      if (finalStartDate > finalEndDate) {
+        return res.status(400).json({
+          success: false,
+          message: "The start date cannot occur after the campaign end date.",
+        });
+      }
 
+      // --- CRITICAL RULE FIX: Merchant Overlapping Running Window Guard ---
+      // Checks if this specific merchant already has an active calendar offer operating 
+      // within any portion of the requested window.
+      const existingOverlappingOffer = await Offer.findOne({
+        merchant_id: req.merchant._id,
+        display_type: "calendar",
+        is_active: true,
+        is_deleted: false,
+        $or: [
+          {
+            start_date: { $lte: finalEndDate },
+            end_date: { $gte: finalStartDate }
+          }
+        ]
+      });
+
+      if (existingOverlappingOffer) {
+        return res.status(400).json({
+          success: false,
+          message: "Validation Error: You already have an active calendar campaign running during this date window. You can only create one calendar offer per time slot.",
+        });
+      }
+
+      // --- Global Capacity Cap Validations ---
+      const targetDate = new Date(finalStartDate);
       const dateRule = await CalendarConfig.findOne({ date: targetDate });
       const globalDefaultLimit = 5;
 
@@ -39,7 +75,7 @@ export const createOffer = async (req, res) => {
         if (dateRule.current_booked_count >= dateRule.max_allowed_offers) {
           return res.status(400).json({
             success: false,
-            message: `The calendar limit for this date has been reached (${dateRule.max_allowed_offers} offers max). Please select another date.`,
+            message: `The global calendar limit for this date has been reached (${dateRule.max_allowed_offers} offers max). Please select another day.`,
           });
         }
       } else {
@@ -53,7 +89,7 @@ export const createOffer = async (req, res) => {
         if (activeLiveBookings >= globalDefaultLimit) {
           return res.status(400).json({
             success: false,
-            message: `All standard default slots (${globalDefaultLimit}) for this date are full. Please choose a different calendar day.`,
+            message: `All standard default slots (${globalDefaultLimit}) for this start date are full. Please choose a different day.`,
           });
         }
       }
@@ -64,13 +100,6 @@ export const createOffer = async (req, res) => {
     if (typeof data.tags === "string") {
       data.tags = data.tags.split(",").map(tag => tag.trim()).filter(Boolean);
     }
-
-    // 3. Clean and parse date types securely
-    const finalStartDate = start_date ? new Date(start_date) : undefined;
-    const finalEndDate = end_date ? new Date(end_date) : undefined;
-    
-    if (finalStartDate) finalStartDate.setUTCHours(0, 0, 0, 0);
-    if (finalEndDate) finalEndDate.setUTCHours(23, 59, 59, 999);
 
     // 4. Instantiate and Save the Document
     const newOffer = new Offer({
@@ -89,13 +118,11 @@ export const createOffer = async (req, res) => {
 
     // 5. Post-Save Step: If calendar layout slot, increment tracker ticker
     if (display_type === "calendar") {
-      const targetDate = new Date(start_date);
-      targetDate.setUTCHours(0, 0, 0, 0);
-
+      const targetDate = new Date(finalStartDate);
       await CalendarConfig.findOneAndUpdate(
         { date: targetDate },
         { $inc: { current_booked_count: 1 } },
-        { // If a config doesn't exist yet, seed a baseline tracking row on the fly
+        { 
           upsert: true, 
           new: true, 
           setDefaultsOnInsert: true 
@@ -113,7 +140,6 @@ export const createOffer = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
-
 
 
 // Helper to normalize dates to strict UTC midnight
