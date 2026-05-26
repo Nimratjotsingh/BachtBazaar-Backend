@@ -7,7 +7,7 @@ const openai = new OpenAI({
 
 export const autofillListingDetails = async (req, res) => {
   try {
-    const { rawInput, type } = req.body; // type can be 'product' or 'service'
+    const { rawInput, type } = req.body;
 
     if (!rawInput) {
       return res.status(400).json({ success: false, message: "Raw text input is required." });

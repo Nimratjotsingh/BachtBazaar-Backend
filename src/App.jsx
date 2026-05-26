@@ -16,6 +16,7 @@ import AdminTemplateImageManagement from "./pages/TemplateUpload/Template";
 import AdminCalendarConfig from "./pages/Calender/Calender";
 import AdminProductDashboard from "./pages/Products/Products";
 import AdminOffersDashboard from "./pages/OffersListing/OffersListing";
+import SubOfferTypePage from "./pages/SubOffer/SubOffer";
 
 const TOKEN_STORAGE_KEY = "bb_admin_token";
 
@@ -81,6 +82,7 @@ function App() {
         <Route path="calendar" element={<AdminCalendarConfig token={token}/>}/>
         <Route path="products" element={<AdminProductDashboard token={token}/>}/>
         <Route path="offers" element={<AdminOffersDashboard token={token}/>}/>
+        <Route path="suboffer-type" element={<SubOfferTypePage token={token}/>}/>
       </Route>
 
       {/* 🔁 Fallback Catch-All for unknown URLs */}

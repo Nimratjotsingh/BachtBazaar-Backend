@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { 
   Plus, Edit3, Trash2, Save, Loader2, ArrowLeft, 
-  Layers, Search, Check, X, Tag
+  Layers, Search, Check, X, Tag, Image as ImageIcon
 } from "lucide-react";
-import { accountClient, buildAuthHeaders } from "../../lib/api"; // Your Axios instance setup
+import { accountClient, buildAuthHeaders } from "../../lib/api";
 
 const AdminOfferTypeManagement = ({ token }) => {
   const [offerTypes, setOfferTypes] = useState([]);
@@ -11,6 +11,11 @@ const AdminOfferTypeManagement = ({ token }) => {
   const [view, setView] = useState("list"); // 'list' or 'form'
   const [selectedType, setSelectedType] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
+  
+  // Custom states tracking image upload components
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState("");
+  const fileInputRef = useRef(null);
   
   const [formData, setFormData] = useState({
     label: "",
@@ -28,7 +33,6 @@ const AdminOfferTypeManagement = ({ token }) => {
   const fetchOfferTypes = async () => {
     try {
       setLoading(true);
-      // Calls the dedicated Admin endpoint to get only this Admin's types
       const res = await accountClient.get("/offer-types/admin", { headers });
       setOfferTypes(res.data.data || []);
     } catch (err) {
@@ -38,18 +42,45 @@ const AdminOfferTypeManagement = ({ token }) => {
     }
   };
 
+  // Local live icon thumbnail previews extractor handler
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setSelectedFile(file);
+      setImagePreview(URL.createObjectURL(file));
+    }
+  };
+
   const handleSave = async (e) => {
     e.preventDefault();
     try {
       setLoading(true);
-      if (selectedType?._id) {
-        // Update existing Admin offer type
-        await accountClient.put(`/offer-types/admin/${selectedType._id}`, formData, { headers });
-      } else {
-        // Create new Admin offer type template
-        await accountClient.post("/offer-types/admin", formData, { headers });
+
+      // Convert layout data structures over to high performance multipart streams
+      const multipartBody = new FormData();
+      multipartBody.append("label", formData.label.trim());
+      multipartBody.append("description", formData.description.trim());
+      multipartBody.append("isActive", formData.isActive);
+
+      if (selectedFile) {
+        multipartBody.append("icon", selectedFile);
       }
-      fetchOfferTypes();
+
+      if (selectedType?._id) {
+        // Update existing Admin offer type template configuration
+        await accountClient.put(`/offer-types/admin/${selectedType._id}`, multipartBody, {
+          headers: { ...headers, "Content-Type": "multipart/form-data" }
+        });
+      } else {
+        // Create new Admin offer type template requires explicit slug definitions
+        multipartBody.append("value", formData.value.toLowerCase().trim());
+        
+        await accountClient.post("/offer-types/admin", multipartBody, {
+          headers: { ...headers, "Content-Type": "multipart/form-data" }
+        });
+      }
+      
+      await fetchOfferTypes();
       setView("list");
       resetForm();
     } catch (err) {
@@ -72,9 +103,10 @@ const AdminOfferTypeManagement = ({ token }) => {
   const resetForm = () => {
     setFormData({ label: "", value: "", description: "", isActive: true });
     setSelectedType(null);
+    setSelectedFile(null);
+    setImagePreview("");
   };
 
-  // Filter local state list by search term
   const filteredData = offerTypes.filter(type => 
     type.label.toLowerCase().includes(searchTerm.toLowerCase()) ||
     type.value.toLowerCase().includes(searchTerm.toLowerCase())
@@ -84,7 +116,7 @@ const AdminOfferTypeManagement = ({ token }) => {
     <div className="max-w-2xl mx-auto p-8 space-y-8 animate-in slide-in-from-bottom-4 duration-500">
       <button 
         onClick={() => { setView("list"); resetForm(); }} 
-        className="flex items-center gap-2 text-blue-600 font-bold hover:text-blue-800 transition"
+        className="flex items-center gap-2 text-blue-600 font-bold hover:text-blue-800 transition cursor-pointer"
       >
         <ArrowLeft size={18} /> Back to Templates
       </button>
@@ -103,7 +135,7 @@ const AdminOfferTypeManagement = ({ token }) => {
               <label className="text-xs font-bold text-blue-400 uppercase tracking-widest">Display Label</label>
               <input 
                 required 
-                className="w-full px-4 py-3 bg-blue-50/50 border border-blue-100 rounded-xl outline-none focus:ring-2 focus:ring-blue-500" 
+                className="w-full px-4 py-3 bg-blue-50/50 border border-blue-100 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-semibold text-slate-700" 
                 value={formData.label} 
                 onChange={(e) => setFormData({ ...formData, label: e.target.value })} 
                 placeholder="e.g., Flat Discount" 
@@ -113,8 +145,8 @@ const AdminOfferTypeManagement = ({ token }) => {
               <label className="text-xs font-bold text-blue-400 uppercase tracking-widest">System Value (Slug)</label>
               <input 
                 required 
-                disabled={!!selectedType} // Block value editing on updates to protect schema match rules
-                className="w-full px-4 py-3 bg-blue-50/50 border border-blue-100 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60" 
+                disabled={!!selectedType} 
+                className="w-full px-4 py-3 bg-blue-50/50 border border-blue-100 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 font-mono text-xs font-bold text-slate-600" 
                 value={formData.value} 
                 onChange={(e) => setFormData({ ...formData, value: e.target.value })} 
                 placeholder="e.g., flat_discount" 
@@ -122,11 +154,42 @@ const AdminOfferTypeManagement = ({ token }) => {
             </div>
           </div>
 
+          {/* --- NEW: CATEGORY ICON COMPONENT SELECTOR LAYER --- */}
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-blue-400 uppercase tracking-widest block">Category Representation Icon</label>
+            <div className="flex items-center gap-4 p-4 bg-blue-50/20 border border-blue-100 rounded-2xl">
+              <div className="w-16 h-16 bg-white border border-blue-100 rounded-xl flex items-center justify-center overflow-hidden shadow-inner">
+                {imagePreview ? (
+                  <img src={imagePreview} className="w-full h-full object-cover" alt="Selected Master Icon Preview Mapping Frame" />
+                ) : (
+                  <ImageIcon className="text-blue-200" size={24} />
+                )}
+              </div>
+              <div className="flex-1">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="px-4 py-2 bg-white border border-blue-100 text-blue-600 rounded-xl text-xs font-black uppercase tracking-wider hover:bg-blue-50/60 transition shadow-sm cursor-pointer"
+                >
+                  Upload Category Icon
+                </button>
+                <p className="text-[10px] text-slate-400 mt-1.5 font-medium">PNG file variants containing transparent asset bounds highly recommended.</p>
+                <input 
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleFileChange}
+                  accept="image/*"
+                  className="hidden"
+                />
+              </div>
+            </div>
+          </div>
+
           <div className="space-y-1">
             <label className="text-xs font-bold text-blue-400 uppercase tracking-widest">Description</label>
             <textarea 
               rows="3" 
-              className="w-full px-4 py-3 bg-blue-50/50 border border-blue-100 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 resize-none" 
+              className="w-full px-4 py-3 bg-blue-50/50 border border-blue-100 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 resize-none font-medium text-sm text-slate-600" 
               value={formData.description} 
               onChange={(e) => setFormData({ ...formData, description: e.target.value })} 
               placeholder="Provide context regarding how this template handles parameters..."
@@ -137,16 +200,16 @@ const AdminOfferTypeManagement = ({ token }) => {
             <button
               type="button"
               onClick={() => setFormData({ ...formData, isActive: !formData.isActive })}
-              className={`w-10 h-6 flex items-center rounded-full p-1 transition-all duration-300 ${formData.isActive ? 'bg-blue-600 justify-end' : 'bg-slate-300 justify-start'}`}
+              className="text-blue-600 transition cursor-pointer"
             >
-              <div className="bg-white w-4 h-4 rounded-full shadow-md" />
+              {formData.isActive ? <ToggleRight size={40} className="text-blue-600" /> : <ToggleLeft size={40} className="text-slate-300" />}
             </button>
             <span className="text-sm font-bold text-blue-900">Available to Merchants</span>
           </div>
 
           <button 
             disabled={loading} 
-            className="w-full h-14 bg-blue-600 text-white rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all disabled:opacity-50"
+            className="w-full h-14 bg-blue-600 text-white rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all disabled:opacity-50 cursor-pointer"
           >
             {loading ? <Loader2 className="animate-spin" /> : <Save size={20} />} Save Offer Type
           </button>
@@ -166,7 +229,7 @@ const AdminOfferTypeManagement = ({ token }) => {
         </div>
         <button 
           onClick={() => setView("form")} 
-          className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 shadow-lg transition-all"
+          className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 shadow-lg transition-all cursor-pointer"
         >
           <Plus size={20} /> Add New Template
         </button>
@@ -179,7 +242,7 @@ const AdminOfferTypeManagement = ({ token }) => {
           <input 
             type="text" 
             placeholder="Search templates by key label or value tag..." 
-            className="w-full pl-10 pr-4 py-2 bg-blue-50/50 border border-blue-100 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full pl-10 pr-4 py-2 bg-blue-50/50 border border-blue-100 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-medium"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
@@ -214,8 +277,12 @@ const AdminOfferTypeManagement = ({ token }) => {
               <tr key={type._id} className="hover:bg-blue-50/30 transition-colors group">
                 <td className="px-6 py-4">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600 border border-blue-100">
-                      <Tag size={18} />
+                    <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600 border border-blue-100 overflow-hidden shrink-0">
+                      {type.icon ? (
+                        <img src={`${import.meta.env.VITE_API_URL || ""}${type.icon}`} className="w-full h-full object-cover" alt="" />
+                      ) : (
+                        <Tag size={18} />
+                      )}
                     </div>
                     <div>
                       <div className="font-bold text-blue-950">{type.label}</div>
@@ -225,7 +292,7 @@ const AdminOfferTypeManagement = ({ token }) => {
                 </td>
                 
                 <td className="px-6 py-4">
-                  <span className="font-mono text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded-md">
+                  <span className="font-mono text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded-md font-bold">
                     {type.value}
                   </span>
                 </td>
@@ -242,10 +309,12 @@ const AdminOfferTypeManagement = ({ token }) => {
                   )}
                 </td>
                 
-                <td className="px-6 py-4 text-right">
+                <td className="px-6 py-4 text-right whitespace-nowrap">
                   <button 
                     onClick={() => {
                       setSelectedType(type);
+                      setImagePreview(type.icon ? `${import.meta.env.VITE_API_URL || ""}${type.icon}` : "");
+                      setSelectedFile(null);
                       setFormData({ 
                         label: type.label, 
                         value: type.value, 
@@ -254,13 +323,13 @@ const AdminOfferTypeManagement = ({ token }) => {
                       });
                       setView("form");
                     }}
-                    className="p-2 text-blue-400 hover:bg-blue-50 rounded-lg transition mr-1"
+                    className="p-2 text-blue-400 hover:bg-blue-50 rounded-lg transition mr-1 cursor-pointer"
                   >
                     <Edit3 size={18} />
                   </button>
                   <button 
                     onClick={() => handleDelete(type._id)} 
-                    className="p-2 text-blue-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition"
+                    className="p-2 text-blue-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition cursor-pointer"
                   >
                     <Trash2 size={18} />
                   </button>
@@ -273,5 +342,9 @@ const AdminOfferTypeManagement = ({ token }) => {
     </div>
   );
 };
+
+// Simple visual fallback bindings to resolve dynamic toggle representations inside form renders
+const ToggleLeft = ({ size, className }) => <X className={`${className}`} size={size} strokeWidth={3} />;
+const ToggleRight = ({ size, className }) => <Check className={`${className}`} size={size} strokeWidth={3} />;
 
 export default AdminOfferTypeManagement;

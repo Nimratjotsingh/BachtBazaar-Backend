@@ -3,6 +3,6 @@ import { autofillListingDetails } from "../controllers/openaiController.js";
 import { protectMerchant } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
-router.post("/autofill", protectMerchant, autofillListingDetails);
+router.post("/autofill",  autofillListingDetails);
 
 export default router;

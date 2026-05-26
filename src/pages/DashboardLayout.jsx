@@ -25,6 +25,7 @@ const navItems = [
   { label: "Categories", to: "/dashboard/categories", icon: Workflow },
   { label: "SubCategories", to: "/dashboard/subcategories", icon: LucideWorkflow },
   { label: "Offer Type", to: "/dashboard/offer-type", icon: LucideWorkflow },
+  { label: "Sub-Offer Type", to: "/dashboard/suboffer-type", icon: LucideWorkflow },
   { label: "Templates", to: "/dashboard/templates", icon: BookTemplate },
   { label: "Calender", to: "/dashboard/calendar", icon: Calendar },
   { label: "Product", to: "/dashboard/products", icon: ToyBrick },

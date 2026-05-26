@@ -16,6 +16,11 @@ const offerTypeSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    // Modified/Added: Stores server file relative storage path strings for category icons
+    icon: {
+      type: String,
+      default: "",
+    },
     // Track if an Admin or a Merchant created this
     created_by_type: {
       type: String,

@@ -2,6 +2,7 @@
 import Offer from "../models/offerModel.js";
 import CalendarConfig from "../models/calenderConfigModel.js";
 
+
 export const createOffer = async (req, res) => {
   try {
     const data = { ...req.body };
@@ -36,9 +37,12 @@ export const createOffer = async (req, res) => {
         });
       }
 
-      // --- CRITICAL RULE FIX: Merchant Overlapping Running Window Guard ---
-      // Checks if this specific merchant already has an active calendar offer operating 
-      // within any portion of the requested window.
+      // --- CRITICAL RULE FIX: Merchant Overlapping Window + 24-Hour Cooldown Guard ---
+      // We calculate a date range window shifted by 24 hours to enforce the cooldown rule.
+      const msIn24Hours = 24 * 60 * 60 * 1000;
+      const startWithBuffer = new Date(finalStartDate.getTime() - msIn24Hours);
+      const endWithBuffer = new Date(finalEndDate.getTime() + msIn24Hours);
+
       const existingOverlappingOffer = await Offer.findOne({
         merchant_id: req.merchant._id,
         display_type: "calendar",
@@ -46,8 +50,10 @@ export const createOffer = async (req, res) => {
         is_deleted: false,
         $or: [
           {
-            start_date: { $lte: finalEndDate },
-            end_date: { $gte: finalStartDate }
+            // Checks if an old offer ends after our new buffered start time
+            // AND starts before our new buffered end time
+            start_date: { $lte: endWithBuffer },
+            end_date: { $gte: startWithBuffer }
           }
         ]
       });
@@ -55,7 +61,7 @@ export const createOffer = async (req, res) => {
       if (existingOverlappingOffer) {
         return res.status(400).json({
           success: false,
-          message: "Validation Error: You already have an active calendar campaign running during this date window. You can only create one calendar offer per time slot.",
+          message: "Validation Error: You already have a calendar campaign running in this time block, or you are violating the mandatory 24-hour cool-down rest margin required between separate calendar listings.",
         });
       }
 
@@ -101,6 +107,15 @@ export const createOffer = async (req, res) => {
       data.tags = data.tags.split(",").map(tag => tag.trim()).filter(Boolean);
     }
 
+    // 3. Process product_id mapping array transformations (Handles commas or structural inputs safely)
+    if (data.product_id) {
+      if (typeof data.product_id === "string") {
+        data.product_id = data.product_id.split(",").map(id => id.trim()).filter(Boolean);
+      } else if (!Array.isArray(data.product_id)) {
+        data.product_id = [data.product_id];
+      }
+    }
+
     // 4. Instantiate and Save the Document
     const newOffer = new Offer({
       ...data,
@@ -111,7 +126,10 @@ export const createOffer = async (req, res) => {
       discount_value: data.discount_value ? Number(data.discount_value) : null,
       minimum_purchase_amount: data.minimum_purchase_amount ? Number(data.minimum_purchase_amount) : 0,
       number_of_winners: data.number_of_winners ? Number(data.number_of_winners) : null,
-      tags: data.tags || []
+      free_quantity: data.free_quantity ? Number(data.free_quantity) : null,
+      max_free_quantity: data.max_free_quantity ? Number(data.max_free_quantity) : null,
+      tags: data.tags || [],
+      product_id: data.product_id || []
     });
 
     await newOffer.save();
@@ -140,6 +158,8 @@ export const createOffer = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+
 
 
 // Helper to normalize dates to strict UTC midnight

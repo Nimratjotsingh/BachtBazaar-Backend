@@ -27,6 +27,7 @@ import { fileURLToPath } from "url";
 import offerRoutes from './routes/offerRoutes.js'
 import openai from './routes/openaiRoutes.js';
 import dashboardRoutes from './routes/dashboardRoutes.js';
+import subOfferTypeRoute from './routes/subOfferTypeRoutes.js';
 dotenv.config();
 // console.log(process.env.MONGO_URI)
 
@@ -57,14 +58,14 @@ if (isDevelopment) {
   });
 }
 
-// User routes (support both singular and plural paths)
+
 app.use("/api/user", userRoutes);
 app.use("/api/users", userRoutes);
 app.use('/api/subcategories',subCategory)
 app.use('/api/merchant/products',product);
 app.use('/api/merchant/services',service);
 app.use('/api/users/shop',userHome);
-// Merchant routes (support both legacy and new paths)
+
 app.use("/api/merchant/auth", merchantAuthRoutes);
 app.use("/api/merchants", merchantAuthRoutes);
 app.use('/api/super-admin',superAuth);
@@ -86,8 +87,8 @@ app.use('/api/templates',templateRoute);
 app.use('/api/admin/dashboard',dashboardRoutes);
 app.use('/api/calendar-config', calenderRoutes);
 app.use('/api/offers',offerRoutes);
-app.use('/api/ai',openai)
-
+app.use('/api/ai',openai);
+app.use('/api/subOfferType',subOfferTypeRoute);
 app.get("/health", (req, res) => {
   res.json({ message: "Server is healthy!" });
 });

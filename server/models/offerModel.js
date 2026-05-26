@@ -20,10 +20,18 @@ const offerSchema = new mongoose.Schema(
       ref: "OfferType",
       index: true,
     },
-    product_id:{
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Product",
-        index: true,
+    // Added relational reference mapping to your standalone SubOfferType model
+    sub_offer_type_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "SubOfferType",
+      index: true,
+    },
+    // Modified from single ObjectId to an Array of ObjectIds
+    product_id: {
+      type: [mongoose.Schema.Types.ObjectId],
+      ref: "Product",
+      index: true,
+      default: []
     },
     title: {
       type: String,
@@ -32,7 +40,6 @@ const offerSchema = new mongoose.Schema(
     description: {
       type: String,
     },
-
     thumbnail: {
       type: String, // Stores local server relative paths (e.g., "/uploads/filename.jpg")
     },
@@ -51,6 +58,18 @@ const offerSchema = new mongoose.Schema(
       type: Number, // Absolute currency amounts saved for flat rules
       default: null,
       min: [0, "Discount face value cannot be negative"],
+    },
+    // Added: Free items given per baseline threshold rule (e.g., "Buy 2, Get [1] Free")
+    free_quantity: {
+      type: Number,
+      default: 1,
+      min: [1, "Free item allocation value must start at 1 if defined"]
+    },
+    // Added: Hard ceiling safety cap to prevent reward exploitation (e.g., "Max [3] free items per order")
+    max_free_quantity: {
+      type: Number,
+      default: 1,
+      min: [1, "Maximum free limit pool must start at 1 if defined"]
     },
     start_date: {
       type: Date,
