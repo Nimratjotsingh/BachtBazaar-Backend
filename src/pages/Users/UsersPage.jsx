@@ -1,11 +1,13 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { adminClient, buildAuthHeaders } from "../lib/api";
+import { adminClient, buildAuthHeaders } from "../../lib/api";
 import { 
   Search, RotateCcw, Ban, Trash2, 
   ChevronLeft, ChevronRight, ShieldAlert, Loader2,
   X, Mail, MapPin, Calendar, Smartphone, Eye, 
   User as UserIcon, ShieldCheck, Hash, UserCircle, AlertCircle
 } from "lucide-react";
+import UserIntelligenceDashboard from "./components/UserInetelligenceDashboard";
+import UserDetailsSidebar from "./components/UserDetailedSidebar";
 
 // --- Helper: Convert Buffer to Base64 ---
 const getImageUrl = (imageObj) => {
@@ -133,6 +135,7 @@ function UsersPage({ token }) {
 
   return (
     <div className="max-w-[1600px] mx-auto p-6 space-y-8 min-h-screen bg-[#F8FAFC] relative">
+      <UserIntelligenceDashboard token={token}/>
       
       {/* --- Dashboard Header --- */}
       <header className="flex flex-col lg:flex-row lg:items-end justify-between gap-6">
@@ -407,6 +410,7 @@ function UsersPage({ token }) {
           </form>
         </div>
       )}
+      {/* <UserDetailsSidebar /> */}
 
       {/* --- Backdrop Blur for Drawer --- */}
       {isDrawerOpen && <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[90] animate-in fade-in" onClick={() => setIsDrawerOpen(false)} />}

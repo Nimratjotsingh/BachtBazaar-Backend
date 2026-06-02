@@ -5,26 +5,80 @@ import MerchantBusinessDoc from "../models/merchantBusinessDocModel.js";
 // List all merchants (with pagination, search, filters)
 export const listMerchants = async (req, res) => {
   try {
-    const { page = 1, limit = 10, search = "", role, isVerified } = req.query;
-    const query = {};
-    if (role) query.role = role;
-    if (isVerified !== undefined) query.isVerified = isVerified === "true";
-    if (search) {
+    const { 
+      page = 1, 
+      limit = 10, 
+      search = "", 
+      role, 
+      isVerified, 
+      status, 
+      plan, 
+      city 
+    } = req.query;
+
+    const query = { isDeleted: { $ne: true } }; // Exclude soft-deleted entities if applicable
+
+    // 1. Role Filtering Strategy
+    if (role) {
+      query.role = role;
+    }
+
+    // 2. Legacy Verification Flag Handling
+    if (isVerified !== undefined) {
+      query.isVerified = isVerified === "true";
+    }
+
+    // 3. Status Filters (unverified, verified, pending, rejected)
+    if (status) {
+      query.status = status.toLowerCase().trim();
+    }
+
+    // 4. Membership Plan Tier Selection Filters
+    if (plan) {
+      query.plan = { $regex: `^${plan.trim()}$`, $options: "i" };
+    }
+
+    // 5. City Bounds Selection Filters
+    if (city) {
+      query.city = { $regex: `^${city.trim()}$`, $options: "i" };
+    }
+
+    // 6. Cross-Field Regular Expression Search Block
+    if (search && search.trim() !== "") {
+      const cleanSearch = search.trim();
       query.$or = [
-        { name: { $regex: search, $options: "i" } },
-        { phone: { $regex: search, $options: "i" } },
-        { email: { $regex: search, $options: "i" } }
+        { name: { $regex: cleanSearch, $options: "i" } },
+        { phone: { $regex: cleanSearch, $options: "i" } },
+        { email: { $regex: cleanSearch, $options: "i" } },
+        { business_type: { $regex: cleanSearch, $options: "i" } } // Matches on category names dynamically
       ];
     }
+
+    // 7. Execute Database Pagination Tasks
+    const parsedLimit = Math.max(1, Number(limit));
+    const parsedPage = Math.max(1, Number(page));
+
     const total = await Merchant.countDocuments(query);
     const merchants = await Merchant.find(query)
       .select("-password")
       .sort({ createdAt: -1 })
-      .skip((page - 1) * limit)
-      .limit(Number(limit));
-    return res.json({ success: true, merchants, total, page: Number(page), pages: Math.ceil(total / limit) });
+      .skip((parsedPage - 1) * parsedLimit)
+      .limit(parsedLimit);
+
+    return res.json({ 
+      success: true, 
+      merchants, 
+      total, 
+      page: parsedPage, 
+      pages: Math.ceil(total / parsedLimit) 
+    });
+
   } catch (error) {
-    return res.status(500).json({ message: "Failed to list merchants" });
+    console.error("Master listing compilation breaking exception:", error);
+    return res.status(500).json({ 
+      success: false, 
+      message: "Failed to compile running records stream data lists matching target filter queries." 
+    });
   }
 };
 

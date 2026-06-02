@@ -12,7 +12,8 @@ import {
   getActiveOffersForToday,
   getAllOffersAdmin,
   getOfferDetailWithMerchantAdmin,
-  revivePastOffer
+  revivePastOffer,
+  getOffersStatsSummary
 } from "../controllers/offerController.js";
 
 import { protectSuperAdmin } from "../middleware/superAuthMiddleware.js";
@@ -28,10 +29,12 @@ router.post("/", protectMerchant, upload.single("thumbnail"), createOffer);
 router.get("/", protectMerchant, getMerchantOffers);
 router.get("/search/:display_type", protectMerchant, searchOffersByDisplayType);
 router.patch("/merchant/revive/:id", protectMerchant, revivePastOffer);
+router.get("/stats-summary", protectSuperAdmin, getOffersStatsSummary);
 
 // Parametized reference routes
 router.get("/:id", protectMerchant, getOfferDetails);
 router.put("/:id", protectMerchant, upload.single("thumbnail"), updateOffer);
 router.delete("/:id", protectMerchant, deleteOffer);
+
 
 export default router;

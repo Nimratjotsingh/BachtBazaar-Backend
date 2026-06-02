@@ -28,6 +28,7 @@ import offerRoutes from './routes/offerRoutes.js'
 import openai from './routes/openaiRoutes.js';
 import dashboardRoutes from './routes/dashboardRoutes.js';
 import subOfferTypeRoute from './routes/subOfferTypeRoutes.js';
+import userAnalytics from './routes/userAnalyticsRoutes.js';
 dotenv.config();
 // console.log(process.env.MONGO_URI)
 
@@ -89,6 +90,7 @@ app.use('/api/calendar-config', calenderRoutes);
 app.use('/api/offers',offerRoutes);
 app.use('/api/ai',openai);
 app.use('/api/subOfferType',subOfferTypeRoute);
+app.use('/api/analytics', userAnalytics);
 app.get("/health", (req, res) => {
   res.json({ message: "Server is healthy!" });
 });

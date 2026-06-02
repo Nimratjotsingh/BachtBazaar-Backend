@@ -674,3 +674,162 @@ export const revivePastOffer = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+
+
+export const getOffersStatsSummary = async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+
+    if (!startDate || !endDate) {
+      return res.status(400).json({
+        success: false,
+        message: "Both startDate and endDate parameters are required to calculate range metrics.",
+      });
+    }
+
+    const currentStart = new Date(startDate);
+    const currentEnd = new Date(endDate);
+    currentEnd.setUTCHours(23, 59, 59, 999); // Cover the full boundary of the final day
+
+    // --- AUTOMATIC TREND RANGE COMPUTATION ---
+    // Calculate the length of the selected window in milliseconds to dynamically compute the historical comparison baseline
+    const timeFrameDelta = currentEnd.getTime() - currentStart.getTime();
+    const previousStart = new Date(currentStart.getTime() - timeFrameDelta);
+    const previousEnd = new Date(currentStart.getTime() - 1); // Up to the millisecond before the current range
+
+    // --- AGGREGATION PIPELINE FOR THE CURRENT WINDOW ---
+    const currentStatsArray = await Offer.aggregate([
+      {
+        $match: {
+          is_deleted: false,
+          createdAt: { $gte: currentStart, $lte: currentEnd }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          totalOffers: { $sum: 1 },
+          activeOffers: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $eq: ["$is_active", true] },
+                    { $lte: ["$start_date", currentEnd] },
+                    { $gte: ["$end_date", currentStart] }
+                  ]
+                },
+                1,
+                0
+              ]
+            }
+          },
+          hotOffers: {
+            // Hot Offers metrics computed by identifying campaigns containing specific priority layout configurations or winners limits
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $eq: ["$is_active", true] },
+                    { $gt: ["$number_of_winners", 0] }
+                  ]
+                },
+                1,
+                0
+              ]
+            }
+          },
+          // Aggregate potential or documented winner metrics as high fidelity redemption counters
+          offersRedeemed: { $sum: { $ifNull: ["$number_of_winners", 0] } }
+        }
+      }
+    ]);
+
+    // --- AGGREGATION PIPELINE FOR THE HISTORICAL WORKSPACE WINDOW ---
+    const previousStatsArray = await Offer.aggregate([
+      {
+        $match: {
+          is_deleted: false,
+          createdAt: { $gte: previousStart, $lte: previousEnd }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          totalOffers: { $sum: 1 },
+          activeOffers: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $eq: ["$is_active", true] },
+                    { $lte: ["$start_date", previousEnd] },
+                    { $gte: ["$end_date", previousStart] }
+                  ]
+                },
+                1,
+                0
+              ]
+            }
+          },
+          hotOffers: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $eq: ["$is_active", true] },
+                    { $gt: ["$number_of_winners", 0] }
+                  ]
+                },
+                1,
+                0
+              ]
+            }
+          },
+          offersRedeemed: { $sum: { $ifNull: ["$number_of_winners", 0] } }
+        }
+      }
+    ]);
+
+    // Extract computed buckets or default to zero structure arrays
+    const current = currentStatsArray[0] || { totalOffers: 0, activeOffers: 0, hotOffers: 0, offersRedeemed: 0 };
+    const previous = previousStatsArray[0] || { totalOffers: 0, activeOffers: 0, hotOffers: 0, offersRedeemed: 0 };
+
+    // --- MATRICES TREND CALCULATOR FUNCTION ---
+    const calculateTrend = (currentVal, previousVal) => {
+      if (!previousVal || previousVal === 0) {
+        return { value: currentVal > 0 ? "+100%" : "0%", isPositive: currentVal > 0 };
+      }
+      const percentageChange = (((currentVal - previousVal) / previousVal) * 100).toFixed(1);
+      const isPositive = currentVal >= previousVal;
+      return {
+        value: `${isPositive ? "+" : ""}${percentageChange}%`,
+        isPositive
+      };
+    };
+
+    // Compile dynamic trends map
+    const responsePayload = {
+      totalOffers: current.totalOffers,
+      activeOffers: current.activeOffers,
+      hotOffers: current.hotOffers,
+      offersRedeemed: current.offersRedeemed,
+      trends: {
+        total: calculateTrend(current.totalOffers, previous.totalOffers),
+        active: calculateTrend(current.activeOffers, previous.activeOffers),
+        hot: calculateTrend(current.hotOffers, previous.hotOffers),
+        redeemed: calculateTrend(current.offersRedeemed, previous.offersRedeemed)
+      }
+    };
+
+    res.status(200).json({
+      success: true,
+      data: responsePayload
+    });
+
+  } catch (error) {
+    console.error("Analytics Aggregation Failure:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
