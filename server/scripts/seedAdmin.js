@@ -22,7 +22,7 @@ const seedSuperAdmin = async () => {
     // 🔐 Hash password
     const hashedPassword = await bcrypt.hash("Admin@123", 10);
 
-    // 🧱 Create ONLY admin
+    // 🧱 Create ONLY admin v
     const admin = await SuperAdmin.create({
       phone: "+919876543210",
       email: "superadmin@example.com",

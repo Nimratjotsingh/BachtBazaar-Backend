@@ -247,9 +247,9 @@ const SubCategoryPage = ({token}) => {
                   >
                     <Edit3 size={18} />
                   </button>
-                  <button onClick={() => handleDelete(sub._id)} className="p-2 text-blue-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition">
+                 { <button onClick={() => handleDelete(sub._id)} className="p-2 text-blue-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition">
                     <Trash2 size={18} />
-                  </button>
+                  </button>}
                 </td>
               </tr>
             ))}

@@ -22,6 +22,7 @@ const MerchantStats = ({ token }) => {
     try {
       setLoading(true);
       setError(null);
+      
       const res = await accountClient.get("/analytics/merchant-intelligence", { headers });
 
       console.log(res)
