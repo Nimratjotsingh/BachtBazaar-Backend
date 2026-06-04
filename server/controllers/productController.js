@@ -392,7 +392,7 @@ export const reviewProductAdmin = async (req, res) => {
     const { status, rejection_reason } = req.body; // status: 'approved' or 'rejected'
 
     
-    if (!["approved", "rejected"].includes(status)) {
+    if (!["approved", "rejected","pending"].includes(status)) {
       return res.status(400).json({ 
         success: false, 
         message: "Invalid action status evaluation parameter choice." 

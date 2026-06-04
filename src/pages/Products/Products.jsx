@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { 
   Check, X, Search, Filter, Layers, Inbox, AlertCircle, 
-  Loader2, ChevronLeft, ChevronRight, MessageSquare, Tag, Info 
+  Loader2, ChevronLeft, ChevronRight, MessageSquare, Tag, Info, RotateCcw
 } from "lucide-react";
-import { accountClient, buildAuthHeaders } from "../../lib/api"; // Your Axios communication layer
+import { accountClient, buildAuthHeaders } from "../../lib/api";
 
 const AdminProductDashboard = ({ token }) => {
   // Navigation & Core States
@@ -37,6 +37,7 @@ const AdminProductDashboard = ({ token }) => {
           params: { page, limit: 10, status: "pending" },
           headers
         });
+        
         setProducts(response.data.data || response.data.products || []);
       } else {
         // Hits your master admin list endpoint passing explicit query filters
@@ -49,6 +50,8 @@ const AdminProductDashboard = ({ token }) => {
           },
           headers
         });
+
+        console.log(response.data)
         setProducts(response.data.products || response.data.data || []);
       }
       
@@ -272,6 +275,18 @@ const AdminProductDashboard = ({ token }) => {
                           title="Decline Asset"
                         >
                           <X size={16} strokeWidth={2.5} />
+                        </button>
+                      </div>
+                    ) : product.approval_status === "approved" ? (
+                      /* --- ADDED: UNVERIFY REVERSE TOGGLE BUTTON --- */
+                      <div className="flex items-center justify-end">
+                        <button
+                          disabled={submittingReview}
+                          onClick={() => handleReviewAction(product._id, "pending")}
+                          className="px-3.5 py-2 inline-flex items-center gap-1.5 text-xs font-bold text-amber-600 border border-solid border-slate-200 hover:border-amber-500 hover:bg-amber-50 rounded-xl transition-all bg-white cursor-pointer shadow-sm disabled:opacity-50"
+                          title="Revert verification to pending review"
+                        >
+                          <RotateCcw size={13} strokeWidth={2.5} /> Unverify
                         </button>
                       </div>
                     ) : (

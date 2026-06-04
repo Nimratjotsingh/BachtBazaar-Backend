@@ -1,8 +1,10 @@
-import React, { useState, useMemo } from "react";
+import React, { useState } from "react";
 import {
   Search, SlidersHorizontal, RotateCcw, ChevronLeft, ChevronRight,
-  MoreVertical, TrendingUp, TrendingDown, Eye, Plus, Upload, 
-  Download, Calendar, BarChart3, Tag, Percent
+  MoreVertical, Eye, Plus, Upload, Tag, Percent, X, Store, User, Mail, 
+  Phone, MapPin, Clock, ShieldCheck, Sliders, EyeOff, Loader2, Info,
+  Calendar,
+  Layers
 } from "lucide-react";
 
 const OffersManagementGrid = ({ 
@@ -13,6 +15,9 @@ const OffersManagementGrid = ({
   merchantsList = [],
   offerTypesList = [],
   pagination = { currentPage: 1, totalPages: 1, totalItems: 0 },
+  selectedOfferDetail = null, // Injected real-time detail state populated from parent API
+  detailLoading = false,
+  onClearDetail,
   onPageChange,
   onFilterChange,
   onActionTrigger
@@ -25,6 +30,9 @@ const OffersManagementGrid = ({
   const [selectedStatus, setSelectedStatus] = useState("");
   const [selectedType, setSelectedType] = useState("");
   const [itemsPerPage, setItemsPerPage] = useState(10);
+
+  // Floating Inspection Modal Controller State
+  const [isPopupOpen, setIsPopupOpen] = useState(false);
 
   // --- Filter Sync Notification Mechanism ---
   const handleApplyFilters = () => {
@@ -61,12 +69,32 @@ const OffersManagementGrid = ({
     }
   };
 
+  const formatTimestamp = (dateString) => {
+    if (!dateString) return "N/A";
+    return new Date(dateString).toLocaleDateString("en-IN", {
+      day: "numeric", month: "short", year: "numeric"
+    });
+  };
+
+  // --- Eyeball Action Interceptor Click Hook ---
+  const handleEyeballClick = (offerId) => {
+    if (onActionTrigger) {
+      onActionTrigger("inspect_offer_row", { _id: offerId });
+    }
+    setIsPopupOpen(true);
+  };
+
+  const handleClosePopup = () => {
+    setIsPopupOpen(false);
+    if (onClearDetail) onClearDetail();
+  };
+
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start antialiased font-sans text-slate-700 bg-transparent">
+    <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start antialiased font-sans text-slate-700 bg-transparent relative">
       
       {/* =========================================================
           LEFT DIVISION: COMPREHENSIVE OFFERS FILTER DECK & TABLE (9 Cols)
-         ========================================================= */}
+          ========================================================= */}
       <div className="xl:col-span-9 space-y-5 bg-white p-6 rounded-[24px] border border-slate-100 shadow-sm">
         
         {/* --- DYNAMIC LIFECYCLE FILTER SUB-TABS --- */}
@@ -88,9 +116,7 @@ const OffersManagementGrid = ({
               }`}
             >
               {tab.label}
-              <span className={`text-[10px] px-2 py-0.5 rounded-md font-black ${
-                activeTab === tab.key ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-500"
-              }`}>
+              <span className={`text-[10px] px-2 py-0.5 rounded-md font-black ${activeTab === tab.key ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-500"}`}>
                 {tab.count}
               </span>
             </button>
@@ -164,120 +190,70 @@ const OffersManagementGrid = ({
           </button>
         </div>
 
-        {/* --- REAL-TIME OFFERS REGISTRATION DATA TABLE --- */}
+        {/* --- LIVE ORIGINAL SOURCE DESIGN HIGH FIDELITY TABLE --- */}
         <div className="overflow-x-auto w-full">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="border-b border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                <th className="w-6 pb-3"><input type="checkbox" className="rounded" /></th>
-                <th className="px-4 pb-3">Offer Details</th>
-                <th className="px-4 pb-3">Merchant</th>
-                <th className="px-4 pb-3">Category</th>
-                <th className="px-4 pb-3">Offer Type</th>
-                <th className="px-4 pb-3">Discount / Value</th>
-                <th className="px-4 pb-3">Status</th>
-                <th className="px-4 pb-3">Redemptions</th>
-                <th className="w-6 pb-3 text-right">Actions</th>
+              <tr className="bg-blue-50/40 border-b border-blue-100 text-xs font-bold text-blue-950 uppercase tracking-wider">
+                <th className="px-6 py-4">Promotional Campaign</th>
+                <th className="px-6 py-4">Merchant Partner</th>
+                <th className="px-6 py-4">Layout Type</th>
+                <th className="px-6 py-4 text-right">Action</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-50 text-xs">
+            <tbody className="divide-y divide-blue-50 text-xs">
               {offers.length === 0 ? (
                 <tr>
-                  <td colSpan="9" className="py-14 text-center font-bold text-slate-400 italic">No offers match the current dynamic pipeline filters.</td>
+                  <td colSpan="4" className="py-14 text-center font-bold text-slate-400 italic bg-white">
+                    No offers match the current dynamic pipeline filters.
+                  </td>
                 </tr>
               ) : offers.map((offer) => (
                 <tr key={offer._id} className="hover:bg-slate-50/50 transition-colors group">
-                  <td className="py-4"><input type="checkbox" className="rounded" /></td>
-                  
-                  {/* Title & Badge Meta */}
-                  <td className="px-4 py-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-xl bg-slate-50 border border-slate-100 overflow-hidden shrink-0 shadow-inner">
-                        <img src={offer.thumbnail || "https://api.dicebear.com/7.x/initials/svg?seed=BB"} className="w-full h-full object-cover" alt="" />
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-3.5">
+                      <div className="w-14 h-14 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center overflow-hidden shadow-inner shrink-0">
+                        {offer.thumbnail ? (
+                          <img src={offer.thumbnail} className="w-full h-full object-cover group-hover:scale-105 transition duration-300" alt="" />
+                        ) : (
+                          <Percent className="text-slate-400 w-5 h-5" />
+                        )}
                       </div>
-                      <div className="min-w-0 max-w-[180px]">
-                        <p className="font-extrabold text-slate-900 truncate group-hover:text-indigo-600 transition-colors">{offer.title}</p>
-                        <p className="text-[10px] font-bold text-slate-400 font-mono tracking-tight uppercase mt-0.5">Code: {offer.code || "N/A"}</p>
+                      <div>
+                        <div className="font-bold text-blue-950 text-sm group-hover:text-indigo-600 transition-colors line-clamp-1">{offer.title}</div>
+                        <div className="text-xs text-slate-400 font-medium mt-0.5 flex items-center gap-1.5">
+                          <Clock size={12} /> Live: {formatTimestamp(offer.start_date)} - {formatTimestamp(offer.end_date)}
+                        </div>
                       </div>
                     </div>
                   </td>
 
-                  {/* Merchant Stack */}
-                  <td className="px-4 py-4">
-                    <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 rounded-md bg-slate-100 flex items-center justify-center text-[10px] font-black uppercase text-indigo-600 shadow-sm border">
-                        {offer.merchant_name?.charAt(0)}
-                      </div>
-                      <span className="font-bold text-slate-700 truncate max-w-[110px]">{offer.merchant_name}</span>
+                  <td className="px-6 py-4">
+                    <div className="font-bold text-slate-700 text-xs flex items-center gap-1.5">
+                      <Store size={13} className="text-slate-400" /> {offer.merchant_id?.name || offer.merchant_name || "Unknown Business"}
                     </div>
+                    <div className="text-[11px] text-slate-400 mt-0.5">{offer.merchant_id?.email || "N/A"}</div>
                   </td>
 
-                  {/* Category Pill */}
-                  <td className="px-4 py-4">
-                    <span className="px-2.5 py-1 bg-blue-50/70 text-blue-600 border border-blue-100/50 rounded-lg font-bold tracking-wide text-[10px]">
-                      {offer.category_label}
+                  <td className="px-6 py-4">
+                    <span className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md border ${
+                      offer.display_type === 'calendar' ? 'text-indigo-600 bg-indigo-50 border-indigo-100' : 'text-cyan-600 bg-cyan-50 border-cyan-100'
+                    }`}>
+                      {offer.display_type || offer.offer_type_label}
                     </span>
                   </td>
 
-                  {/* Offer Type Custom Stamp */}
-                  <td className="px-4 py-4">
-                    <span className="px-2 py-1 bg-purple-50 text-purple-600 rounded-lg text-[9px] font-black uppercase tracking-wider border border-purple-100/40">
-                      {offer.offer_type_label}
-                    </span>
-                  </td>
-
-                  {/* Numerical Metric Values */}
-                  <td className="px-4 py-4">
-                    <div>
-                      <p className="font-extrabold text-slate-900">{offer.discount_expression || "Flat Offer"}</p>
-                      <p className="text-[10px] font-medium text-slate-400 mt-0.5">Min. order ₹{offer.minimum_purchase_amount}</p>
-                    </div>
-                  </td>
-
-                  {/* Operational Running Status */}
-                  <td className="px-4 py-4">
-                    <div>
-                      <span className={`inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider ${
-                        offer.status === 'active' ? 'text-emerald-600' :
-                        offer.status === 'scheduled' ? 'text-indigo-600' :
-                        offer.status === 'expired' ? 'text-rose-500' : 'text-slate-500'
-                      }`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${
-                          offer.status === 'active' ? 'bg-emerald-500' :
-                          offer.status === 'scheduled' ? 'bg-indigo-500' :
-                          offer.status === 'expired' ? 'bg-rose-500' : 'bg-slate-400'
-                        }`} />
-                        {offer.status}
-                      </span>
-                      <p className="text-[9px] font-medium text-slate-400 tracking-tighter mt-0.5">
-                        {offer.status === 'active' ? `Exp: ${offer.formatted_end}` :
-                         offer.status === 'scheduled' ? `Start: ${offer.formatted_start}` : `Ended: ${offer.formatted_end}`}
-                      </p>
-                    </div>
-                  </td>
-
-                  {/* Redemptions Dynamic Counters */}
-                  <td className="px-4 py-4">
-                    <div>
-                      <p className="font-black text-slate-900 text-sm">{offer.redemptions_count?.toLocaleString('en-IN') || 0}</p>
-                      {offer.redemption_trend && (
-                        <p className="text-[9px] font-bold text-emerald-600 flex items-center mt-0.5">↑ {offer.redemption_trend}</p>
-                      )}
-                    </div>
-                  </td>
-
-                  {/* Context Options Dot Triggers */}
-                  <td className="py-4 text-right">
+                  <td className="px-6 py-4 text-right">
                     <button 
-                      onClick={() => onActionTrigger && onActionTrigger("open_options", offer)}
-                      className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-700 transition cursor-pointer"
+                      type="button"
+                      onClick={() => handleEyeballClick(offer._id)}
+                      className="p-2 text-blue-600 bg-white hover:bg-blue-50 border border-slate-100 hover:border-blue-200 rounded-xl transition-all shadow-sm cursor-pointer"
                     >
-                      <MoreVertical size={16} />
+                      <Eye size={15} />
                     </button>
                   </td>
                 </tr>
-              ))
-              }
+              ))}
             </tbody>
           </table>
         </div>
@@ -322,7 +298,7 @@ const OffersManagementGrid = ({
 
       {/* =========================================================
           RIGHT DIVISION: PERFORMANCE ANALYTICS & QUICK ACTIONS (3 Cols)
-         ========================================================= */}
+          ========================================================= */}
       <div className="xl:col-span-3 space-y-6">
         
         {/* --- PERFORMANCE CARD WIDGET --- */}
@@ -347,7 +323,6 @@ const OffersManagementGrid = ({
             ))}
           </div>
 
-          {/* --- SPARKLINE GRAPH SCHEMATIC FRAME --- */}
           <div className="pt-2">
             <div className="h-24 bg-gradient-to-t from-indigo-50/30 to-white border border-slate-100 shadow-inner rounded-xl flex items-end p-2 relative overflow-hidden">
               <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
@@ -379,7 +354,7 @@ const OffersManagementGrid = ({
                   </div>
                   <div className="min-w-0">
                     <p className="text-xs font-extrabold text-slate-800 truncate max-w-[120px]">{top.title}</p>
-                    <p className="text-[9px] font-bold text-slate-400 mt-0.5">{top.redemptions?.toLocaleString('en-IN')} redemptions</p>
+                    <p className="text-[9px] font-bold text-slate-400 mt-0.5">{top.redemptions_count?.toLocaleString('en-IN') || top.redemptions?.toLocaleString('en-IN')} redemptions</p>
                   </div>
                 </div>
                 <span className="text-[10px] font-black text-emerald-600 shrink-0">↑ {top.conversionRate || "18.6%"}</span>
@@ -388,51 +363,107 @@ const OffersManagementGrid = ({
           </div>
         </div>
 
-        {/* --- INTERACTIVE ACTION TRIGGER BLOCK PANEL --- */}
-        {/* <div className="bg-white p-5 rounded-[24px] border border-slate-100 shadow-sm space-y-3.5">
+        {/* --- UNIVERSAL QUICK ACTIONS SELECTION TERMINAL --- */}
+        <div className="bg-white p-5 rounded-[24px] border border-slate-100 shadow-sm space-y-3">
           <h4 className="text-xs font-black text-[#1E293B] uppercase tracking-wider mb-1">Quick Actions</h4>
-          
           <div className="grid grid-cols-2 gap-3 text-xs font-bold uppercase tracking-wider">
-            <button 
-              onClick={() => onActionTrigger && onActionTrigger("create_offer")}
-              className="flex flex-col items-start gap-2 p-3 text-indigo-600 bg-white border border-indigo-200 rounded-xl hover:bg-indigo-50/40 shadow-sm transition-all text-left cursor-pointer"
-            >
-              <Plus size={16} strokeWidth={2.5} /> <span className="text-[10px] font-black mt-2">Create Offer</span>
-            </button>
-            <button 
-              onClick={() => onActionTrigger && onActionTrigger("bulk_upload")}
-              className="flex flex-col items-start gap-2 p-3 text-emerald-600 bg-white border border-emerald-200 rounded-xl hover:bg-emerald-50/40 shadow-sm transition-all text-left cursor-pointer"
-            >
-              <Upload size={16} strokeWidth={2.5} /> <span className="text-[10px] font-black mt-2">Bulk Upload</span>
-            </button>
-            <button 
-              onClick={() => onActionTrigger && onActionTrigger("offer_templates")}
-              className="flex flex-col items-start gap-2 p-3 text-purple-600 bg-white border border-purple-200 rounded-xl hover:bg-purple-50/40 shadow-sm transition-all text-left cursor-pointer"
-            >
-              <Tag size={16} strokeWidth={2.5} /> <span className="text-[10px] font-black mt-2">Offer Templates</span>
-            </button>
-            <button 
-              onClick={() => onActionTrigger && onActionTrigger("schedule_offer")}
-              className="flex flex-col items-start gap-2 p-3 text-orange-600 bg-white border border-orange-200 rounded-xl hover:bg-orange-50/40 shadow-sm transition-all text-left cursor-pointer"
-            >
-              <Calendar size={16} strokeWidth={2.5} /> <span className="text-[10px] font-black mt-2">Schedule Offer</span>
-            </button>
-            <button 
-              onClick={() => onActionTrigger && onActionTrigger("import_offers")}
-              className="flex flex-col items-start gap-2 p-3 text-blue-600 bg-white border border-blue-200 rounded-xl hover:bg-blue-50/40 shadow-sm transition-all text-left cursor-pointer col-span-1"
-            >
-              <Download size={16} strokeWidth={2.5} /> <span className="text-[10px] font-black mt-2">Import Offers</span>
-            </button>
-            <button 
-              onClick={() => onActionTrigger && onActionTrigger("offer_analytics")}
-              className="flex flex-col items-start gap-2 p-3 text-rose-600 bg-rose-50/40 border border-rose-100 rounded-xl hover:bg-rose-50 shadow-sm transition-all text-left cursor-pointer col-span-1"
-            >
-              <BarChart3 size={16} strokeWidth={2.5} /> <span className="text-[10px] font-black mt-2">Offer Analytics</span>
-            </button>
+            <button onClick={() => onActionTrigger && onActionTrigger("create_offer")} className="flex flex-col items-start gap-2 p-3 text-indigo-600 bg-white border border-indigo-200 rounded-xl hover:bg-indigo-50/40 shadow-sm transition-all text-left cursor-pointer"><Plus size={16} strokeWidth={2.5} /> <span className="text-[10px] font-black mt-2">Create Offer</span></button>
+            <button onClick={() => onActionTrigger && onActionTrigger("bulk_upload")} className="flex flex-col items-start gap-2 p-3 text-emerald-600 bg-white border border-emerald-200 rounded-xl hover:bg-emerald-50/40 shadow-sm transition-all text-left cursor-pointer"><Upload size={16} strokeWidth={2.5} /> <span className="text-[10px] font-black mt-2">Bulk Upload</span></button>
+            <button onClick={() => onActionTrigger && onActionTrigger("offer_templates")} className="flex flex-col items-start gap-2 p-3 text-purple-600 bg-white border border-purple-200 rounded-xl hover:bg-purple-50/40 shadow-sm transition-all text-left cursor-pointer"><Tag size={16} strokeWidth={2.5} /> <span className="text-[10px] font-black mt-2">Templates</span></button>
+            <button onClick={() => onActionTrigger && onActionTrigger("schedule_offer")} className="flex flex-col items-start gap-2 p-3 text-orange-600 bg-white border border-orange-200 rounded-xl hover:bg-orange-50/40 shadow-sm transition-all text-left cursor-pointer"><Calendar size={16} strokeWidth={2.5} /> <span className="text-[10px] font-black mt-2">Schedule</span></button>
           </div>
-        </div> */}
-
+        </div>
       </div>
+
+      {/* =========================================================
+          DYNAMIC FLOATING MODAL OVERLAY: EYEBELL POPUP DETAILS
+          ========================================================= */}
+      {isPopupOpen && (
+        <div className="fixed inset-0 z-[150] bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-[32px] border border-slate-200 p-0 max-w-xl w-full shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 max-h-[90vh] flex flex-col">
+            
+            {/* Top Navigation Header bar */}
+            <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2">
+                <Layers size={16} className="text-indigo-400" />
+                <h3 className="font-black text-xs uppercase tracking-wider">Campaign Inspection Hub</h3>
+              </div>
+              <button 
+                type="button" 
+                onClick={handleClosePopup}
+                className="p-1.5 bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white rounded-lg transition cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Dynamic Content Panel Section Loader switcher */}
+            <div className="p-6 overflow-y-auto flex-1 space-y-5">
+              {detailLoading ? (
+                <div className="py-20 text-center flex flex-col items-center justify-center gap-2 text-indigo-600">
+                  <Loader2 className="animate-spin" size={32} />
+                  <p className="text-slate-400 text-xs font-bold uppercase tracking-wider">Syncing Corporate Asset Bundles...</p>
+                </div>
+              ) : selectedOfferDetail ? (
+                <div className="space-y-5 animate-in fade-in duration-300">
+                  
+                  {/* Section 1: Thumbnail Media Preview asset */}
+                  <div className="space-y-2.5">
+                    <div className="w-full h-44 bg-slate-100 border rounded-2xl overflow-hidden shadow-inner">
+                      {selectedOfferDetail.thumbnail ? (
+                        <img src={selectedOfferDetail.thumbnail} className="w-full h-full object-cover" alt="" />
+                      ) : <div className="w-full h-full flex items-center justify-center text-slate-300"><Percent size={32} /></div>}
+                    </div>
+                    <div>
+                      <h4 className="text-base font-black text-slate-900 leading-tight">{selectedOfferDetail.title}</h4>
+                      <p className="text-xs text-slate-400 font-semibold leading-relaxed mt-1">{selectedOfferDetail.description || "No layout descriptions fields registered."}</p>
+                    </div>
+                  </div>
+
+                  {/* Section 2: Financial Threshold matrices parameters */}
+                  <div className="bg-slate-50 border border-slate-100 p-4 rounded-2xl space-y-3">
+                    <div className="text-[10px] font-black uppercase text-indigo-900 tracking-wider flex items-center gap-1.5"><Sliders size={13} /> Metric Configurations Values</div>
+                    <div className="grid grid-cols-2 gap-3 text-xs font-bold">
+                      <div className="bg-white p-2.5 border rounded-xl shadow-xs"><span className="text-slate-400 block font-semibold mb-0.5">Discount Value %</span><span className="text-slate-800 font-mono text-sm font-black">{selectedOfferDetail.discount_percentage ? `${selectedOfferDetail.discount_percentage}%` : "—"}</span></div>
+                      <div className="bg-white p-2.5 border rounded-xl shadow-xs"><span className="text-slate-400 block font-semibold mb-0.5">Flat Deduction Value</span><span className="text-slate-800 font-mono text-sm font-black">{selectedOfferDetail.discount_value ? `₹${selectedOfferDetail.discount_value}` : "—"}</span></div>
+                      <div className="bg-white p-2.5 border rounded-xl shadow-xs"><span className="text-slate-400 block font-semibold mb-0.5">Minimum Spending limit</span><span className="text-slate-800 font-mono text-sm font-black">₹{selectedOfferDetail.minimum_purchase_amount || 0}</span></div>
+                      <div className="bg-white p-2.5 border rounded-xl shadow-xs"><span className="text-indigo-600 font-black block text-[10px] uppercase mt-0.5">{selectedOfferDetail.display_type}</span></div>
+                    </div>
+                  </div>
+
+                  {/* Section 3: Relational Parent Merchant Credentials Card */}
+                  <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+                    <div className="bg-slate-50 p-2.5 border-b text-[10px] font-black uppercase tracking-wider text-slate-700 flex items-center gap-1"><Store size={12} className="text-indigo-600" /> Merchant Enterprise Profile</div>
+                    <div className="p-4 space-y-2 text-xs font-medium text-slate-600 bg-white">
+                      <div className="font-black text-sm text-slate-900 flex items-center gap-1">{selectedOfferDetail.merchant_id?.store_name || selectedOfferDetail.merchant_id?.name} {selectedOfferDetail.merchant_id?.is_verified && <ShieldCheck size={14} className="text-emerald-500 inline" />}</div>
+                      <div className="flex items-center gap-2"><User size={13} className="text-slate-400" /> <span>Account Operator: {selectedOfferDetail.merchant_id?.owner_name || "N/A"}</span></div>
+                      <div className="flex items-center gap-2 truncate"><Mail size={13} className="text-slate-400" /> <span>{selectedOfferDetail.merchant_id?.email}</span></div>
+                      <div className="flex items-center gap-2"><Phone size={13} className="text-slate-400" /> <span>{selectedOfferDetail.merchant_id?.contact_phone || selectedOfferDetail.merchant_id?.phone}</span></div>
+                      <div className="flex items-start gap-2 leading-relaxed"><MapPin size={13} className="text-slate-400 mt-0.5 shrink-0" /> <span className="line-clamp-2">{selectedOfferDetail.merchant_id?.address}</span></div>
+                    </div>
+                  </div>
+
+                </div>
+              ) : (
+                <div className="py-10 text-center text-slate-400 font-medium flex items-center justify-center gap-1.5"><Info size={14}/> Profile synchronization failed.</div>
+              )}
+            </div>
+
+            {/* Bottom Actions Dismiss Bar */}
+            <div className="px-6 py-4 border-t bg-slate-50 flex shrink-0">
+              <button 
+                type="button" 
+                onClick={handleClosePopup}
+                className="w-full h-11 bg-white border border-slate-200 hover:bg-slate-100 font-black text-slate-800 text-xs uppercase tracking-widest rounded-xl transition shadow-xs cursor-pointer"
+              >
+                Dismiss Analytics Window
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };
