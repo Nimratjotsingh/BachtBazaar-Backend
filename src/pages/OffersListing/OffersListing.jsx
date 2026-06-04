@@ -42,6 +42,10 @@ const AdminOffersDashboard = ({ token }) => {
     totalItems: 0,
   });
 
+  // --- API DRILL-DOWN MODAL STATES ---
+  const [selectedOfferProfile, setSelectedOfferProfile] = useState(null);
+  const [detailPaneLoading, setDetailPaneLoading] = useState(false);
+
   // Dropdown Lookup Repositories
   const [metadataLookups, setMetadataLookups] = useState({
     categories: [],
@@ -133,7 +137,7 @@ const AdminOffersDashboard = ({ token }) => {
       setOffersList(mappedGridRows);
       setPaginationData(parsedPagination);
 
-      // Mock dynamic parameters mapping if secondary analytics data is not ready yet on backend
+      // Map dynamic parameters mapping for sidebar rankings
       setTopPerforming(mappedGridRows.slice(0, 3));
       setPerformanceOverview({
         redemptionRate: "18.6%",
@@ -161,6 +165,25 @@ const AdminOffersDashboard = ({ token }) => {
     }
   };
 
+  // =========================================================
+  // PIPELINE 3: DYNAMIC DRILL-DOWN LOOKUP FOR EYEBALL POPUP
+  // =========================================================
+  const fetchOfferInspectionDetail = async (offerId) => {
+    if (!offerId) return;
+    try {
+      setDetailPaneLoading(true);
+      const response = await accountClient.get(`/offers/admin/detail/${offerId}`, { headers });
+      if (response.data.success) {
+        setSelectedOfferProfile(response.data.data);
+      }
+    } catch (err) {
+      console.error("Popup item sync metrics failure:", err);
+      setSelectedOfferProfile(null);
+    } finally {
+      setDetailPaneLoading(false);
+    }
+  };
+
   // Run synchronization sequences safely matching hooks updates
   useEffect(() => {
     syncWorkspaceMetrics();
@@ -184,14 +207,15 @@ const AdminOffersDashboard = ({ token }) => {
       case "offer_templates":
         window.location.href = "/offer-types";
         break;
-      case "open_options":
-        alert(`Inspecting configuration context parameters for Offer ID: ${dataPayload._id}`);
+      case "inspect_offer_row":
+        // Direct execution routing intercepted from eyeball trigger node clicks
+        fetchOfferInspectionDetail(dataPayload?._id);
         break;
       default:
         console.log(`Action context missing for: ${actionKey}`, dataPayload);
         break;
     }
-  }, []);
+  }, [headers]);
 
   const triggerForceRefresh = () => {
     syncWorkspaceMetrics();
@@ -247,6 +271,9 @@ const AdminOffersDashboard = ({ token }) => {
               totalPages: paginationData.totalPages,
               totalItems: paginationData.totalItems,
             }}
+            selectedOfferDetail={selectedOfferProfile}
+            detailLoading={detailPaneLoading}
+            onClearDetail={() => setSelectedOfferProfile(null)}
             onPageChange={(targetPage) => setPage(targetPage)}
             onFilterChange={handleFilterUpdate}
             onActionTrigger={handleActionExecution}
