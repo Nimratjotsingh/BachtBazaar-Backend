@@ -26,9 +26,7 @@ export const protectUser = async (req, res, next) => {
 
   try {
     const decoded = verifyJwt(token);
-    if (decoded.accountType && decoded.accountType !== ACCOUNT_TYPES.USER) {
-      return res.status(403).json({ message: "Forbidden: invalid account type" });
-    }
+   
 
     const user = await User.findById(decoded.id).select("-password");
     if (!user) {
@@ -36,7 +34,7 @@ export const protectUser = async (req, res, next) => {
     }
 
     req.user = user;
-    req.auth = buildAuthContext(user, ACCOUNT_TYPES.USER);
+    
     return next();
   } catch (error) {
     return res.status(401).json({ message: "Not authorized" });

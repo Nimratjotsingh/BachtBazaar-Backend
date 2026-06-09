@@ -1,5 +1,5 @@
 import express from "express";
-import { getAllShops, getShopDetails } from "../controllers/userHomeController.js";
+import { getAllShops, getShopDetails, searchGlobalCatalog,getActiveUserOffers } from "../controllers/userHomeController.js";
 
 const router = express.Router();
 
@@ -9,6 +9,10 @@ const router = express.Router();
  * @access  Public
  */
 router.get("/", getAllShops);
+
+router.get("/search", searchGlobalCatalog);
+
+router.get("/offers", getActiveUserOffers);
 
 /**
  * @route   GET /api/shops/:id

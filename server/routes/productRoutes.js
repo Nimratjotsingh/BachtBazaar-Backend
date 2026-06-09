@@ -20,7 +20,7 @@ const router = express.Router();
 
 router.get("/", protectMerchant,listProducts);
 
-router.get('/all',protectSuperAdmin,listProductsAll)
+router.get('/all',listProductsAll)
 
 router.get("/review-queue", protectSuperAdmin, getPendingProductsAdmin);
 router.patch("/:id/review", protectSuperAdmin, reviewProductAdmin);
