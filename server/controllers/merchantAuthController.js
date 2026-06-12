@@ -271,6 +271,23 @@ export const updatePassword = async (req, res) => {
   }
 };
 
+export const tempUpdatePass = async(req,res)=>{
+  try {
+    const {email,newPassword} = req.body
+    const merchant = await Merchant.findOne({email:email});
+    if(!merchant){
+      return res.status(404).json({message:"Merchant not found"})
+    }
+    merchant.password = await bcrypt.hash(newPassword,10);
+    await merchant.save();
+    return res.json({success:true,message:"Password updated"})
+  } catch (error) {
+    console.log(error)
+    return res.status(500).json({message:"Error updating password"})
+
+  }
+}
+
 export const createTestMerchant = async (req, res) => {
   try {
     const {

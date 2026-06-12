@@ -56,10 +56,10 @@ const buildBusinessDocPayload = (doc) => {
   };
 };
 
-export const getProfile = async (req, res) => {
+export const getProfileUser = async (req, res) => {
  
   try {
-    if (req.auth?.accountType === ACCOUNT_TYPES.USER) {
+    
       const user = await User.findById(req.auth.id).select("-password");
       if (!user) return res.status(404).json({ message: "User not found" });
 
@@ -68,12 +68,14 @@ export const getProfile = async (req, res) => {
         accountType: ACCOUNT_TYPES.USER,
         profile: sanitizeUser(user),
       });
-    }
+  } catch (error) {
+    console.log(error);
+    return res.status(500).json({ message: "Failed to fetch profile" });
+  }
+};
 
-    if (req.auth?.accountType === ACCOUNT_TYPES.MERCHANT) {
-      console.log('hi');
-
-      const data = await  MerchantShop.findOne({ merchantId: req.auth.id });
+export const getProfileMerchant = async(req,res)=>{
+        const data = await  MerchantShop.findOne({ merchantId: req.auth.id });
       console.log(data)
 
 
@@ -117,11 +119,4 @@ export const getProfile = async (req, res) => {
           },
         },
       });
-    }
-
-    return res.status(400).json({ message: "Unsupported account type" });
-  } catch (error) {
-    console.log(error);
-    return res.status(500).json({ message: "Failed to fetch profile" });
-  }
-};
+}
