@@ -186,29 +186,45 @@ export const setPassword = async (req, res) => {
 
 export const loginWithPassword = async (req, res) => {
   try {
-    const { email,phone, password } =  req.body
+    const { email, phone, password } = req.body;
+
     let merchant;
-    if(email){
-    merchant = await Merchant.findOne({email });
-    }else{
-     merchant = await Merchant.findOne({phone });
+
+    if (email) {
+      merchant = await Merchant.findOne({ email });
+    } else {
+      // Add +91 if not already present
+      let formattedPhone = phone?.trim();
+
+      if (formattedPhone && !formattedPhone.startsWith("+91")) {
+        formattedPhone = `+91${formattedPhone}`;
+      }
+
+      merchant = await Merchant.findOne({ phone: formattedPhone });
     }
-    if (!merchant) return res.status(404).json({ message: "Merchant not found" });
-    if (!merchant.password) return res.status(400).json({ message: "Use OTP login instead" });
+
+    if (!merchant) {
+      return res.status(404).json({ message: "Merchant not found" });
+    }
+
+    if (!merchant.password) {
+      return res.status(400).json({ message: "Use OTP login instead" });
+    }
 
     const isMatch = await bcrypt.compare(password, merchant.password);
-    if (!isMatch) return res.status(400).json({ message: "Invalid credentials" });
 
-    console.log('hi')
+    if (!isMatch) {
+      return res.status(400).json({ message: "Invalid credentials" });
+    }
+
     return res.json({
       success: true,
       token: generateToken(merchant._id, {
         role: merchant.role || ROLES.MERCHANT,
-        accountType: ACCOUNT_TYPES.MERCHANT
+        accountType: ACCOUNT_TYPES.MERCHANT,
       }),
-      merchant: sanitizeMerchant(merchant)
+      merchant: sanitizeMerchant(merchant),
     });
-    
   } catch (error) {
     return handleValidation(res, error, "Login error");
   }
