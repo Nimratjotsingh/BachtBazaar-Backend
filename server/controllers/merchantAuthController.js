@@ -186,14 +186,18 @@ export const setPassword = async (req, res) => {
 
 export const loginWithPassword = async (req, res) => {
   try {
-    const { email, password } =  req.body
-    const merchant = await Merchant.findOne({email });
-
+    const { email,phone, password } =  req.body
+    let merchant;
+    if(email){
+    merchant = await Merchant.findOne({email });
+    }else{
+     merchant = await Merchant.findOne({phone });
+    }
     if (!merchant) return res.status(404).json({ message: "Merchant not found" });
     if (!merchant.password) return res.status(400).json({ message: "Use OTP login instead" });
 
-    // const isMatch = await bcrypt.compare(password, merchant.password);
-    // if (!isMatch) return res.status(400).json({ message: "Invalid credentials" });
+    const isMatch = await bcrypt.compare(password, merchant.password);
+    if (!isMatch) return res.status(400).json({ message: "Invalid credentials" });
 
     console.log('hi')
     return res.json({

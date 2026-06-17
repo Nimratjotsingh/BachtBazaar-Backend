@@ -16,10 +16,12 @@ router.get("/offers", getActiveUserOffers);
 
 router.get("/offers/store-details/:storeId", getOffersByStoreId);
 
+
+router.get("/offers/banners", getCityBannerOffers);
+
 router.get("/offers/:id", getOfferDetails);
 
 
-router.get("/offers/banners", getCityBannerOffers);
 /**
  * @route   GET /api/shops/:id
  * @desc    Get full details of a specific shop
