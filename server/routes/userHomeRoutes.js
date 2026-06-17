@@ -1,5 +1,5 @@
 import express from "express";
-import { getAllShops, getShopDetails, searchGlobalCatalog,getActiveUserOffers } from "../controllers/userHomeController.js";
+import { getAllShops, getShopDetails, searchGlobalCatalog,getActiveUserOffers, getOfferDetails, getCityBannerOffers, getOffersByStoreId } from "../controllers/userHomeController.js";
 
 const router = express.Router();
 
@@ -14,6 +14,12 @@ router.get("/search", searchGlobalCatalog);
 
 router.get("/offers", getActiveUserOffers);
 
+router.get("/offers/store-details/:storeId", getOffersByStoreId);
+
+router.get("/offers/:id", getOfferDetails);
+
+
+router.get("/offers/banners", getCityBannerOffers);
 /**
  * @route   GET /api/shops/:id
  * @desc    Get full details of a specific shop
