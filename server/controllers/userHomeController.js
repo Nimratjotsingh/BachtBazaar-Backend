@@ -297,7 +297,7 @@ export const getActiveUserOffers = async (req, res) => {
     const activeOffersPool = await Offer.find()
       .populate({
         path: "merchant_id",
-        select: "name store_name email profileImage status isBlocked",
+        select: "name store_name email profileImage _id city",
         model: "User" // Ensures it points exactly to your user model export
       })
       .populate("offer_type_id", "label value icon") // References parent template option

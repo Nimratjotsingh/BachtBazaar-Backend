@@ -377,3 +377,42 @@ export const createTestMerchant = async (req, res) => {
     });
   }
 };
+
+// ====================================================================
+// --- MERCHANT DISCONNECT / LOGOUT MIDDLEWARE CONTROLLER -------------
+// ====================================================================
+export const logoutMerchant = async (req, res) => {
+  try {
+    // 1. Clear secure HTTPOnly session cookie states if tracking credentials locally
+    res.clearCookie("token", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production", // Forces encryption over SSL layers
+      sameSite: "strict",
+      path: "/" // Enforces blanket reset path clearance bounds
+    });
+
+    // 2. Clear alternative custom authentication tokens if tracked under unique keys
+    res.clearCookie("merchantToken", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      path: "/"
+    });
+
+    // 3. Optional: If your system uses a Redis/Database Token Blacklist for deep JWT expiration:
+    // const token = req.headers.authorization?.split(" ")[1];
+    // if (token) { await blacklistToken(token); }
+
+    return res.status(200).json({
+      success: true,
+      message: "Merchant session terminated successfully. Cache reference values flushed."
+    });
+
+  } catch (error) {
+    console.error("Merchant Logout Sequence Fault Exception:", error);
+    return res.status(500).json({
+      success: false,
+      message: "An internal system error occurred while terminating session handles."
+    });
+  }
+};

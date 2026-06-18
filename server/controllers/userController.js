@@ -356,3 +356,97 @@ export const updatePassword = async (req, res) => {
     res.status(500).json({ message: "Update password failed" });
   }
 };
+
+export const deleteUserAccount = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    const userId = req.user?._id;
+
+    if (!userId) {
+      return res.status(401).json({ message: "Unauthorized token payload context." });
+    }
+
+    const user = await User.findById(userId).session(session);
+    if (!user) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(404).json({ message: "User account not found." });
+    }
+
+    // Cascading delete across related inventories if user is a merchant or manager
+    if (user.role === ROLES.MERCHANT || user.role === "merchant" || user.isMerchant === true) {
+      await Promise.all([
+        Product.deleteMany({ merchant_id: userId }).session(session),
+        Service.deleteMany({ merchant_id: userId }).session(session),
+        Offer.deleteMany({ merchant_id: userId }).session(session),
+        MerchantShop.deleteMany({ merchantId: userId }).session(session)
+      ]);
+    }
+
+    // Wipe out core profile security identity
+    await User.findByIdAndDelete(userId).session(session);
+
+    await session.commitTransaction();
+    session.endSession();
+
+    // Clear secure HTTPOnly session cookie data states instantly if utilized
+    res.clearCookie("token", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      path: "/"
+    });
+
+    res.json({
+      success: true,
+      message: "Account and all associated sub-data collections permanently wiped."
+    });
+
+  } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+    console.log("error delete-user-account", error.message);
+    res.status(500).json({ message: "Failed to delete user account database matrices." });
+  }
+};
+
+// ====================================================================
+// --- MERCHANT DISCONNECT / LOGOUT MIDDLEWARE CONTROLLER -------------
+// ====================================================================
+export const logoutUser = async (req, res) => {
+  try {
+    // 1. Clear secure HTTPOnly session cookie states if tracking credentials locally
+    res.clearCookie("token", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production", // Forces encryption over SSL layers
+      sameSite: "strict",
+      path: "/" // Enforces blanket reset path clearance bounds
+    });
+
+    // 2. Clear alternative custom authentication tokens if tracked under unique keys
+    res.clearCookie("userToken", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      path: "/"
+    });
+
+    // 3. Optional: If your system uses a Redis/Database Token Blacklist for deep JWT expiration:
+    // const token = req.headers.authorization?.split(" ")[1];
+    // if (token) { await blacklistToken(token); }
+
+    return res.status(200).json({
+      success: true,
+      message: "Merchant session terminated successfully. Cache reference values flushed."
+    });
+
+  } catch (error) {
+    console.error("Merchant Logout Sequence Fault Exception:", error);
+    return res.status(500).json({
+      success: false,
+      message: "An internal system error occurred while terminating session handles."
+    });
+  }
+};

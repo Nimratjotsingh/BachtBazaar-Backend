@@ -10,7 +10,8 @@ import {
   forgotPassword,
   updatePassword,
   createTestMerchant,
-  tempUpdatePass
+  tempUpdatePass,
+  logoutMerchant
 } from "../controllers/merchantAuthController.js";
 import { protectMerchant } from "../middleware/authMiddleware.js";
 
@@ -27,5 +28,6 @@ router.post("/login-otp", loginWithOtp);
 router.post("/forgot-password", forgotPassword);
 router.post("/temp-change-pass",tempUpdatePass);
 router.put("/password", protectMerchant, updatePassword);
+router.post("/merchant/auth/logout", protectMerchant, logoutMerchant);
 
 export default router;

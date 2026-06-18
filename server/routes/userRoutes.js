@@ -7,7 +7,9 @@ setPassword,
 loginWithPassword,
 loginWithOtp,
 forgotPassword,
-updatePassword
+updatePassword,
+deleteUserAccount,
+logoutUser
 } from "../controllers/userController.js";
 import { getProfileImage } from "../controllers/userController.js";
 
@@ -24,6 +26,9 @@ router.post("/auth/set-password", protectUser, setPassword);
 router.post("/auth/login-password", loginWithPassword);
 router.post("/auth/login-otp", loginWithOtp);
 router.post("/auth/forgot-password", forgotPassword);
+router.post("/auth/logout", logoutUser);
+
+router.delete("/auth/delete-account", protectUser, deleteUserAccount);
 
 // user
 router.put("/profile", protectUser, upload.single("profileImage"), updateProfile);
