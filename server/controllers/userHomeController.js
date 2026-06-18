@@ -5,7 +5,8 @@ import Offer from '../models/offerModel.js';
 import mongoose from "mongoose";
 
 
-// --- Show All Shops for Users (Paginated) ---
+
+
 export const getAllShops = async (req, res) => {
   try {
     const { 
@@ -17,15 +18,16 @@ export const getAllShops = async (req, res) => {
     } = req.query;
 
     const query = {};
+    const rightNow = new Date();
 
     // 1. Filter by City
     if (city) {
-      query.city = { $regex: city, $options: "i" };
+      query.city = { $regex: city.trim(), $options: "i" };
     }
 
     // 2. Search by Shop Name
     if (search) {
-      query.shopName = { $regex: search, $options: "i" };
+      query.shopName = { $regex: search.trim(), $options: "i" };
     }
 
     // 3. Filter by Category
@@ -36,19 +38,49 @@ export const getAllShops = async (req, res) => {
     // 4. Pagination Logic
     const skip = (Math.max(1, Number(page)) - 1) * Number(limit);
 
+    // Get total document counts for pagination metadata
     const total = await MerchantShop.countDocuments(query);
     
-    // We use .select("-logo.data -banner.data") because sending raw 
-    // binary buffers in a list view makes the JSON response massive.
+    // 5. Fetch Paginated Shops Batch (Using .lean() for faster, mutable raw objects)
     const shops = await MerchantShop.find(query)
-      .populate("merchantId", "name email profileImage")
+      .populate("merchantId", "name email profileImage ")
       .populate("categoryId", "label")
       .populate("subCategoryId", "label")
-      .select("-logo.data -banner.data") // Exclude heavy image data for list view
+      .select("-logo.data -banner.data") // Exclude heavy binary buffers for clean responses
       .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(Number(limit));
+      .limit(Number(limit))
+      .lean(); // .lean() turns Mongoose documents into plain JS objects so we can append properties
 
+    // 6. COLLECTIVE OFFERS PIPELINE (Prevents N+1 Query Overhead Bug)
+    if (shops.length > 0) {
+      // Gather all distinct merchant owner IDs from our paginated batch
+      const merchantIds = shops.map(shop => shop.merchantId?._id).filter(Boolean);
+
+      // Single database call to find all active campaigns across this entire batch
+      const activeOffersPool = await Offer.find({
+        merchant_id: { $in: merchantIds },
+        is_active: true,
+        is_deleted: false,
+        start_date: { $lte: rightNow },
+        end_date: { $gte: rightNow }
+      })
+      .select("title description thumbnail display_type discount_percentage discount_value minimum_purchase_amount end_date code merchant_id")
+      .populate("offer_type_id", "label value")
+      .sort({ createdAt: -1 })
+      .lean();
+
+      // Map the collective offers directly onto their respective shop items in memory
+      shops.forEach((shop) => {
+        // Find all offers belonging to this specific shop's merchantId
+        shop.offers = activeOffersPool.filter(
+          offer => offer.merchant_id?.toString() === shop.merchantId?._id?.toString()
+        );
+        shop.offerCount = shop.offers.length;
+      });
+    }
+
+    // 7. Return Response Package
     res.status(200).json({
       success: true,
       total,
@@ -58,10 +90,10 @@ export const getAllShops = async (req, res) => {
     });
 
   } catch (error) {
-    console.error("Get All Shops Error:", error);
+    console.error("Get All Shops With Offers Error:", error);
     res.status(500).json({ 
       success: false, 
-      message: "Failed to retrieve shops." 
+      message: "Failed to retrieve shops catalog listing." 
     });
   }
 };
