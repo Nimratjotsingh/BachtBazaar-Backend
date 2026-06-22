@@ -1,5 +1,5 @@
 import express from "express";
-import { getAllShops, getShopDetails, searchGlobalCatalog,getActiveUserOffers, getOfferDetails, getCityBannerOffers, getOffersByStoreId } from "../controllers/userHomeController.js";
+import { getAllShops, getShopDetails, searchGlobalCatalog,getActiveUserOffers, getOfferDetails, getCityBannerOffers, getOffersByStoreId, getAllOffers } from "../controllers/userHomeController.js";
 
 const router = express.Router();
 
