@@ -30,7 +30,7 @@ const navItems = [
   { label: "Calender", to: "/dashboard/calendar", icon: Calendar },
   { label: "Product", to: "/dashboard/products", icon: ToyBrick },
   { label: "Offers", to: "/dashboard/offers", icon: LucideActivity },
-  
+  { label: "AdminBanner", to: "/dashboard/adminbanner", icon: LucideActivity },
 ];
 
 const DashboardLayout = ({token,onLogout}) => {
