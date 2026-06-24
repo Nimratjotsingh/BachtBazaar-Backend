@@ -44,17 +44,21 @@ export const protectUser = async (req, res, next) => {
 
 export const protectMerchant = async (req, res, next) => {
   const token = extractBearerToken(req);
+  
   if (!token) {
     return res.status(401).json({ message: "No token" });
   }
 
   try {
+    
     const decoded = verifyJwt(token);
+    console.log(decoded)
     if (decoded.accountType && decoded.accountType !== ACCOUNT_TYPES.MERCHANT) {
       return res.status(403).json({ message: "Forbidden: invalid account type" });
     }
 
     const merchant = await Merchant.findById(decoded.id).select("-password");
+    console.log(merchant)
     if (!merchant) {
       return res.status(401).json({ message: "Not authorized" });
     }
@@ -63,6 +67,7 @@ export const protectMerchant = async (req, res, next) => {
     req.auth = buildAuthContext(merchant, ACCOUNT_TYPES.MERCHANT);
     return next();
   } catch (error) {
+    console.log(error)
     return res.status(401).json({ message: "Not authorized" });
   }
 };

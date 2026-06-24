@@ -30,6 +30,7 @@ import dashboardRoutes from './routes/dashboardRoutes.js';
 import subOfferTypeRoute from './routes/subOfferTypeRoutes.js';
 import userAnalytics from './routes/userAnalyticsRoutes.js';
 import adminBanner from './routes/adminBannerRoutes.js';
+import areasRoutes from './routes/areaRoutes.js'
 dotenv.config();
 // console.log(process.env.MONGO_URI)
 
@@ -92,7 +93,8 @@ app.use('/api/offers',offerRoutes);
 app.use('/api/ai',openai);
 app.use('/api/subOfferType',subOfferTypeRoute);
 app.use('/api/analytics', userAnalytics);
-app.use('/api/banners',adminBanner)
+app.use('/api/adminbaners',adminBanner);
+app.use('/api/areas',areasRoutes);
 app.get("/health", (req, res) => {
   res.json({ message: "Server is healthy!" });
 });

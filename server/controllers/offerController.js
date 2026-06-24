@@ -1,8 +1,152 @@
 // controllers/offerController.js
 import Offer from "../models/offerModel.js";
 import CalendarConfig from "../models/calenderConfigModel.js";
+import MerchantShop from '../models/merchantShopModel.js'
+import Area from '../models/AreaModel.js';
+import mongoose from "mongoose";
 
+// Helper to isolate date segments and force UTC Midnight matching your schemas
+const normalizeToMidnight = (dateString) => {
+  if (!dateString) return null;
+  const cleanDateString = dateString.includes("T") ? dateString.split("T")[0] : dateString;
+  const [year, month, day] = cleanDateString.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
+};
 
+// ====================================================================
+// --- GET SLOT STATUS BY EXPLICIT OR SHOP LAT/LNG COORDINATES -------
+// ====================================================================
+export const getMerchantSlotStatus = async (req, res) => {
+  try {
+    const { lat, lng, date } = req.query;
+    const merchantId = req.user?._id; // Injected from your protectMerchant verification middleware
+
+    if (!date) {
+      return res.status(400).json({
+        success: false,
+        message: "The target calendar placement date parameter is required."
+      });
+    }
+
+    const targetDate = normalizeToMidnight(date);
+    let resolvedLng;
+    let resolvedLat;
+    let fallbackUsed = false;
+
+    // --- PIPELINE 1: COORDINATES DETECTION & RESOLUTION ---
+    if (lat !== undefined && lng !== undefined) {
+      resolvedLat = Number(lat);
+      resolvedLng = Number(lng);
+    } else {
+      // Fallback: Query the database for the authenticated merchant's shop coordinates
+      const shop = await MerchantShop.findOne({ merchantId }).select("center_location location area_id");
+      
+      if (!shop) {
+        return res.status(404).json({
+          success: false,
+          message: "Coordinates missing from request, and no storefront profile was found for this merchant."
+        });
+      }
+
+      const shopGeo = shop.center_location || shop.location;
+      if (!shopGeo || !shopGeo.coordinates) {
+        return res.status(400).json({
+          success: false,
+          message: "Coordinates missing from request, and your store profile lacks valid GPS metrics."
+        });
+      }
+
+      [resolvedLng, resolvedLat] = shopGeo.coordinates;
+      fallbackUsed = true;
+    }
+
+    // --- PIPELINE 2: GEOGRAPHIC GEOMAPPING TO LOCAL AREA ---
+    // Look up the closest active geofenced Area using the resolved coordinates
+    const closestArea = await Area.findOne({
+      is_active: true,
+      center_location: {
+        $near: {
+          $geometry: {
+            type: "Point",
+            coordinates: [resolvedLng, resolvedLat] // [longitude, latitude]
+          }
+        }
+      }
+    }).select("_id name radius_km");
+
+    if (!closestArea) {
+      return res.status(404).json({
+        success: false,
+        message: "The coordinates do not fall within any operational BachatBazarr geofenced Area boundaries."
+      });
+    }
+
+    const targetAreaId = closestArea._id;
+
+    // --- PIPELINE 3: ALLOCATION METRICS COMPILATION ---
+    const fallbackDefaultLimit = 5;
+
+    // Execute lookup conditions concurrently 
+    const [dateRule, totalAreaOffers, merchantSpecificOffers] = await Promise.all([
+      // Check for specific date exceptions or administrative locks
+      CalendarConfig.findOne({ area_id: targetAreaId, date: targetDate }).lean(),
+
+      // Count total live active merchant bookings within this Area zone footprint
+      Offer.countDocuments({
+        display_type: "calendar",
+        start_date: targetDate,
+        is_deleted: false,
+        is_active: true,
+        merchant_id: { 
+          $in: await mongoose.model("MerchantShop").find({ area_id: targetAreaId }).distinct("merchantId") 
+        }
+      }),
+
+      // Count how many slots the requesting merchant has already booked on this day
+      Offer.countDocuments({
+        display_type: "calendar",
+        start_date: targetDate,
+        merchant_id: merchantId,
+        is_deleted: false,
+        is_active: true
+      })
+    ]);
+
+    const maxAllowedSlots = dateRule ? dateRule.max_allowed_offers : fallbackDefaultLimit;
+    const isLockedByAdmin = dateRule ? dateRule.is_locked : false;
+    const slotsRemaining = Math.max(0, maxAllowedSlots - totalAreaOffers);
+
+    return res.status(200).json({
+      success: true,
+      meta: {
+        resolved_area: {
+          _id: targetAreaId,
+          name: closestArea.name
+        },
+        coordinates_evaluated: {
+          latitude: resolvedLat,
+          longitude: resolvedLng
+        },
+        date: targetDate.toISOString().split("T")[0],
+        is_locked: isLockedByAdmin,
+        resolved_via: fallbackUsed ? "merchant_shop_fallback" : "explicit_params"
+      },
+      data: {
+        max_slots: maxAllowedSlots,                 // Total Slots Capacity
+        total_booked: totalAreaOffers,              // Total Booked by everyone in Area
+        slots_remaining: isLockedByAdmin ? 0 : slotsRemaining, // Available for allocation
+        merchant_booked_count: merchantSpecificOffers // Number of slots this merchant booked
+      }
+    });
+
+  } catch (error) {
+    console.error("Merchant Slot Query Coordinates Processing Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "An error occurred while compiling regional calendar parameters using geospatial coordinates."
+    });
+  }
+};
 export const createOffer = async (req, res) => {
   try {
     const data = { ...req.body };

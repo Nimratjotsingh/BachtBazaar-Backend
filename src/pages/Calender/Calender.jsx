@@ -1,11 +1,17 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { 
-  Calendar, Lock, Unlock, Save, Loader2, 
-  ChevronLeft, ChevronRight, AlertCircle, RefreshCw, Sliders
+  Calendar, Lock, Unlock, Save, Loader2, Map,
+  ChevronLeft, ChevronRight, AlertCircle, RefreshCw, Sliders, MapPin
 } from "lucide-react";
 import { accountClient, buildAuthHeaders } from "../../lib/api";
 
 const AdminCalendarConfig = ({ token }) => {
+  // --- Area Zone States ---
+  const [areas, setAreas] = useState([]);
+  const [selectedAreaId, setSelectedAreaId] = useState("");
+  const [areasLoading, setAreasLoading] = useState(false);
+
+  // --- Core Lifecycle Calendar States ---
   const [schedule, setSchedule] = useState({});
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
@@ -34,7 +40,7 @@ const AdminCalendarConfig = ({ token }) => {
     return formatDateKey(selectedDate);
   }, [selectedDate]);
 
-  // --- START: CALENDAR TIME BOUNDARY THRESHOLD CALCULATIONS ---
+  // --- CALENDAR TIME BOUNDARY THRESHOLD CALCULATIONS ---
   const todayMidnightThreshold = useMemo(() => {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
@@ -50,17 +56,43 @@ const AdminCalendarConfig = ({ token }) => {
   const isSelectedDateInPast = useMemo(() => {
     return isPastDate(selectedDate);
   }, [selectedDate, todayMidnightThreshold]);
-  // --- END: CALENDAR TIME BOUNDARY THRESHOLD CALCULATIONS ---
 
-  // Fetch the full month when month changes
+  // Lifecycle Pipeline 1: Initialize Area Zoning Registers
   useEffect(() => {
-    fetchMonthSchedule();
-  }, [currentMonth]);
+    const fetchSystemAreas = async () => {
+      try {
+        setAreasLoading(true);
+        const res = await accountClient.get("/areas", { headers });
+        if (res.data.success && res.data.data) {
+          setAreas(res.data.data);
+          if (res.data.data.length > 0) {
+            setSelectedAreaId(res.data.data[0]._id); // Fallback to initial row item auto-selection
+          }
+        }
+      } catch (err) {
+        console.error("Critical failure collecting system zone arrays:", err);
+      } finally {
+        setAreasLoading(false);
+      }
+    };
+    fetchSystemAreas();
+  }, [token]);
 
-  // Make sure form data updates immediately whenever the selection OR the master schedule data updates
+  // Lifecycle Pipeline 2: Fetch Monthly Schedule when Month OR Selected Area shifts
   useEffect(() => {
-    fetchSelectedDateDetails();
-  }, [formattedSelectedDate, schedule]); 
+    if (selectedAreaId) {
+      fetchMonthSchedule();
+    } else {
+      setSchedule({});
+    }
+  }, [currentMonth, selectedAreaId]);
+
+  // Lifecycle Pipeline 3: Refresh settings sidebar when selected grid date or master data modifications commit
+  useEffect(() => {
+    if (selectedAreaId) {
+      fetchSelectedDateDetails();
+    }
+  }, [formattedSelectedDate, schedule, selectedAreaId]); 
 
   const fetchMonthSchedule = async () => {
     try {
@@ -70,6 +102,7 @@ const AdminCalendarConfig = ({ token }) => {
       
       const res = await accountClient.get("/calendar-config/admin/schedule", {
         params: {
+          area_id: selectedAreaId, // Scoping downstream requests directly to specific Area Id perimeters
           start: startOfMonth.toISOString(),
           end: endOfMonth.toISOString()
         },
@@ -83,7 +116,7 @@ const AdminCalendarConfig = ({ token }) => {
       });
       setSchedule(scheduleMap);
     } catch (err) {
-      console.error("Failed to load month metrics configuration mapping:", err);
+      console.error("Failed to load area monthly metrics configuration matrix:", err);
     } finally {
       setLoading(false);
     }
@@ -100,9 +133,11 @@ const AdminCalendarConfig = ({ token }) => {
       });
     } else {
       try {
-        // FIX: Send YYYY-MM-DD instead of .toISOString() to avoid timezone shifting
-        const res = await accountClient.get("calendar-config/availability", {
-          params: { date: formattedSelectedDate },
+        const res = await accountClient.get("/calendar-config/availability", {
+          params: { 
+            area_id: selectedAreaId,
+            date: formattedSelectedDate 
+          },
           headers
         });
 
@@ -113,19 +148,19 @@ const AdminCalendarConfig = ({ token }) => {
           current_booked_count: res.data.booked_slots
         });
       } catch (err) {
-        console.error("Failed to fetch individual day metrics fallback:", err);
+        console.error("Failed to fetch individual day area metrics fallback:", err);
       }
     }
   };
 
   const handleSaveConfig = async (e) => {
     e.preventDefault();
-    if (isSelectedDateInPast) return; 
+    if (isSelectedDateInPast || !selectedAreaId) return; 
     
     try {
       setActionLoading(true);
-      // FIX: Send formattedSelectedDate (YYYY-MM-DD string literal) to lock the date parameter in place
       const res = await accountClient.post("/calendar-config/admin/limit", {
+        area_id: selectedAreaId, // Explicit tracking parameter bound injection
         date: formattedSelectedDate,
         max_allowed_offers: Number(formData.max_allowed_offers),
         notes: formData.notes,
@@ -142,21 +177,24 @@ const AdminCalendarConfig = ({ token }) => {
       }
 
       await fetchMonthSchedule(); 
-      alert(`Configurations applied for ${formattedSelectedDate}`);
+      alert(`Area configurations applied for ${formattedSelectedDate}`);
     } catch (err) {
-      alert(err.response?.data?.message || "Failed to update day variables.");
+      alert(err.response?.data?.message || "Failed to update localized day variables.");
     } finally {
       setActionLoading(false);
     }
   };
 
   const handleSyncCounter = async () => {
+    if (!selectedAreaId) return;
     try {
       setActionLoading(true);
-      // FIX: Synchronize using formattedSelectedDate string mapping to preserve midnight blocks
-      await accountClient.post("/calendar-config/admin/sync", { date: formattedSelectedDate }, { headers });
+      await accountClient.post("/calendar-config/admin/sync", { 
+        area_id: selectedAreaId, 
+        date: formattedSelectedDate 
+      }, { headers });
       await fetchMonthSchedule();
-      alert("Counter synchronized against live database entries.");
+      alert("Area campaign bookings counters synchronized against live data.");
     } catch (err) {
       alert("Synchronization process rejected.");
     } finally {
@@ -197,8 +235,9 @@ const AdminCalendarConfig = ({ token }) => {
         <button
           key={`day-${day}`}
           type="button"
+          disabled={!selectedAreaId}
           onClick={() => setSelectedDate(activeLoopDate)}
-          className={`h-14 relative p-2 flex flex-col justify-between items-start rounded-xl border transition-all text-left cursor-pointer group
+          className={`h-14 relative p-2 flex flex-col justify-between items-start rounded-xl border transition-all text-left cursor-pointer group w-full
             ${isSelected ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-100 z-10' : 'bg-white border-blue-50 text-blue-950 hover:border-blue-300'}
             ${isLocked ? 'bg-amber-50/50 border-amber-100' : ''}
             ${isHistory ? 'bg-slate-100/70 border-slate-100 text-slate-400 opacity-60 hover:border-slate-100 cursor-not-allowed' : ''}
@@ -247,12 +286,46 @@ const AdminCalendarConfig = ({ token }) => {
 
   return (
     <div className="p-8 space-y-6 max-w-[1400px] mx-auto text-slate-800 antialiased">
-      <div>
-        <h1 className="text-3xl font-extrabold text-blue-950 flex items-center gap-2 tracking-tight">
-          <Calendar className="text-blue-500" /> Calendar Campaign Cap Allocation
-        </h1>
-        <p className="text-blue-500 text-sm mt-0.5">Regulate and balance top-level merchant visibility allocations per calendar block day</p>
+      
+      {/* Top Header Deck Row Component */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-100 pb-5">
+        <div>
+          <h1 className="text-3xl font-extrabold text-blue-950 flex items-center gap-2 tracking-tight">
+            <Calendar className="text-blue-500" /> Calendar Campaign Cap Allocation
+          </h1>
+          <p className="text-blue-500 text-sm mt-0.5">Regulate and balance top-level merchant visibility allocations per hyper-local area boundary</p>
+        </div>
+
+        {/* Global Area Scope Selection Trigger Hook Dropdown menu */}
+        <div className="flex items-center gap-2 bg-blue-50/40 border border-blue-100 p-2 rounded-2xl min-w-[280px]">
+          <Map className="text-blue-500 shrink-0 ml-1.5" size={16} />
+          <div className="flex-1">
+            <label className="block text-[9px] font-black uppercase tracking-wider text-blue-400 leading-none mb-0.5">Active Target Area Zone</label>
+            {areasLoading ? (
+              <div className="text-xs font-bold text-slate-400 flex items-center gap-1"><Loader2 size={10} className="animate-spin" /> Indexing scopes...</div>
+            ) : (
+              <select 
+                value={selectedAreaId}
+                onChange={(e) => setSelectedAreaId(e.target.value)}
+                className="w-full bg-transparent border-none text-xs font-bold text-blue-950 outline-none cursor-pointer pr-4"
+              >
+                {areas.length === 0 && <option value="">No Active Areas Found</option>}
+                {areas.map(area => (
+                  <option key={area._id} value={area._id}>
+                    {area.name.toUpperCase()} ({area.city.toUpperCase()})
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+        </div>
       </div>
+
+      {!selectedAreaId && !areasLoading && (
+        <div className="p-4 bg-amber-50 border border-amber-100 rounded-2xl text-xs font-bold text-amber-700 flex items-center gap-2">
+          <AlertCircle size={16} /> Administrative warning: You must define and select a valid hyper-local Area zone before calendar matrix modification scopes can initialize.
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
         {/* Calendar Grid Display */}
@@ -293,17 +366,17 @@ const AdminCalendarConfig = ({ token }) => {
         <div className="bg-white rounded-[32px] border border-blue-100 shadow-xl overflow-hidden">
           <div className="p-6 bg-blue-50/20 border-b border-blue-50 flex items-center justify-between">
             <div>
-              <h3 className="font-bold text-blue-950 text-base">Date Control Panel</h3>
-              <p className="text-xs font-mono text-blue-500 mt-0.5">
-                {formattedSelectedDate} {isSelectedDateInPast && <span className="text-red-500 font-sans font-bold ml-1">(Past Date)</span>}
-              </p>
+              <h3 className="font-bold text-blue-950 text-base">Zone Control Panel</h3>
+              <div className="flex items-center gap-1 text-xs font-mono text-blue-500 mt-0.5">
+                <MapPin size={11} /> {formattedSelectedDate} {isSelectedDateInPast && <span className="text-red-500 font-sans font-bold ml-1">(Past Date)</span>}
+              </div>
             </div>
             <button
               type="button"
               onClick={handleSyncCounter}
-              disabled={actionLoading}
-              title="Synchronize/Audit Bookings Counter"
-              className="p-2 text-blue-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all cursor-pointer"
+              disabled={actionLoading || !selectedAreaId}
+              title="Synchronize Local Bookings Counter"
+              className="p-2 text-blue-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all cursor-pointer disabled:opacity-30"
             >
               <RefreshCw size={16} className={actionLoading ? "animate-spin" : ""} />
             </button>
@@ -312,9 +385,9 @@ const AdminCalendarConfig = ({ token }) => {
           <form onSubmit={handleSaveConfig} className="p-6 space-y-5">
             <div className="p-4 rounded-2xl bg-blue-50/40 border border-blue-100 flex items-center justify-between text-sm">
               <div className="space-y-0.5">
-                <div className="text-xs text-slate-400 font-bold uppercase tracking-wider">Current Bookings Allocation</div>
+                <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Area Active Occupancy</div>
                 <div className="text-xl font-black text-blue-950">
-                  {formData.current_booked_count} <span className="text-slate-400 text-xs font-medium">Slots Occupied</span>
+                  {formData.current_booked_count} <span className="text-slate-400 text-xs font-medium">Slots Taken</span>
                 </div>
               </div>
               {formData.current_booked_count >= formData.max_allowed_offers && (
@@ -326,13 +399,13 @@ const AdminCalendarConfig = ({ token }) => {
 
             <div className="space-y-1">
               <label className="text-xs font-bold text-blue-400 uppercase tracking-widest flex items-center gap-1">
-                <Sliders size={12} /> Maximum Allowed Campaigns Cap
+                <Sliders size={12} /> Local Maximum Cap Limits
               </label>
               <input
                 type="number"
                 min="0"
                 required
-                disabled={isSelectedDateInPast} 
+                disabled={isSelectedDateInPast || !selectedAreaId} 
                 className="w-full px-4 py-2.5 bg-blue-50/50 border border-blue-100 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-blue-950 disabled:opacity-50 disabled:cursor-not-allowed"
                 value={formData.max_allowed_offers}
                 onChange={(e) => setFormData({ ...formData, max_allowed_offers: e.target.value })}
@@ -340,12 +413,12 @@ const AdminCalendarConfig = ({ token }) => {
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-bold text-blue-400 uppercase tracking-widest">Internal Allocation Notes</label>
+              <label className="text-xs font-bold text-blue-400 uppercase tracking-widest">Zoning Log Notation</label>
               <textarea
                 rows="3"
-                disabled={isSelectedDateInPast} 
+                disabled={isSelectedDateInPast || !selectedAreaId} 
                 className="w-full px-4 py-2.5 bg-blue-50/50 border border-blue-100 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-sm text-slate-600 resize-none disabled:opacity-50 disabled:cursor-not-allowed"
-                placeholder="e.g., Extended seasonal limits for holiday peak traffic windows..."
+                placeholder="e.g., Specific regional spikes configuration parameters..."
                 value={formData.notes}
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
               />
@@ -353,12 +426,12 @@ const AdminCalendarConfig = ({ token }) => {
 
             <div className="flex items-center justify-between border-t border-blue-50 pt-4">
               <div className="space-y-0.5">
-                <span className="text-sm font-bold text-blue-950">Lock This Date</span>
-                <p className="text-[11px] text-slate-400">Instantly drops active merchant asset creation requests on this day</p>
+                <span className="text-sm font-bold text-blue-950">Lock This Zone Date</span>
+                <p className="text-[11px] text-slate-400">Drops calendar creation options inside this area instantly</p>
               </div>
               <button
                 type="button"
-                disabled={isSelectedDateInPast} 
+                disabled={isSelectedDateInPast || !selectedAreaId} 
                 onClick={() => setFormData({ ...formData, is_locked: !formData.is_locked })}
                 className={`w-12 h-7 flex items-center rounded-full p-1 transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed ${formData.is_locked ? 'bg-amber-500 justify-end' : 'bg-slate-200 justify-start'}`}
               >
@@ -370,15 +443,15 @@ const AdminCalendarConfig = ({ token }) => {
 
             {isSelectedDateInPast ? (
               <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs font-medium text-slate-500 text-center italic">
-                Historical records are archived and cannot be modified.
+                Historical regional records are locked and cannot be updated.
               </div>
             ) : (
               <button
                 type="submit"
-                disabled={actionLoading}
+                disabled={actionLoading || !selectedAreaId}
                 className="w-full h-12 bg-blue-600 text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-blue-700 shadow-lg shadow-blue-100 transition-all cursor-pointer disabled:opacity-50"
               >
-                {actionLoading ? <Loader2 className="animate-spin" /> : <Save size={16} />} Apply Day Configurations
+                {actionLoading ? <Loader2 className="animate-spin" /> : <Save size={16} />} Save Zone Allocations
               </button>
             )}
           </form>

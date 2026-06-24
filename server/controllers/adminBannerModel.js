@@ -179,7 +179,7 @@ export const getActiveUserBanners = async (req, res) => {
       userFeedQuery.target_city = { $in: [city.trim().toLowerCase(), "all"] };
     }
 
-    const liveBanners = await Banner.find(userFeedQuery)
+    const liveBanners = await Banner.find()
       .sort({ sort_order: 1, createdAt: -1 })
       .lean();
 

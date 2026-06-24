@@ -18,8 +18,10 @@ import AdminProductDashboard from "./pages/Products/Products";
 import AdminOffersDashboard from "./pages/OffersListing/OffersListing";
 import SubOfferTypePage from "./pages/SubOffer/SubOffer";
 import AdminBanner from './pages/AdminBanner/AdminBanner'
+import AdminAreasDashboard from "./pages/Area/Area";
 
 const TOKEN_STORAGE_KEY = "bb_admin_token";
+const gmaps_key = import.meta.env.VITE_API_GMAPS_KEY;
 
 function App() {
   const [token, setToken] = useState(() => 
@@ -38,8 +40,9 @@ function App() {
   const handleLogout = () => setToken("");
 
   const isAuthenticated = !!token;
-
+  console.log(gmaps_key)
   return (
+    
     <Routes>
       {/* 🌐 Public Routes */}
       <Route path="/" element={<LandingPage />} />
@@ -85,6 +88,7 @@ function App() {
         <Route path="offers" element={<AdminOffersDashboard token={token}/>}/>
         <Route path="suboffer-type" element={<SubOfferTypePage token={token}/>}/>
         <Route path="adminbanner" element={<AdminBanner token={token}/>}/> 
+        <Route path="area" element={<AdminAreasDashboard token={token} googleMapsApiKey={gmaps_key}/>}/> 
       </Route>
 
       {/* 🔁 Fallback Catch-All for unknown URLs */}

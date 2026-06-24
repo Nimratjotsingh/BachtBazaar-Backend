@@ -14,6 +14,7 @@
     "seed:categories": "node server/scripts/seedCategories.js"
   },
   "dependencies": {
+    "@react-google-maps/api": "^2.20.8",
     "axios": "^1.15.0",
     "bcryptjs": "^3.0.3",
     "concurrently": "^9.2.1",

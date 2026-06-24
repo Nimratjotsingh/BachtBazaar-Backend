@@ -14,7 +14,8 @@ import {
   BookTemplate,
   Calendar,
   ToyBrick,
-  LucideActivity
+  LucideActivity,
+  Building2Icon
 } from "lucide-react";
 
 const navItems = [
@@ -27,6 +28,7 @@ const navItems = [
   { label: "Offer Type", to: "/dashboard/offer-type", icon: LucideWorkflow },
   { label: "Sub-Offer Type", to: "/dashboard/suboffer-type", icon: LucideWorkflow },
   { label: "Templates", to: "/dashboard/templates", icon: BookTemplate },
+  { label: "Areas", to: "/dashboard/area", icon: Building2Icon },
   { label: "Calender", to: "/dashboard/calendar", icon: Calendar },
   { label: "Product", to: "/dashboard/products", icon: ToyBrick },
   { label: "Offers", to: "/dashboard/offers", icon: LucideActivity },
