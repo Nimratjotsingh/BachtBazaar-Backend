@@ -2,7 +2,8 @@ import MerchantShop from "../models/merchantShopModel.js";
 import Product from "../models/productModel.js";
 import Service from "../models/serviceModel.js";
 import Offer from '../models/offerModel.js';
-import Merchant from '../models/merchantModel.js'
+import Merchant from '../models/merchantModel.js';
+import Category from '../models/categoryModel.js';
 import mongoose from "mongoose";
 
 
@@ -731,6 +732,30 @@ export const getOffersByStoreId = async (req,res) => {
     return res.status(500).json({
       success: false,
       message: "An error occurred while compiling active storefront promotional lists."
+    });
+  }
+};
+
+export const getUserCategories = async (req, res) => {
+  try {
+    // 1. Fetch only active fields using lean execution for hyper-low latency streaming
+    const activeCategories = await Category.find({ isActive: true })
+      .select("value label type description image") // Excludes structural metadata fields like __v
+      .sort({ label: 1 }) // Sort alphabetically by display label name (A-Z)
+      .lean();
+
+    // 2. Return the structured collection
+    return res.status(200).json({
+      success: true,
+      count: activeCategories.length,
+      data: activeCategories
+    });
+
+  } catch (error) {
+    console.error("User Category Index Fetch Exception Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "An internal server error occurred while retrieving categories."
     });
   }
 };
