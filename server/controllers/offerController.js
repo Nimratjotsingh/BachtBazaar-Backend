@@ -16,10 +16,17 @@ const normalizeToMidnight = (dateString) => {
 // ====================================================================
 // --- GET SLOT STATUS BY EXPLICIT OR SHOP LAT/LNG COORDINATES -------
 // ====================================================================
+// const normalizeToMidnight = (dateString) => {
+//   if (!dateString) return null;
+//   const cleanDateString = dateString.includes("T") ? dateString.split("T")[0] : dateString;
+//   const [year, month, day] = cleanDateString.split("-").map(Number);
+//   return new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
+// };
+
 export const getMerchantSlotStatus = async (req, res) => {
   try {
     const { lat, lng, date } = req.query;
-    const merchantId = req.user?._id; // Injected from your protectMerchant verification middleware
+    const merchantId = req.user?._id; 
 
     if (!date) {
       return res.status(400).json({
@@ -33,12 +40,13 @@ export const getMerchantSlotStatus = async (req, res) => {
     let resolvedLat;
     let fallbackUsed = false;
 
-    // --- PIPELINE 1: COORDINATES DETECTION & RESOLUTION ---
-    if (lat !== undefined && lng !== undefined) {
+    // =========================================================
+    // PIPELINE 1: COORDINATES DETECTION & RESOLUTION
+    // =========================================================
+    if (lat !== undefined && lng !== undefined && lat !== "" && lng !== "") {
       resolvedLat = Number(lat);
       resolvedLng = Number(lng);
     } else {
-      // Fallback: Query the database for the authenticated merchant's shop coordinates
       const shop = await MerchantShop.findOne({ merchantId }).select("center_location location area_id");
       
       if (!shop) {
@@ -60,19 +68,41 @@ export const getMerchantSlotStatus = async (req, res) => {
       fallbackUsed = true;
     }
 
-    // --- PIPELINE 2: GEOGRAPHIC GEOMAPPING TO LOCAL AREA ---
-    // Look up the closest active geofenced Area using the resolved coordinates
-    const closestArea = await Area.findOne({
-      is_active: true,
-      center_location: {
-        $near: {
-          $geometry: {
+    // Sanity validation checking on numerical coordinate transformations
+    if (isNaN(resolvedLat) || isNaN(resolvedLng)) {
+      return res.status(400).json({
+        success: false,
+        message: "Provided or fallback geospatial coordinates map fields are invalid numbers."
+      });
+    }
+
+    // =========================================================
+    // PIPELINE 2: FIXED GEOGRAPHIC GEOMAPPING VIA AGGREGATION
+    // =========================================================
+    // Using $geoNear stage directly guarantees MongoDB explicitly binds onto the Area index
+    const geoResults = await Area.aggregate([
+      {
+        $geoNear: {
+          near: {
             type: "Point",
             coordinates: [resolvedLng, resolvedLat] // [longitude, latitude]
-          }
+          },
+          distanceField: "distance_meters",
+          spherical: true,
+          query: { is_active: true }
+        }
+      },
+      { $limit: 1 },
+      {
+        $project: {
+          _id: 1,
+          name: 1,
+          radius_km: 1
         }
       }
-    }).select("_id name radius_km");
+    ]);
+
+    const closestArea = geoResults.length > 0 ? geoResults[0] : null;
 
     if (!closestArea) {
       return res.status(404).json({
@@ -83,15 +113,14 @@ export const getMerchantSlotStatus = async (req, res) => {
 
     const targetAreaId = closestArea._id;
 
-    // --- PIPELINE 3: ALLOCATION METRICS COMPILATION ---
+    // =========================================================
+    // PIPELINE 3: ALLOCATION METRICS COMPILATION
+    // =========================================================
     const fallbackDefaultLimit = 5;
 
-    // Execute lookup conditions concurrently 
     const [dateRule, totalAreaOffers, merchantSpecificOffers] = await Promise.all([
-      // Check for specific date exceptions or administrative locks
       CalendarConfig.findOne({ area_id: targetAreaId, date: targetDate }).lean(),
 
-      // Count total live active merchant bookings within this Area zone footprint
       Offer.countDocuments({
         display_type: "calendar",
         start_date: targetDate,
@@ -102,7 +131,6 @@ export const getMerchantSlotStatus = async (req, res) => {
         }
       }),
 
-      // Count how many slots the requesting merchant has already booked on this day
       Offer.countDocuments({
         display_type: "calendar",
         start_date: targetDate,
@@ -132,10 +160,10 @@ export const getMerchantSlotStatus = async (req, res) => {
         resolved_via: fallbackUsed ? "merchant_shop_fallback" : "explicit_params"
       },
       data: {
-        max_slots: maxAllowedSlots,                 // Total Slots Capacity
-        total_booked: totalAreaOffers,              // Total Booked by everyone in Area
-        slots_remaining: isLockedByAdmin ? 0 : slotsRemaining, // Available for allocation
-        merchant_booked_count: merchantSpecificOffers // Number of slots this merchant booked
+        max_slots: maxAllowedSlots,                 
+        total_booked: totalAreaOffers,              
+        slots_remaining: isLockedByAdmin ? 0 : slotsRemaining, 
+        merchant_booked_count: merchantSpecificOffers 
       }
     });
 
