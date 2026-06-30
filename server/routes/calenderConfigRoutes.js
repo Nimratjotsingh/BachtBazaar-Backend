@@ -4,7 +4,8 @@ import {
   getCalendarScheduleAdmin, 
   checkDateAvailability,
   syncCalendarCounts,
-  getCalendarScheduleByParams
+  getCalendarScheduleByParams,
+  checkDateAvailabilityRangeByCoords
 } from "../controllers/calenderConfigController.js";
 import { protectSuperAdmin } from "../middleware/superAuthMiddleware.js";
 import { protectMerchant } from "../middleware/authMiddleware.js";
@@ -23,6 +24,6 @@ router.post("/admin/sync", protectSuperAdmin, syncCalendarCounts);
 // Used by merchants to see how many slots are remaining before picking a day
 router.get("/availability",  checkDateAvailability);
 
-router.get('/available-dates', getCalendarScheduleAdmin)
+router.get('/available-dates', checkDateAvailabilityRangeByCoords)
 
 export default router;
