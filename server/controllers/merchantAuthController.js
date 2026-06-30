@@ -314,7 +314,7 @@ export const createTestMerchant = async (req, res) => {
       name,
       email,
       phone,
-      password
+      password,city
     } = req.body;
 
     // Basic validation
@@ -352,7 +352,8 @@ export const createTestMerchant = async (req, res) => {
       phone: formattedPhone,
       password: hashedPassword,
       isVerified: true,
-      role: ROLES.MERCHANT
+      role: ROLES.MERCHANT,
+      city
     });
 
     // Generate JWT

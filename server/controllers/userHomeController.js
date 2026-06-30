@@ -2,6 +2,7 @@ import MerchantShop from "../models/merchantShopModel.js";
 import Product from "../models/productModel.js";
 import Service from "../models/serviceModel.js";
 import Offer from '../models/offerModel.js';
+import Merchant from '../models/merchantModel.js'
 import mongoose from "mongoose";
 
 
@@ -515,11 +516,14 @@ export const getOfferDetails = async (req, res) => {
 };
 
 
+
+
 export const getCityBannerOffers = async (req, res) => {
   try {
-    const { city } = req.query;
+    const { city, category_id } = req.query;
     const rightNow = new Date();
 
+    // 1. Core input parameter validation check
     if (!city) {
       return res.status(400).json({
         success: false,
@@ -527,13 +531,17 @@ export const getCityBannerOffers = async (req, res) => {
       });
     }
 
-    // 1. Trace all merchant IDs running matching shop storefront locations in the specified city
-    const activeShopsInCity = await MerchantShop.find({
-      city: { $regex: `^${city.trim()}$`, $options: "i" }
-    }).select("merchantId");
+    // 2. Trace verified, unblocked merchants registered inside the target city limits
+    const activeMerchantsInCity = await Merchant.find({
+      city: { $regex: `^${city.trim()}$`, $options: "i" },
+      // status: "verified",       
+      // isBlocked: false          
+    }).select("_id");
 
-    // If no storefront matching that city boundary is logged, return empty collection safely
-    if (activeShopsInCity.length === 0) {
+    
+
+    // If no merchants are logged inside this city boundary, return empty dataset immediately
+    if (activeMerchantsInCity.length === 0) {
       return res.status(200).json({
         success: true,
         city: city.trim(),
@@ -542,9 +550,9 @@ export const getCityBannerOffers = async (req, res) => {
       });
     }
 
-    const validMerchantIds = activeShopsInCity.map(shop => shop.merchantId);
+    const validMerchantIds = activeMerchantsInCity.map(merchant => merchant._id);
 
-    // 2. Build pipeline constraints targeting explicitly local city merchant banners
+    // 3. Construct core active banner conditions parameters matrix
     const bannerQuery = {
       display_type: "banner",
       is_active: true,
@@ -554,68 +562,76 @@ export const getCityBannerOffers = async (req, res) => {
       end_date: { $gte: rightNow }
     };
 
-    // 3. Extract banner campaigns using lean execution profiles for rapid transmission
+    // --- NEW: Category Filtration Injection ---
+    // If category_id exists in req.query and is a valid format, bind it into the mongo query block
+    if (category_id && mongoose.Types.ObjectId.isValid(category_id)) {
+      bannerQuery.category_id = new mongoose.Types.ObjectId(category_id);
+    }
+
+    // 4. Extract campaigns out using lean profiles for low latency data streaming
     const liveBannersPool = await Offer.find(bannerQuery)
       .populate({
         path: "merchant_id",
-        select: "store_name name status isBlocked",
-        model: "User"
+        select: "name city status isBlocked",
+        model: "Merchant" 
       })
-      .populate("offer_type_id", "label value")
+      .populate({
+        path: "category_id",
+        select: "label value type image"
+      })
       .sort({ createdAt: -1 })
       .lean();
 
-    // 4. Map and filter records into a clean, normalized payload array block
-    const formattedBanners = [];
-
-    liveBannersPool.forEach((offer) => {
-      // Guard: Ignore if parent corporate account has been banned or blocked
-      if (offer.merchant_id?.status === "banned" || offer.merchant_id?.isBlocked === true) {
-        return;
-      }
-
-      // Format simple uniform badges for frontend carousels layout elements
+    // 5. Clean, format, and map output records payload arrays
+    const formattedBanners = liveBannersPool.map((offer) => {
       const badgeText = offer.discount_percentage !== null
         ? `${offer.discount_percentage}% OFF`
         : offer.discount_value !== null
         ? `₹${offer.discount_value} OFF`
         : "Exclusive Deal";
 
-      formattedBanners.push({
+      return {
         _id: offer._id,
         title: offer.title,
         description: offer.description || "",
-        thumbnail: offer.thumbnail || "", // The background canvas array artwork string path
-        code: offer.code || offer._id.toString().substring(18).toUpperCase(),
+        thumbnail: offer.thumbnail || "",
         discountBadge: badgeText,
         minimumPurchaseAmount: offer.minimum_purchase_amount || 0,
+        claimLimit: offer.claim_limit,
+        perUserLimit: offer.per_user_limit || 1,
         endDate: offer.end_date,
+        location: offer.location, // GeoJSON [lng, lat] format payload
         merchant: {
           _id: offer.merchant_id?._id,
-          storeName: offer.merchant_id?.store_name || offer.merchant_id?.name || "BachatBazarr Partner"
+          name: offer.merchant_id?.name || "BachatBazarr Partner"
         },
-        mechanicType: offer.offer_type_id?.label || "General"
-      });
+        category: offer.category_id ? {
+          _id: offer.category_id._id,
+          label: offer.category_id.label,
+          value: offer.category_id.value
+        } : null
+      };
     });
 
-    // 5. Send optimized payload stream response
+    // 6. Return response transmission data deck
     return res.status(200).json({
       success: true,
       city: city.trim(),
+      categoryFiltered: category_id ? true : false,
       totalBanners: formattedBanners.length,
       data: formattedBanners
     });
 
   } catch (error) {
-    console.error("City Banner Stream Processing Error Exception:", error);
+    console.error("City Category Banner Stream Query Processing Fault Exception:", error);
     return res.status(500).json({
       success: false,
-      message: "An internal server error occurred while building local carousel banner pipelines."
+      message: "An internal server error occurred while building local category carousel banner pipelines."
     });
   }
 };
 
-export const getOffersByStoreId = async (req, res) => {
+export const getOffersByStoreId = async (req,res) => {
   try {
     const { storeId } = req.params;
     const rightNow = new Date();

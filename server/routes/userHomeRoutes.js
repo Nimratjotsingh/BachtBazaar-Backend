@@ -7,7 +7,7 @@ const router = express.Router();
  * @route   GET /api/shops
  * @desc    Get all merchant shops (Paginated)
  * @access  Public
- */
+*/
 router.get("/", getAllShops);
 
 router.get("/search", searchGlobalCatalog);
