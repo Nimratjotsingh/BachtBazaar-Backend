@@ -169,53 +169,132 @@ export const getCalendarScheduleAdmin = async (req, res) => {
 // ====================================================================
 // --- 3. CHECK SPECIFIC AREA AVAILABILITY (Merchant Form UI Guard) ---
 // ====================================================================
+// const normalizeToMidnight = (dateString) => {
+//   if (!dateString) return null;
+//   const cleanDateString = dateString.includes("T") ? dateString.split("T")[0] : dateString;
+//   const [year, month, day] = cleanDateString.split("-").map(Number);
+//   return new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
+// };
+
 export const checkDateAvailability = async (req, res) => {
   try {
-    const { area_id, date } = req.query;
-    if (!area_id || !date) {
-      return res.status(400).json({ success: false, message: "Both area_id and date parameters are missing." });
-    }
-
-    const targetDate = normalizeToMidnight(date);
-    const globalDefaultLimit = 5; 
-
-    const dateRule = await CalendarConfig.findOne({ area_id, date: targetDate });
-
-    if (dateRule) {
-      return res.status(200).json({
-        success: true,
-        date: targetDate,
-        area_id,
-        is_locked: dateRule.is_locked,
-        max_slots: dateRule.max_allowed_offers,
-        booked_slots: dateRule.current_booked_count,
-        slots_remaining: Math.max(0, dateRule.max_allowed_offers - dateRule.current_booked_count)
+    const { area_id, start, end } = req.query;
+    
+    if (!area_id || !start || !end) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "area_id, start date, and end date query parameters are all required." 
       });
     }
 
-    // Trace regional counts natively if explicit override configs don't exist yet
-    const areaMerchantIds = await mongoose.model("MerchantShop").find({ area_id }).distinct("merchantId");
-    const liveBookedCount = await Offer.countDocuments({
-      display_type: "calendar",
-      start_date: targetDate,
-      is_deleted: false,
-      is_active: true,
-      merchant_id: { $in: areaMerchantIds }
+    if (!mongoose.Types.ObjectId.isValid(area_id)) {
+      return res.status(400).json({ success: false, message: "Invalid Area ID format." });
+    }
+
+    const startDate = normalizeToMidnight(start);
+    const endDate = normalizeToMidnight(end);
+
+    if (endDate < startDate) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "The end date perimeter cannot be chronologically before the start date." 
+      });
+    }
+
+    const globalDefaultLimit = 5; 
+
+    // 1. Fetch any explicit admin override configurations saved for this Area within the range
+    const adminConfigs = await CalendarConfig.find({
+      area_id,
+      date: { $gte: startDate, $lte: endDate }
+    }).lean();
+
+    // Convert admin configs to a simple string key lookup map: { 'YYYY-MM-DD': configObject }
+    const configMap = {};
+    adminConfigs.forEach(config => {
+      const dateKey = new Date(config.date).toISOString().split("T")[0];
+      configMap[dateKey] = config;
     });
 
-    res.status(200).json({
-      success: true,
-      date: targetDate,
-      area_id,
-      is_locked: false,
-      max_slots: globalDefaultLimit,
-      booked_slots: liveBookedCount,
-      slots_remaining: Math.max(0, globalDefaultLimit - liveBookedCount)
+    // 2. Fetch all merchant IDs mapped to this specific Area zone footprint
+    const areaMerchantIds = await mongoose.model("MerchantShop").find({ area_id }).distinct("merchantId");
+
+    // 3. Aggregate active organic merchant bookings running during this date frame window
+    const liveOffersAggregation = await Offer.aggregate([
+      {
+        $match: {
+          display_type: "calendar",
+          is_deleted: false,
+          is_active: true,
+          start_date: { $gte: startDate, $lte: endDate },
+          merchant_id: { $in: areaMerchantIds }
+        }
+      },
+      {
+        $group: {
+          _id: "$start_date",
+          count: { $sum: 1 }
+        }
+      }
+    ]);
+
+    // Map live counts into a fast lookup dictionary: { 'YYYY-MM-DD': count }
+    const liveBookingsMap = {};
+    liveOffersAggregation.forEach(item => {
+      if (item._id) {
+        const dateKey = new Date(item._id).toISOString().split("T")[0];
+        liveBookingsMap[dateKey] = item.count;
+      }
     });
+
+    // 4. Loop day-by-day to assemble a flawless, gap-free calendar schedule grid array
+    const rangeAvailabilitySchedule = [];
+    let currentStepDate = new Date(startDate);
+
+    while (currentStepDate <= endDate) {
+      const dateKey = currentStepDate.toISOString().split("T")[0];
+      
+      const savedConfig = configMap[dateKey];
+      const liveBookingVolume = liveBookingsMap[dateKey] || 0;
+
+      // Decide parameters based on whether the admin specified unique override values
+      const maxSlots = savedConfig ? savedConfig.max_allowed_offers : globalDefaultLimit;
+      const isLocked = savedConfig ? savedConfig.is_locked : false;
+      
+      // Use the max value between the explicit counter or real database counts to ensure absolute accuracy
+      const bookedSlots = Math.max(liveBookingVolume, savedConfig ? savedConfig.current_booked_count : 0);
+      const slotsRemaining = isLocked ? 0 : Math.max(0, maxSlots - bookedSlots);
+
+      rangeAvailabilitySchedule.push({
+        date: currentStepDate.toISOString(), // ISO String representation for frontend parsing
+        dateString: dateKey,                // Clean 'YYYY-MM-DD' literal format
+        is_locked: isLocked,
+        max_slots: maxSlots,
+        booked_slots: bookedSlots,
+        slots_remaining: slotsRemaining
+      });
+
+      // Safely advance calendar pointer step by exactly 1 day UTC
+      currentStepDate.setUTCDate(currentStepDate.getUTCDate() + 1);
+    }
+
+    // 5. Deliver complete structured status stream payload
+    return res.status(200).json({
+      success: true,
+      area_id,
+      range: { start: dateKeyString(startDate), end: dateKeyString(endDate) },
+      totalDaysTracked: rangeAvailabilitySchedule.length,
+      schedule: rangeAvailabilitySchedule
+    });
+
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    console.error("Range Availability Core Calculation Pipeline Failure:", error);
+    return res.status(500).json({ success: false, message: error.message });
   }
 };
+
+// Quick structural internal string formatter utility
+const dateKeyString = (dateObj) => dateObj.toISOString().split("T")[0];
 
 // ====================================================================
 // --- 4. RECALCULATE TICKER COUNTS (Sync Safeguard Utility) ---------
