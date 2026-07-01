@@ -44,7 +44,7 @@ const  AdminBannersDashboard = ({ token }) => {
     try {
       setLoading(true);
       setGlobalError(null);
-      const res = await accountClient.get("/banners/admin-list", { headers });
+      const res = await accountClient.get("/adminbanners/admin-list", { headers });
       if (res.data.success) {
         setBanners(res.data.data || []);
       }
@@ -92,13 +92,14 @@ const  AdminBannersDashboard = ({ token }) => {
 
       let response;
       if (isEditing) {
-        response = await accountClient.put(`/banners/update/${selectedBannerId}`, data, {
+        response = await accountClient.put(`/adminbanners/update/${selectedBannerId}`, data, {
           headers: { ...headers, "Content-Type": "multipart/form-data" }
         });
       } else {
-        response = await accountClient.post("/banners/create", data, {
+        response = await accountClient.post("/adminbanners/create", data, {
           headers: { ...headers, "Content-Type": "multipart/form-data" }
         });
+        console.log(response)
       }
 
       if (response.data.success) {
@@ -135,7 +136,7 @@ const  AdminBannersDashboard = ({ token }) => {
     if (!window.confirm("Are you absolutely sure you want to permanently delete this promotional asset?")) return;
     try {
       setLoading(true);
-      const res = await accountClient.delete(`/banners/delete/${id}`, { headers });
+      const res = await accountClient.delete(`/adminbanners/delete/${id}`, { headers });
       if (res.data.success) {
         if (selectedBannerId === id) resetFormState();
         fetchBanners();

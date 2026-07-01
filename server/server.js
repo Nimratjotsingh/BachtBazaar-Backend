@@ -97,7 +97,7 @@ app.use('/api/offers',offerRoutes);
 app.use('/api/ai',openai);
 app.use('/api/subOfferType',subOfferTypeRoute);
 app.use('/api/analytics', userAnalytics);
-app.use('/api/adminbaners',adminBanner);
+app.use('/api/adminbanners',adminBanner);
 app.use('/api/areas',areasRoutes);
 
 app.use('/api/users/others',userHomeExtended);
