@@ -19,6 +19,7 @@ import AdminOffersDashboard from "./pages/OffersListing/OffersListing";
 import SubOfferTypePage from "./pages/SubOffer/SubOffer";
 import AdminBanner from './pages/AdminBanner/AdminBanner'
 import AdminAreasDashboard from "./pages/Area/Area";
+import BannerTypesDashboard from "./pages/BannerTypes/BannerTypes";
 
 const TOKEN_STORAGE_KEY = "bb_admin_token";
 const gmaps_key = import.meta.env.VITE_API_GMAPS_KEY;
@@ -89,6 +90,7 @@ function App() {
         <Route path="suboffer-type" element={<SubOfferTypePage token={token}/>}/>
         <Route path="adminbanner" element={<AdminBanner token={token}/>}/> 
         <Route path="area" element={<AdminAreasDashboard token={token} googleMapsApiKey={gmaps_key}/>}/> 
+        <Route path="bannerTypes" element={<BannerTypesDashboard token={token}/>}/>
       </Route>
 
       {/* 🔁 Fallback Catch-All for unknown URLs */}

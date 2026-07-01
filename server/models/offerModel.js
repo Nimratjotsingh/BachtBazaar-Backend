@@ -23,6 +23,12 @@ const offerSchema = new mongoose.Schema(
       ref: "SubOfferType",
       index: true,
     },
+    banner_type_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "BannerType",
+      index: true,
+      default: null,
+    },
     category_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Category",

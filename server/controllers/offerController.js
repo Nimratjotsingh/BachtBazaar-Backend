@@ -1,6 +1,7 @@
 // controllers/offerController.js
 import Offer from "../models/offerModel.js";
 import CalendarConfig from "../models/calenderConfigModel.js";
+import Merchant from '../models/merchantModel.js';
 import MerchantShop from '../models/merchantShopModel.js'
 import Area from '../models/AreaModel.js';
 import mongoose from "mongoose";
@@ -178,22 +179,80 @@ export const getMerchantSlotStatus = async (req, res) => {
 export const createOffer = async (req, res) => {
   try {
     const data = { ...req.body };
-    
-    // 1. Process File Upload path from Multer
+    const merchantId = req.merchant._id; // Extracted from auth middleware token validation
+
+    // Extract explicit latitude/longitude from either the query params or the request body
+    const lat = req.query.lat || req.body.lat;
+    const lng = req.query.lng || req.body.lng;
+
+    if (lat === undefined || lng === undefined || lat === "" || lng === "") {
+      return res.status(400).json({
+        success: false,
+        message: "Explicit 'lat' and 'lng' positional coordinate parameters are required to deploy an offer."
+      });
+    }
+
+    const resolvedLat = Number(lat);
+    const resolvedLng = Number(lng);
+
+    if (isNaN(resolvedLat) || isNaN(resolvedLng)) {
+      return res.status(400).json({
+        success: false,
+        message: "Provided geographic coordinates are invalid numbers."
+      });
+    }
+
+    // 1. Process File Upload path from Multer if a background asset was included
     if (req.file) {
       data.thumbnail = `/uploads/${req.file.filename}`;
     }
 
     const { display_type, start_date, end_date } = data;
 
-    // Standardize text inputs into robust clean Date instances
+    // Standardize input fields into timezone-safe clean UTC Date instances
     const finalStartDate = start_date ? new Date(start_date) : undefined;
     const finalEndDate = end_date ? new Date(end_date) : undefined;
     
     if (finalStartDate) finalStartDate.setUTCHours(0, 0, 0, 0);
     if (finalEndDate) finalEndDate.setUTCHours(23, 59, 59, 999);
 
-    // --- START: CONDITIONAL CALENDAR LIMITATION VALIDATION ---
+    let targetAreaId = null;
+
+    // --- GEOLOCATION BOUNDARY RESOLUTION ---
+    // Look up the closest active system geofenced Area using an aggregation pipeline
+    const geoResults = await Area.aggregate([
+      {
+        $geoNear: {
+          near: {
+            type: "Point",
+            coordinates: [resolvedLng, resolvedLat] // [longitude, latitude]
+          },
+          distanceField: "distance_meters",
+          spherical: true,
+          query: { is_active: true }
+        }
+      },
+      { $limit: 1 }
+    ]);
+
+    const closestArea = geoResults.length > 0 ? geoResults[0] : null;
+
+    if (!closestArea) {
+      return res.status(404).json({
+        success: false,
+        message: "The provided coordinates do not map into any active operational geofenced Area boundaries."
+      });
+    }
+
+    targetAreaId = closestArea._id;
+
+    // Map coordinates into a standard GeoJSON Point object for the final Offer schema
+    data.location = {
+      type: "Point",
+      coordinates: [resolvedLng, resolvedLat]
+    };
+
+    // --- START: CONDITIONAL CALENDAR CAPACITY VALIDATIONS ---
     if (display_type === "calendar") {
       if (!finalStartDate || !finalEndDate) {
         return res.status(400).json({
@@ -209,21 +268,18 @@ export const createOffer = async (req, res) => {
         });
       }
 
-      // --- CRITICAL RULE FIX: Merchant Overlapping Window + 24-Hour Cooldown Guard ---
-      // We calculate a date range window shifted by 24 hours to enforce the cooldown rule.
+      // --- CRITICAL RULE CHECK: Merchant Overlapping Window + 24-Hour Cooldown Guard ---
       const msIn24Hours = 24 * 60 * 60 * 1000;
       const startWithBuffer = new Date(finalStartDate.getTime() - msIn24Hours);
       const endWithBuffer = new Date(finalEndDate.getTime() + msIn24Hours);
 
       const existingOverlappingOffer = await Offer.findOne({
-        merchant_id: req.merchant._id,
+        merchant_id: merchantId,
         display_type: "calendar",
         is_active: true,
         is_deleted: false,
         $or: [
           {
-            // Checks if an old offer ends after our new buffered start time
-            // AND starts before our new buffered end time
             start_date: { $lte: endWithBuffer },
             end_date: { $gte: startWithBuffer }
           }
@@ -233,53 +289,62 @@ export const createOffer = async (req, res) => {
       if (existingOverlappingOffer) {
         return res.status(400).json({
           success: false,
-          message: "Validation Error: You already have a calendar campaign running in this time block, or you are violating the mandatory 24-hour cool-down rest margin required between separate calendar listings.",
+          message: "Validation Error: You already have a calendar campaign running in this time block, or you are violating the mandatory 24-hour cool-down period.",
         });
       }
 
-      // --- Global Capacity Cap Validations ---
-      const targetDate = new Date(finalStartDate);
-      const dateRule = await CalendarConfig.findOne({ date: targetDate });
+      // --- REGIONAL CAPACITY SLOTS VERIFICATION ---
       const globalDefaultLimit = 5;
+      const targetDateLookup = new Date(finalStartDate);
+
+      // Find all shops registered in this specific resolved Area perimeter
+      const areaMerchantIds = await mongoose.model("MerchantShop").find({ area_id: targetAreaId }).distinct("merchantId");
+
+      // Concurrently query active regional booking metrics 
+      const [dateRule, currentAreaBookingsCount] = await Promise.all([
+        CalendarConfig.findOne({ area_id: targetAreaId, date: targetDateLookup }).lean(),
+        
+        Offer.countDocuments({
+          display_type: "calendar",
+          start_date: targetDateLookup,
+          is_active: true,
+          is_deleted: false,
+          merchant_id: { $in: areaMerchantIds }
+        })
+      ]);
 
       if (dateRule) {
         if (dateRule.is_locked) {
           return res.status(400).json({
             success: false,
-            message: "Campaign creations for this specific date have been closed by the administrator.",
+            message: "Campaign creations for this specific date have been closed by the administrator in this area.",
           });
         }
 
-        if (dateRule.current_booked_count >= dateRule.max_allowed_offers) {
+        const effectiveBooked = Math.max(currentAreaBookingsCount, dateRule.current_booked_count || 0);
+        if (effectiveBooked >= dateRule.max_allowed_offers) {
           return res.status(400).json({
             success: false,
-            message: `The global calendar limit for this date has been reached (${dateRule.max_allowed_offers} offers max). Please select another day.`,
+            message: `The calendar limit for this date in your region has been reached (${dateRule.max_allowed_offers} offers max). Please select another day.`,
           });
         }
       } else {
-        const activeLiveBookings = await Offer.countDocuments({
-          display_type: "calendar",
-          start_date: targetDate,
-          is_active: true,
-          is_deleted: false
-        });
-
-        if (activeLiveBookings >= globalDefaultLimit) {
+        if (currentAreaBookingsCount >= globalDefaultLimit) {
           return res.status(400).json({
             success: false,
-            message: `All standard default slots (${globalDefaultLimit}) for this start date are full. Please choose a different day.`,
+            message: `All standard default localized slots (${globalDefaultLimit}) for this start date are full in your sector.`,
           });
         }
       }
     }
     // --- END: CONDITIONAL CALENDAR LIMITATION VALIDATION ---
 
-    // 2. Process Array Strings (Convert comma-separated tags from form-data)
+    // 2. Process Array Strings (Convert comma-separated tags from form-data arrays)
     if (typeof data.tags === "string") {
       data.tags = data.tags.split(",").map(tag => tag.trim()).filter(Boolean);
     }
 
-    // 3. Process product_id mapping array transformations (Handles commas or structural inputs safely)
+    // 3. Process product_id mapping array transformations
     if (data.product_id) {
       if (typeof data.product_id === "string") {
         data.product_id = data.product_id.split(",").map(id => id.trim()).filter(Boolean);
@@ -291,9 +356,10 @@ export const createOffer = async (req, res) => {
     // 4. Instantiate and Save the Document
     const newOffer = new Offer({
       ...data,
-      merchant_id: req.merchant._id,
+      merchant_id: merchantId,
       start_date: finalStartDate,
       end_date: finalEndDate,
+      location: data.location, // Injects verified [lng, lat] point object structures securely
       discount_percentage: data.discount_percentage ? Number(data.discount_percentage) : null,
       discount_value: data.discount_value ? Number(data.discount_value) : null,
       minimum_purchase_amount: data.minimum_purchase_amount ? Number(data.minimum_purchase_amount) : 0,
@@ -306,11 +372,11 @@ export const createOffer = async (req, res) => {
 
     await newOffer.save();
 
-    // 5. Post-Save Step: If calendar layout slot, increment tracker ticker
+    // 5. Post-Save Step: Increment regional slot counters on config matrix tracking entries
     if (display_type === "calendar") {
-      const targetDate = new Date(finalStartDate);
+      const targetDateLookup = new Date(finalStartDate);
       await CalendarConfig.findOneAndUpdate(
-        { date: targetDate },
+        { area_id: targetAreaId, date: targetDateLookup },
         { $inc: { current_booked_count: 1 } },
         { 
           upsert: true, 
@@ -320,17 +386,17 @@ export const createOffer = async (req, res) => {
       );
     }
 
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
       message: "Offer campaign submitted and listed successfully.",
       data: newOffer,
     });
 
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    console.error("Create Offer Coordinate Mapping Structural Failure Exception:", error);
+    return res.status(500).json({ success: false, message: error.message });
   }
 };
-
 
 
 

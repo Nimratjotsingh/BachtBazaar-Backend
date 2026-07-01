@@ -32,6 +32,8 @@ import userAnalytics from './routes/userAnalyticsRoutes.js';
 import adminBanner from './routes/adminBannerRoutes.js';
 import areasRoutes from './routes/areaRoutes.js';
 import userHomeExtended from './routes/userHomeExtend.js';
+import bannerTypeRoutes from './routes/bannerTypeRoutes.js';
+import bannerRoutes from './routes/bannerRoutes.js';
 
 dotenv.config();
 // console.log(process.env.MONGO_URI)
@@ -99,6 +101,9 @@ app.use('/api/adminbaners',adminBanner);
 app.use('/api/areas',areasRoutes);
 
 app.use('/api/users/others',userHomeExtended);
+app.use('/api/banner-types', bannerTypeRoutes)
+app.use('/api/banner', bannerRoutes);
+
 app.get("/health", (req, res) => {
   res.json({ message: "Server is healthy!" });
 });

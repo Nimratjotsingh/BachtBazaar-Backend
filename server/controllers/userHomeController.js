@@ -36,34 +36,78 @@ export const getAllShops = async (req, res) => {
     }
 
     // 4. Pagination Logic
-    const skip = (Math.max(1, Number(page)) - 1) * Number(limit);
+    const currentLimit = Number(limit);
+    const skip = (Math.max(1, Number(page)) - 1) * currentLimit;
 
     const total = await MerchantShop.countDocuments(query);
     
-    // We use .select("-logo.data -banner.data") because sending raw 
-    // binary buffers in a list view makes the JSON response massive.
+    // Query matching storefront blocks
     const shops = await MerchantShop.find(query)
       .populate("merchantId", "name email profileImage")
       .populate("categoryId", "label")
       .populate("subCategoryId", "label")
-      .select("-logo.data -banner.data") // Exclude heavy image data for list view
+      .select("-logo.data -banner.data") 
       .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(Number(limit));
+      .limit(currentLimit)
+      .lean(); // Converts documents to clean JS objects so we can insert the offers key easily
 
-    res.status(200).json({
+    // 5. High-Performance Bulk Offers Injection Pipeline
+    if (shops.length > 0) {
+      // Collect all merchant IDs from the paginated set of shops
+      const merchantIds = shops
+        .map(shop => shop.merchantId?._id || shop.merchantId)
+        .filter(Boolean);
+
+      // Fetch all live, un-deleted active campaigns for these merchants in a single query
+      const liveOffers = await Offer.find({
+        merchant_id: { $in: merchantIds },
+        is_active: true,
+        is_deleted: false,
+        // Match active date windows (campaign must have started and not yet expired)
+        start_date: { $lte: new Date() },
+        $or: [
+          { end_date: { $exists: false } },
+          { end_date: null },
+          { end_date: { $gte: new Date() } }
+        ]
+      })
+      .select("title description thumbnail display_type discount_percentage discount_value start_date end_date")
+      .sort({ createdAt: -1 })
+      .lean();
+
+      // Map out each offer by its parent merchant id key reference
+      const offersByMerchantMap = {};
+      liveOffers.forEach(offer => {
+        const mId = offer.merchant_id.toString();
+        if (!offersByMerchantMap[mId]) {
+          offersByMerchantMap[mId] = [];
+        }
+        offersByMerchantMap[mId].push(offer);
+      });
+
+      // Stitch the compiled offers into their respective shop objects
+      shops.forEach(shop => {
+        const actualMerchantId = shop.merchantId?._id || shop.merchantId;
+        const lookupKey = actualMerchantId ? actualMerchantId.toString() : null;
+        
+        shop.offers = lookupKey ? (offersByMerchantMap[lookupKey] || []) : [];
+      });
+    }
+
+    return res.status(200).json({
       success: true,
       total,
-      pages: Math.ceil(total / limit) || 1,
+      pages: Math.ceil(total / currentLimit) || 1,
       currentPage: Number(page),
       data: shops
     });
 
   } catch (error) {
-    console.error("Get All Shops Error:", error);
-    res.status(500).json({ 
+    console.error("Get All Shops with Offers Bulk Processing Error:", error);
+    return res.status(500).json({ 
       success: false, 
-      message: "Failed to retrieve shops." 
+      message: "Failed to retrieve shops alongside active campaigns." 
     });
   }
 };

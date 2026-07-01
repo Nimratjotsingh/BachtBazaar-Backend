@@ -33,6 +33,7 @@ const navItems = [
   { label: "Product", to: "/dashboard/products", icon: ToyBrick },
   { label: "Offers", to: "/dashboard/offers", icon: LucideActivity },
   { label: "AdminBanner", to: "/dashboard/adminbanner", icon: LucideActivity },
+  { label: "Banner Types", to: "/dashboard/bannerTypes", icon: LucideActivity },
 ];
 
 const DashboardLayout = ({token,onLogout}) => {
