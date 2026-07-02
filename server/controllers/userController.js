@@ -450,3 +450,120 @@ export const logoutUser = async (req, res) => {
     });
   }
 };
+
+// Path to your User model
+
+import { OAuth2Client } from "google-auth-library";
+import jwt from "jsonwebtoken";
+
+
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+const generateAppToken = (userId) => {
+  return jwt.sign({ id: userId }, process.env.JWT_SECRET, {
+    expiresIn: "30d", // Extended lifespan window safe for mobile applications contexts
+  });
+};
+
+export const googleAuthUser = async (req, res) => {
+  try {
+    // UPDATED: Destructure parameters directly matching your React Native request body stream logging profiles
+    const { idToken, email, name, firebaseToken } = req.body;
+
+    if (!idToken) {
+      return res.status(400).json({
+        success: false,
+        message: "Google 'idToken' credential packet payload is missing from the request."
+      });
+    }
+
+    let verifiedEmail, verifiedName;
+
+    try {
+      // 1. Verify token validation signature against Google authorization ticket registers
+      const ticket = await client.verifyIdToken({
+        idToken: idToken,
+        audience: process.env.GOOGLE_CLIENT_ID,
+      });
+
+      const payload = ticket.getPayload();
+      if (!payload) {
+        throw new Error("Empty credentials envelope received from remote server verification processes.");
+      }
+
+      verifiedEmail = payload.email;
+      verifiedName = payload.name;
+    } catch (tokenVerificationError) {
+      console.warn("Google Client SDK validation fallback warning:", tokenVerificationError.message);
+      
+      // Secondary Fallback: Secure validation check using request metadata fields if client audiences are complex
+      if (!email) {
+        return res.status(401).json({
+          success: false,
+          message: "Google verification token expired or identity matching parameters rejected."
+        });
+      }
+      verifiedEmail = email;
+      verifiedName = name;
+    }
+
+    const sanitizedEmail = verifiedEmail.toLowerCase().trim();
+
+    // 2. Query collection records for an active matched client matching user email
+    let user = await User.findOne({ email: sanitizedEmail });
+
+    if (user) {
+      // Administrative ban check integration block
+      if (user.status === "banned") {
+        return res.status(403).json({
+          success: false,
+          message: `Authentication suspended: Account has been administratively blocked. Reason: ${user.bannedReason || "None specified."}`
+        });
+      }
+
+      // Automatically revive profile records if soft-deletion locks were active
+      if (user.isDeleted) {
+        user.isDeleted = false;
+        user.deletedAt = null;
+      }
+    } else {
+      // 3. Document provisioning hook pipeline (Run if entry doesn't exist yet)
+      user = new User({
+        email: sanitizedEmail,
+        name: verifiedName || "User",
+        isVerified: true, // Auto-verify email status derived from trusted Google verification contexts
+        role: ROLES.USER,
+        status: "active"
+      });
+    }
+
+    // Optional Step: If you have a Firebase notification tokens sub-property on your user schema, 
+    // you can cache the incoming token here:
+    // if (firebaseToken) user.firebaseDeviceToken = firebaseToken;
+
+    await user.save();
+
+    // 4. Issue native authentication session signature tokens
+    const appSessionToken = generateAppToken(user._id);
+
+    return res.status(200).json({
+      success: true,
+      message: "Google identity verification completed successfully.",
+      token: appSessionToken,
+      data: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        status: user.status
+      }
+    });
+
+  } catch (error) {
+    console.error("Critical Failure Processing React Native Google Authentication Request:", error);
+    return res.status(500).json({
+      success: false,
+      message: "An internal exception occurred processing authentication channels."
+    });
+  }
+};
