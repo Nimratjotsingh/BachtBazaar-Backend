@@ -107,7 +107,8 @@ export const getAllShops = async (req, res) => {
     console.error("Get All Shops with Offers Bulk Processing Error:", error);
     return res.status(500).json({ 
       success: false, 
-      message: "Failed to retrieve shops alongside active campaigns." 
+      message: "Failed to retrieve shops alongside active campaigns.",
+      error
     });
   }
 };
