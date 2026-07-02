@@ -5,26 +5,32 @@ import BannerType from "../models/BannerTypeModel.js";
 // ==========================================
 export const createBannerType = async (req, res) => {
   try {
-    // Multer parses standard text fields into req.body automatically
     const { name, description, isActive } = req.body;
 
     if (!name) {
       return res.status(400).json({ success: false, message: "Banner type name is required." });
     }
 
-    // Capture the saved image path from Multer stream matrix storage hooks
+    // Capture the saved image path from Multer stream hooks
     let imgPath = "";
     if (req.file) {
       imgPath = `/uploads/${req.file.filename}`;
     }
 
-    // Since multipart/form-data converts booleans to raw strings, normalize safely here
     const normalizedIsActive = isActive === "true" || isActive === true;
 
+    // ✓ FORCE COMPUTE SAFE SLUG MANUALLY HERE TO BYPASS STREAM TIMING ISSUES
+    const generatedSlug = name
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)+/g, "");
+
     const newType = new BannerType({ 
-      name, 
+      name: name.trim(), 
+      slug: generatedSlug, // Injected cleanly
       img: imgPath, 
-      description, 
+      description: description ? description.trim() : "", 
       isActive: normalizedIsActive 
     });
     
@@ -36,14 +42,17 @@ export const createBannerType = async (req, res) => {
       data: newType
     });
   } catch (error) {
+    // Intercept both name or slug uniqueness constraint errors
     if (error.code === 11000) {
-      return res.status(400).json({ success: false, message: "A banner type with this name already exists." });
+      return res.status(400).json({ 
+        success: false, 
+        message: "A banner type configuration layout with this name or slug key registry already exists." 
+      });
     }
     console.error("Create Banner Type Controller Exception Trace:", error);
     return res.status(500).json({ success: false, message: error.message });
   }
 };
-
 // ==========================================
 // 2. READ ALL - List all Banner Types (Admin/User)
 // ==========================================

@@ -1,16 +1,16 @@
 import express from "express";
 import {
-updateProfile,
-sendOtp,
-verifyOtp,
-setPassword,
-loginWithPassword,
-loginWithOtp,
-forgotPassword,
-updatePassword,
-deleteUserAccount,
-logoutUser,
-googleAuthUser
+    updateProfile,
+    sendOtp,
+    verifyOtp,
+    setPassword,
+    loginWithPassword,
+    loginWithOtp,
+    forgotPassword,
+    updatePassword,
+    deleteUserAccount,
+    logoutUser,
+    googleAuthUser
 } from "../controllers/userController.js";
 import { getProfileImage } from "../controllers/userController.js";
 
