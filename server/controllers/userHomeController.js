@@ -5,6 +5,7 @@ import Offer from '../models/offerModel.js';
 import Merchant from '../models/merchantModel.js';
 import Category from '../models/categoryModel.js';
 import mongoose from "mongoose";
+import Area from "../models/AreaModel.js";
 
 
 // --- Show All Shops for Users (Paginated) ---
@@ -36,34 +37,79 @@ export const getAllShops = async (req, res) => {
     }
 
     // 4. Pagination Logic
-    const skip = (Math.max(1, Number(page)) - 1) * Number(limit);
+    const currentLimit = Number(limit);
+    const skip = (Math.max(1, Number(page)) - 1) * currentLimit;
 
     const total = await MerchantShop.countDocuments(query);
     
-    // We use .select("-logo.data -banner.data") because sending raw 
-    // binary buffers in a list view makes the JSON response massive.
+    // Query matching storefront blocks
     const shops = await MerchantShop.find(query)
       .populate("merchantId", "name email profileImage")
       .populate("categoryId", "label")
       .populate("subCategoryId", "label")
-      .select("-logo.data -banner.data") // Exclude heavy image data for list view
+      .select("-logo.data -banner.data") 
       .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(Number(limit));
+      .limit(currentLimit)
+      .lean(); // Converts documents to clean JS objects so we can insert the offers key easily
 
-    res.status(200).json({
+    // 5. High-Performance Bulk Offers Injection Pipeline
+    if (shops.length > 0) {
+      // Collect all merchant IDs from the paginated set of shops
+      const merchantIds = shops
+        .map(shop => shop.merchantId?._id || shop.merchantId)
+        .filter(Boolean);
+
+      // Fetch all live, un-deleted active campaigns for these merchants in a single query
+      const liveOffers = await Offer.find({
+        merchant_id: { $in: merchantIds },
+        is_active: true,
+        is_deleted: false,
+        // Match active date windows (campaign must have started and not yet expired)
+        start_date: { $lte: new Date() },
+        $or: [
+          { end_date: { $exists: false } },
+          { end_date: null },
+          { end_date: { $gte: new Date() } }
+        ]
+      })
+      .select("title description thumbnail display_type discount_percentage discount_value start_date end_date")
+      .sort({ createdAt: -1 })
+      .lean();
+
+      // Map out each offer by its parent merchant id key reference
+      const offersByMerchantMap = {};
+      liveOffers.forEach(offer => {
+        const mId = offer.merchant_id.toString();
+        if (!offersByMerchantMap[mId]) {
+          offersByMerchantMap[mId] = [];
+        }
+        offersByMerchantMap[mId].push(offer);
+      });
+
+      // Stitch the compiled offers into their respective shop objects
+      shops.forEach(shop => {
+        const actualMerchantId = shop.merchantId?._id || shop.merchantId;
+        const lookupKey = actualMerchantId ? actualMerchantId.toString() : null;
+        
+        shop.offers = lookupKey ? (offersByMerchantMap[lookupKey] || []) : [];
+      });
+    }
+
+    return res.status(200).json({
       success: true,
       total,
-      pages: Math.ceil(total / limit) || 1,
+      pages: Math.ceil(total / currentLimit) || 1,
       currentPage: Number(page),
       data: shops
     });
 
   } catch (error) {
-    console.error("Get All Shops Error:", error);
-    res.status(500).json({ 
+    console.error("Get All Shops with Offers Bulk Processing Error:", error);
+    return res.status(500).json({ 
       success: false, 
-      message: "Failed to retrieve shops." 
+      message: "Failed to retrieve shops alongside active campaigns.",
+      error
     });
   }
 };
@@ -632,6 +678,158 @@ export const getCityBannerOffers = async (req, res) => {
   }
 };
 
+
+export const getCityBannerOffers2 = async (req, res) => {
+  try {
+    const { lat, lng, category_id } = req.query;
+    const rightNow = new Date();
+
+    if (lat === undefined || lng === undefined || lat === "" || lng === "") {
+      return res.status(400).json({
+        success: false,
+        message: "Explicit 'lat' and 'lng' positional coordinates are required."
+      });
+    }
+
+    const resolvedLat = Number(lat);
+    const resolvedLng = Number(lng);
+
+    if (isNaN(resolvedLat) || isNaN(resolvedLng)) {
+      return res.status(400).json({
+        success: false,
+        message: "Provided geographic coordinates are invalid numbers."
+      });
+    }
+
+    // 1. Geospatial Resolution: Locate the precise active geofenced Area radius zone
+    const geoResults = await Area.aggregate([
+      {
+        $geoNear: {
+          near: {
+            type: "Point",
+            coordinates: [resolvedLng, resolvedLat] // [longitude, latitude]
+          },
+          distanceField: "distance_meters",
+          spherical: true,
+          query: { is_active: true }
+        }
+      },
+      { $limit: 1 }
+    ]);
+
+    const targetArea = geoResults.length > 0 ? geoResults[0] : null;
+
+    if (!targetArea) {
+      return res.status(200).json({
+        success: true,
+        resolvedArea: null,
+        totalBanners: 0,
+        data: []
+      });
+    }
+
+    // 2. Compute Radians for the circular boundary mapping matrix
+    // MongoDB $centerSphere operator expects the radius to be divided by Earth's radius (~6378.1 km)
+    const areaRadiusInKm = targetArea.radius_km || 5; 
+    const radiusInRadians = areaRadiusInKm / 6378.1;
+    const [centerLng, centerLat] = targetArea.center_location.coordinates;
+
+    // 3. Build query using circular geometry constraints safely
+    const bannerQuery = {
+      display_type: "banner",
+      is_active: true,
+      is_deleted: false,
+      start_date: { $lte: rightNow },
+      end_date: { $gte: rightNow },
+      
+      // FIXED: Uses $centerSphere matching against point-radius parameters instead of polygon geometries
+      location: {
+        $geoWithin: {
+          $centerSphere: [[centerLng, centerLat], radiusInRadians]
+        }
+      }
+    };
+
+    // Category Filter Injection
+    if (category_id && mongoose.Types.ObjectId.isValid(category_id)) {
+      bannerQuery.category_id = new mongoose.Types.ObjectId(category_id);
+    }
+
+    // 4. Extract campaigns using lean profiles
+    const liveBannersPool = await Offer.find(bannerQuery)
+      .populate({
+        path: "merchant_id",
+        select: "name city status isBlocked",
+        model: "Merchant" 
+      })
+      .populate({
+        path: "banner_type_id",
+        select: "name slug img description"
+      })
+      .populate({
+        path: "category_id",
+        select: "label value type image"
+      })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    // 5. Clean, format, and map output records payload arrays
+    const formattedBanners = liveBannersPool.map((offer) => {
+      const badgeText = offer.discount_percentage !== null
+        ? `${offer.discount_percentage}% OFF`
+        : offer.discount_value !== null
+        ? `₹${offer.discount_value} OFF`
+        : "Exclusive Deal";
+
+      return {
+        _id: offer._id,
+        title: offer.title,
+        description: offer.description || "",
+        thumbnail: offer.thumbnail || "",
+        discountBadge: badgeText,
+        minimumPurchaseAmount: offer.minimum_purchase_amount || 0,
+        claimLimit: offer.claim_limit,
+        perUserLimit: offer.per_user_limit || 1,
+        endDate: offer.end_date,
+        location: offer.location, 
+        merchant: {
+          _id: offer.merchant_id?._id,
+          name: offer.merchant_id?.name || "BachatBazarr Partner"
+        },
+        bannerType: offer.banner_type_id ? {
+          _id: offer.banner_type_id._id,
+          name: offer.banner_type_id.name,
+          slug: offer.banner_type_id.slug
+        } : null,
+        category: offer.category_id ? {
+          _id: offer.category_id._id,
+          label: offer.category_id.label,
+          value: offer.category_id.value
+        } : null
+      };
+    });
+
+    return res.status(200).json({
+      success: true,
+      resolvedArea: {
+        _id: targetArea._id,
+        name: targetArea.name,
+        city: targetArea.city,
+        radius_km: areaRadiusInKm
+      },
+      categoryFiltered: !!category_id,
+      totalBanners: formattedBanners.length,
+      data: formattedBanners
+    });
+
+  } catch (error) {
+    console.error("Geospatial Area Banner Stream Processing Exception:", error);
+    return res.status(500).json({
+      success: false,
+      message: "An internal server error occurred while retrieving area banners."
+    });
+  }
+};
 export const getOffersByStoreId = async (req,res) => {
   try {
     const { storeId } = req.params;
