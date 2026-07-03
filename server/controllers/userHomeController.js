@@ -679,6 +679,7 @@ export const getCityBannerOffers = async (req, res) => {
 };
 
 
+
 export const getCityBannerOffers2 = async (req, res) => {
   try {
     const { lat, lng, category_id } = req.query;
@@ -707,7 +708,7 @@ export const getCityBannerOffers2 = async (req, res) => {
         $geoNear: {
           near: {
             type: "Point",
-            coordinates: [resolvedLng, resolvedLat] // [longitude, latitude]
+            coordinates: [resolvedLng, resolvedLat]
           },
           distanceField: "distance_meters",
           spherical: true,
@@ -733,7 +734,7 @@ export const getCityBannerOffers2 = async (req, res) => {
     const radiusInRadians = areaRadiusInKm / 6378.1;
     const [centerLng, centerLat] = targetArea.center_location.coordinates;
 
-    // 3. Build query using circular geometry constraints safely
+    // 3. Build core query targeting active banners within the spatial radius range
     const bannerQuery = {
       display_type: "banner",
       is_active: true,
@@ -747,11 +748,7 @@ export const getCityBannerOffers2 = async (req, res) => {
       }
     };
 
-    if (category_id && mongoose.Types.ObjectId.isValid(category_id)) {
-      bannerQuery.category_id = new mongoose.Types.ObjectId(category_id);
-    }
-
-    // 4. Extract campaigns using lean profiles
+    // 4. Extract active campaigns using lean profiles
     const liveBannersPool = await Offer.find(bannerQuery)
       .populate({
         path: "merchant_id",
@@ -770,11 +767,10 @@ export const getCityBannerOffers2 = async (req, res) => {
       .lean();
 
     // -----------------------------------------------------------------
-    // HIGH-PERFORMANCE PIEGON-HOLE STITCHING: BULK SHOPS LOOKUP LAYER
+    // HIGH-PERFORMANCE PIEGEON-HOLE STITCHING + CATEGORY FILTRATION
     // -----------------------------------------------------------------
     let shopsMap = {};
     if (liveBannersPool.length > 0) {
-      // Collect unique merchant ID strings from our query batch
       const uniqueMerchantIds = [
         ...new Set(
           liveBannersPool
@@ -783,14 +779,20 @@ export const getCityBannerOffers2 = async (req, res) => {
         ),
       ];
 
-      // Query all matching storefront shapes inside a single execution block
-      const associatedShops = await MerchantShop.find({
-        merchantId: { $in: uniqueMerchantIds }
-      })
-        .select("shopName address landMark city logo banner center_location location")
+      // Build the storefront query footprint
+      const shopQuery = { merchantId: { $in: uniqueMerchantIds } };
+
+      // ✓ MOVED RULE: Inject category limitation directly into the MerchantShop query
+      if (category_id && mongoose.Types.ObjectId.isValid(category_id)) {
+        shopQuery.categoryId = new mongoose.Types.ObjectId(category_id); 
+        // Note: Check your model if it's named 'categoryId' or 'category_id' and update to match.
+      }
+
+      const associatedShops = await MerchantShop.find(shopQuery)
+        .select("shopName address landMark city logo banner center_location location categoryId")
         .lean();
 
-      // Index out shops map collection registers keyed by their parent merchant reference
+      // Map matching shops by their parent merchant reference
       associatedShops.forEach((shop) => {
         if (shop.merchantId) {
           shopsMap[shop.merchantId.toString()] = shop;
@@ -798,19 +800,25 @@ export const getCityBannerOffers2 = async (req, res) => {
       });
     }
 
-    // 5. Clean, format, and map output records payload arrays inserting shop details
-    const formattedBanners = liveBannersPool.map((offer) => {
+    // 5. Format output records and strip out offers whose shops don't match the category query
+    const formattedBanners = [];
+
+    liveBannersPool.forEach((offer) => {
+      const merchantIdStr = offer.merchant_id?._id?.toString() || offer.merchant_id?.toString();
+      const matchedShop = merchantIdStr ? shopsMap[merchantIdStr] : null;
+
+      // ✓ IF category filtration is on and no shop matched, exclude this banner from the stream
+      if (category_id && !matchedShop) {
+        return;
+      }
+
       const badgeText = offer.discount_percentage !== null
         ? `${offer.discount_percentage}% OFF`
         : offer.discount_value !== null
         ? `₹${offer.discount_value} OFF`
         : "Exclusive Deal";
 
-      // Match parent shop metrics from our map indices
-      const merchantIdStr = offer.merchant_id?._id?.toString() || offer.merchant_id?.toString();
-      const matchedShop = merchantIdStr ? shopsMap[merchantIdStr] : null;
-
-      return {
+      formattedBanners.push({
         _id: offer._id,
         title: offer.title,
         description: offer.description || "",
@@ -825,7 +833,6 @@ export const getCityBannerOffers2 = async (req, res) => {
           _id: offer.merchant_id?._id,
           name: offer.merchant_id?.name || "BachatBazarr Partner"
         },
-        // ✓ ADDED: Injected Shop metadata response details
         shop: matchedShop ? {
           _id: matchedShop._id,
           shopName: matchedShop.shopName,
@@ -845,7 +852,7 @@ export const getCityBannerOffers2 = async (req, res) => {
           label: offer.category_id.label,
           value: offer.category_id.value
         } : null
-      };
+      });
     });
 
     return res.status(200).json({
