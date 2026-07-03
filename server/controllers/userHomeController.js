@@ -76,14 +76,14 @@ export const getAllShops = async (req, res) => {
       .populate("merchantId", "name email profileImage")
       .populate("categoryId", "label")
       .populate("subCategoryId", "label")
-      .select("-logo.data -banner.data") // Keeps responses lightweight
+      .select("-logo.data -banner.data")
       .skip(skip)
       .limit(currentLimit)
       .lean();
 
-    // 3. High-Performance Bulk Offers Injection Pipeline
+    
     if (shops.length > 0) {
-      // Calculate real distances manually in-memory and attach them
+     
       shops.forEach(shop => {
         if (shop.latitude && shop.longitude) {
           // Haversine formula mapping matrix
