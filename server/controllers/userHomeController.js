@@ -10,6 +10,7 @@ import Area from "../models/AreaModel.js";
 
 
 
+
 export const getAllShops = async (req, res) => {
   try {
     const { 
@@ -19,7 +20,7 @@ export const getAllShops = async (req, res) => {
       category,
       lat,
       lng,
-      maxDistanceKm = 10 // Search radius threshold boundary range limit
+      maxDistanceKm = 10 
     } = req.query;
 
     if (lat === undefined || lng === undefined || lat === "" || lng === "") {
@@ -40,22 +41,17 @@ export const getAllShops = async (req, res) => {
     }
 
     // --- GEOSPATIAL BOUNDING BOX CALCULATION MATRIX ---
-    // Earth's degrees translation constants:
-    // 1 Degree of Latitude ≈ 111.1 km
-    // 1 Degree of Longitude ≈ 111.1 km * cos(latitude)
     const kmPerDegreeLat = 111.1;
     const kmPerDegreeLng = 111.1 * Math.cos(centerLat * (Math.PI / 180));
 
     const latDelta = Number(maxDistanceKm) / kmPerDegreeLat;
     const lngDelta = Number(maxDistanceKm) / kmPerDegreeLng;
 
-    // Build the query object
     const query = {
       latitude: { $gte: centerLat - latDelta, $lte: centerLat + latDelta },
       longitude: { $gte: centerLng - lngDelta, $lte: centerLng + lngDelta }
     };
 
-    // 1. Incorporate secondary search filters safely
     if (search) {
       query.shopName = { $regex: search, $options: "i" };
     }
@@ -64,14 +60,12 @@ export const getAllShops = async (req, res) => {
       query.categoryId = category;
     }
 
-    // 2. Pagination Logic Setup
+    // Pagination Logic Setup
     const currentLimit = Number(limit);
     const skip = (Math.max(1, Number(page)) - 1) * currentLimit;
 
-    // Fetch total document pools matching the frame bounds criteria
     const total = await MerchantShop.countDocuments(query);
     
-    // Execute data fetch with population strings attached
     const shops = await MerchantShop.find(query)
       .populate("merchantId", "name email profileImage")
       .populate("categoryId", "label")
@@ -81,13 +75,10 @@ export const getAllShops = async (req, res) => {
       .limit(currentLimit)
       .lean();
 
-    
     if (shops.length > 0) {
-     
       shops.forEach(shop => {
         if (shop.latitude && shop.longitude) {
-          // Haversine formula mapping matrix
-          const R = 6371; // Earth's radius in km
+          const R = 6371; 
           const dLat = (shop.latitude - centerLat) * (Math.PI / 180);
           const dLng = (shop.longitude - centerLng) * (Math.PI / 180);
           const a = 
@@ -100,7 +91,6 @@ export const getAllShops = async (req, res) => {
         }
       });
 
-      // Optional: Sort by closest distance first since MongoDB didn't do it natively
       shops.sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity));
 
       const merchantIds = shops
@@ -118,13 +108,16 @@ export const getAllShops = async (req, res) => {
           { end_date: { $gte: new Date() } }
         ]
       })
-      .select("title description thumbnail display_type discount_percentage discount_value start_date end_date")
+      .select("title description thumbnail display_type discount_percentage discount_value merchant_id start_date end_date")
       .sort({ createdAt: -1 })
       .lean();
 
-      // Index current running items cleanly matching your merchant parameters
+      // Index current running items safely matching your merchant parameters
       const offersByMerchantMap = {};
       liveOffers.forEach(offer => {
+        // ✓ FIX: Safety check ensures broken/corrupted offer entries do not crash string assignment loops
+        if (!offer.merchant_id) return; 
+
         const mId = offer.merchant_id.toString();
         if (!offersByMerchantMap[mId]) {
           offersByMerchantMap[mId] = [];
@@ -136,6 +129,8 @@ export const getAllShops = async (req, res) => {
       shops.forEach(shop => {
         const actualMerchantId = shop.merchantId?._id || shop.merchantId;
         const lookupKey = actualMerchantId ? actualMerchantId.toString() : null;
+        
+        // ✓ FIX: Standardized fallback guarantees structural consistency for your frontend JSON maps
         shop.offers = lookupKey ? (offersByMerchantMap[lookupKey] || []) : [];
       });
     }
