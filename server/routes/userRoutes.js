@@ -10,7 +10,8 @@ import {
     updatePassword,
     deleteUserAccount,
     logoutUser,
-    googleAuthUser
+    googleAuthUser,
+    createUser
 } from "../controllers/userController.js";
 import { getProfileImage } from "../controllers/userController.js";
 
@@ -22,6 +23,7 @@ const router = express.Router();
 
 // auth
 router.post("/auth/send-otp", sendOtp);
+router.post('/auth/create',createUser)
 router.post("/auth/verify-otp", verifyOtp);
 router.post("/auth/set-password", protectUser, setPassword);
 router.post("/auth/login-password", loginWithPassword);

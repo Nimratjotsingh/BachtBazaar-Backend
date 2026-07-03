@@ -1,6 +1,7 @@
 import express from "express";
-import { getAllShops, getShopDetails, searchGlobalCatalog,getActiveUserOffers, getOfferDetails, getCityBannerOffers, getOffersByStoreId, getAllOffers, getCityBannerOffers2 } from "../controllers/userHomeController.js";
+import { getAllShops, getShopDetails, searchGlobalCatalog,getActiveUserOffers, getOfferDetails, getCityBannerOffers, getOffersByStoreId, getAllOffers, getCityBannerOffers2, getNearbyShops15KmForUser } from "../controllers/userHomeController.js";
 
+import {protectUser} from '../middleware/authMiddleware.js'
 const router = express.Router();
 
 /**
@@ -9,6 +10,8 @@ const router = express.Router();
  * @access  Public
 */
 router.get("/", getAllShops);
+
+router.get('/all', protectUser,getNearbyShops15KmForUser)
 
 router.get("/search", searchGlobalCatalog);
 
@@ -21,6 +24,7 @@ router.get("/offers/banners", getCityBannerOffers);
 router.get('/offers/banners2', getCityBannerOffers2);
 
 router.get("/offers/:id", getOfferDetails);
+
 
 
 /**

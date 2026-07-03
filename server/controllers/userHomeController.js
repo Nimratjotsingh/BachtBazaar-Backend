@@ -1041,3 +1041,163 @@ export const getUserCategories = async (req, res) => {
     });
   }
 };
+
+export const getNearbyShops15KmForUser = async (req, res) => {
+  try {
+    const { page = 1, limit = 10, search, category } = req.query;
+
+    // 1. Context Check: Guard against unauthenticated executions
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: "Access Denied: Missing user authentication profile signature contextual keys."
+      });
+    }
+
+    // 2. Extract and Validate coordinates saved directly on the user model object
+    const centerLat = req.user.latitude;
+    const centerLng = req.user.longitude;
+
+    if (centerLat === undefined || centerLng === undefined || centerLat === null || centerLng === null) {
+      return res.status(400).json({
+        success: false,
+        message: "Geographic missing block: Please update your user profile location parameters or toggle your device's GPS channels to look up nearby shops."
+      });
+    }
+
+    // --- GEOSPATIAL BOUNDING BOX CALCULATION MATRIX (15KM THRESHOLD) ---
+    const targetRadiusKm = 15;
+    const kmPerDegreeLat = 111.1;
+    const kmPerDegreeLng = 111.1 * Math.cos(centerLat * (Math.PI / 180));
+
+    const latDelta = targetRadiusKm / kmPerDegreeLat;
+    const lngDelta = targetRadiusKm / kmPerDegreeLng;
+
+    // Fast numeric index lookup constraint block
+    const query = {
+      latitude: { $gte: centerLat - latDelta, $lte: centerLat + latDelta },
+      longitude: { $gte: centerLng - lngDelta, $lte: centerLng + lngDelta }
+    };
+
+    // Integrate optional search descriptors or category tags seamlessly
+    if (search) {
+      query.shopName = { $regex: search, $options: "i" };
+    }
+
+    if (category) {
+      query.categoryId = category;
+    }
+
+    // Pagination configuration
+    const currentLimit = Number(limit);
+    const skip = (Math.max(1, Number(page)) - 1) * currentLimit;
+
+    // Fetch candidate list within the bounding box range frame
+    const rawShops = await MerchantShop.find(query)
+      .populate("merchantId", "name email profileImage")
+      .populate("categoryId", "label")
+      .populate("subCategoryId", "label")
+      .select("-logo.data -banner.data")
+      .lean();
+
+    if (rawShops.length === 0) {
+      return res.status(200).json({
+        success: true,
+        userLocation: { city: req.user.city, lat: centerLat, lng: centerLng },
+        total: 0,
+        pages: 1,
+        currentPage: Number(page),
+        data: []
+      });
+    }
+
+    // 3. Exact In-Memory Haversine Calculation (Filters out bounding box corner leaks)
+    const validShopsInRadius = [];
+
+    rawShops.forEach((shop) => {
+      if (shop.latitude && shop.longitude) {
+        const R = 6371; // Earth's mean radius constants in kilometers
+        const dLat = (shop.latitude - centerLat) * (Math.PI / 180);
+        const dLng = (shop.longitude - centerLng) * (Math.PI / 180);
+        
+        const a = 
+          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos(centerLat * (Math.PI / 180)) * Math.cos(shop.latitude * (Math.PI / 180)) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+          
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        const distanceKm = R * c;
+
+        if (distanceKm <= targetRadiusKm) {
+          shop.distanceKm = Number(distanceKm.toFixed(2));
+          validShopsInRadius.push(shop);
+        }
+      }
+    });
+
+    // Sort array closest proximity first
+    validShopsInRadius.sort((a, b) => a.distanceKm - b.distanceKm);
+
+    // 4. Complete custom page segments slice
+    const totalWithinRadius = validShopsInRadius.length;
+    const paginatedShops = validShopsInRadius.slice(skip, skip + currentLimit);
+
+    // 5. High-Performance Bulk Offers Insertion Pipeline
+    if (paginatedShops.length > 0) {
+      const merchantIds = paginatedShops
+        .map(shop => shop.merchantId?._id || shop.merchantId)
+        .filter(Boolean);
+
+      const liveOffers = await Offer.find({
+        merchant_id: { $in: merchantIds },
+        is_active: true,
+        is_deleted: false,
+        start_date: { $lte: new Date() },
+        $or: [
+          { end_date: { $exists: false } },
+          { end_date: null },
+          { end_date: { $gte: new Date() } }
+        ]
+      })
+      .select("title description thumbnail display_type discount_percentage discount_value merchant_id start_date end_date")
+      .sort({ createdAt: -1 })
+      .lean();
+
+      // Build safe lookup mapping index
+      const offersMap = {};
+      liveOffers.forEach(offer => {
+        if (!offer.merchant_id) return;
+        const mId = offer.merchant_id.toString();
+        if (!offersMap[mId]) offersMap[mId] = [];
+        offersMap[mId].push(offer);
+      });
+
+      // Stitch back onto parent storefront profiles
+      paginatedShops.forEach(shop => {
+        const lookupKey = shop.merchantId?._id?.toString() || shop.merchantId?.toString();
+        shop.offers = lookupKey ? (offersMap[lookupKey] || []) : [];
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      userLocation: {
+        city: req.user.city || "unknown",
+        lat: centerLat,
+        lng: centerLng
+      },
+      total: totalWithinRadius,
+      pages: Math.ceil(totalWithinRadius / currentLimit) || 1,
+      currentPage: Number(page),
+      searchRadius: `${targetRadiusKm}km`,
+      data: paginatedShops
+    });
+
+  } catch (error) {
+    console.error("Authenticated 15Km Shop Discovery Exception:", error);
+    return res.status(500).json({
+      success: false,
+      message: "An internal server error occurred while analyzing tracking sectors for your account profile layout.",
+      error: error.message
+    });
+  }
+};

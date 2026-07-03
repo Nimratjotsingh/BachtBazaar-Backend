@@ -33,6 +33,7 @@ export const protectUser = async (req, res, next) => {
       return res.status(401).json({ message: "Not authorized" });
     }
 
+    
     req.user = user;
     
     return next();

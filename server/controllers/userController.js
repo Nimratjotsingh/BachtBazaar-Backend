@@ -162,6 +162,74 @@ export const setPassword = async (req, res) => {
   }
 };
 
+
+export const createUser = async (req, res) => {
+  try {
+    const {
+      name,
+      email,
+      phone,
+      password,
+      gender,
+      city,
+      latitude,
+      longitude,
+      address,
+    } = req.body;
+
+    // Check if email or phone already exists
+    const existingUser = await User.findOne({
+      $or: [
+        ...(email ? [{ email }] : []),
+        ...(phone ? [{ phone }] : []),
+      ],
+    });
+
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        message: "User with this email or phone already exists.",
+      });
+    }
+
+    // Hash password (if provided)
+    let hashedPassword = undefined;
+    if (password) {
+      hashedPassword = await bcrypt.hash(password, 10);
+    }
+
+    // Create user
+    const user = await User.create({
+      name,
+      email,
+      phone,
+      password: hashedPassword,
+      gender,
+      city,
+      latitude,
+      longitude,
+      address,
+    });
+
+    // Remove password from response
+    const userResponse = user.toObject();
+    delete userResponse.password;
+
+    return res.status(201).json({
+      success: true,
+      message: "User created successfully.",
+      data: userResponse,
+    });
+  } catch (error) {
+    console.error(error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error.",
+    });
+  }
+};
+
 // login with password
 export const loginWithPassword = async (req, res) => {
   
@@ -256,6 +324,8 @@ export const updateProfile = async (req, res) => {
 
     const validatedData = validate(updateUserProfileSchema, req.body);
 
+    const {latitde,longitude} = req.body;
+
     const user = await User.findById(req.user._id);
 
     if (!user) {
@@ -267,6 +337,8 @@ export const updateProfile = async (req, res) => {
     user.name = name || user.name;
     user.gender = gender || user.gender;
     user.address = address || user.address;
+    user.latitude = latitde || user.latitude;
+    user.longitude = longitude || user.longitude;
 
     if (req.file) {
       user.profileImage = {

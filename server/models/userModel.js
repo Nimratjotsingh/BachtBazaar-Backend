@@ -4,7 +4,8 @@ import { ROLES } from "../constants/roles.js";
 const userSchema = new mongoose.Schema({
   phone: {
     type: String,
-    unique: true
+    unique: true,
+    sparse: true // Kept sparse to prevent duplicate null issues during Google Auth logins
   },
   password: {
     type: String
@@ -25,12 +26,30 @@ const userSchema = new mongoose.Schema({
     type: String,
     enum: ["male", "female", "other"]
   },
+  
+  // --- INTEGRATED LOCALIZATION & GEOSPATIAL FIELDS ---
+  city: {
+    type: String,
+    trim: true,
+    lowercase: true // Helps keep querying consistent across different inputs
+  },
+  latitude: {
+    type: Number,
+    default: null
+  },
+  longitude: {
+    type: Number,
+    default: null
+  },
+  
   address: {
     type: String
   },
   email: {
     unique: true,
-    type: String
+    type: String,
+    lowercase: true,
+    trim: true
   },
   profileImage: {
     data: Buffer,
@@ -41,7 +60,6 @@ const userSchema = new mongoose.Schema({
     enum: ["active", "banned"],
     default: "active"
   },
-  // Added field to log administrative block justifications
   bannedReason: {
     type: String,
     default: null
@@ -55,5 +73,10 @@ const userSchema = new mongoose.Schema({
     default: null
   }
 }, { timestamps: true });
+
+// --- PERFORMANCE INDEX CONFIGURATION ---
+// Speeds up matching logic when querying users based on geographic coordinates
+userSchema.index({ latitude: 1, longitude: 1 });
+userSchema.index({ city: 1 });
 
 export default mongoose.model("User", userSchema);
