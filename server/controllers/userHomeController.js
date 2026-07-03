@@ -729,7 +729,6 @@ export const getCityBannerOffers2 = async (req, res) => {
     }
 
     // 2. Compute Radians for the circular boundary mapping matrix
-    // MongoDB $centerSphere operator expects the radius to be divided by Earth's radius (~6378.1 km)
     const areaRadiusInKm = targetArea.radius_km || 5; 
     const radiusInRadians = areaRadiusInKm / 6378.1;
     const [centerLng, centerLat] = targetArea.center_location.coordinates;
@@ -741,8 +740,6 @@ export const getCityBannerOffers2 = async (req, res) => {
       is_deleted: false,
       start_date: { $lte: rightNow },
       end_date: { $gte: rightNow },
-      
-      // FIXED: Uses $centerSphere matching against point-radius parameters instead of polygon geometries
       location: {
         $geoWithin: {
           $centerSphere: [[centerLng, centerLat], radiusInRadians]
@@ -750,7 +747,6 @@ export const getCityBannerOffers2 = async (req, res) => {
       }
     };
 
-    // Category Filter Injection
     if (category_id && mongoose.Types.ObjectId.isValid(category_id)) {
       bannerQuery.category_id = new mongoose.Types.ObjectId(category_id);
     }
@@ -773,13 +769,46 @@ export const getCityBannerOffers2 = async (req, res) => {
       .sort({ createdAt: -1 })
       .lean();
 
-    // 5. Clean, format, and map output records payload arrays
+    // -----------------------------------------------------------------
+    // HIGH-PERFORMANCE PIEGON-HOLE STITCHING: BULK SHOPS LOOKUP LAYER
+    // -----------------------------------------------------------------
+    let shopsMap = {};
+    if (liveBannersPool.length > 0) {
+      // Collect unique merchant ID strings from our query batch
+      const uniqueMerchantIds = [
+        ...new Set(
+          liveBannersPool
+            .map((offer) => offer.merchant_id?._id || offer.merchant_id)
+            .filter(Boolean)
+        ),
+      ];
+
+      // Query all matching storefront shapes inside a single execution block
+      const associatedShops = await MerchantShop.find({
+        merchantId: { $in: uniqueMerchantIds }
+      })
+        .select("shopName address landMark city logo banner center_location location")
+        .lean();
+
+      // Index out shops map collection registers keyed by their parent merchant reference
+      associatedShops.forEach((shop) => {
+        if (shop.merchantId) {
+          shopsMap[shop.merchantId.toString()] = shop;
+        }
+      });
+    }
+
+    // 5. Clean, format, and map output records payload arrays inserting shop details
     const formattedBanners = liveBannersPool.map((offer) => {
       const badgeText = offer.discount_percentage !== null
         ? `${offer.discount_percentage}% OFF`
         : offer.discount_value !== null
         ? `₹${offer.discount_value} OFF`
         : "Exclusive Deal";
+
+      // Match parent shop metrics from our map indices
+      const merchantIdStr = offer.merchant_id?._id?.toString() || offer.merchant_id?.toString();
+      const matchedShop = merchantIdStr ? shopsMap[merchantIdStr] : null;
 
       return {
         _id: offer._id,
@@ -796,6 +825,16 @@ export const getCityBannerOffers2 = async (req, res) => {
           _id: offer.merchant_id?._id,
           name: offer.merchant_id?.name || "BachatBazarr Partner"
         },
+        // ✓ ADDED: Injected Shop metadata response details
+        shop: matchedShop ? {
+          _id: matchedShop._id,
+          shopName: matchedShop.shopName,
+          address: matchedShop.address || "",
+          landMark: matchedShop.landMark || "",
+          city: matchedShop.city || "",
+          logo: matchedShop.logo || null,
+          banner: matchedShop.banner || null
+        } : null,
         bannerType: offer.banner_type_id ? {
           _id: offer.banner_type_id._id,
           name: offer.banner_type_id.name,
