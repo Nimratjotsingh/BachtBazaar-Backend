@@ -8,64 +8,109 @@ import mongoose from "mongoose";
 import Area from "../models/AreaModel.js";
 
 
-// --- Show All Shops for Users (Paginated) ---
+
+
 export const getAllShops = async (req, res) => {
   try {
     const { 
       page = 1, 
       limit = 10, 
       search, 
-      city, 
-      category 
+      category,
+      lat,
+      lng,
+      maxDistanceKm = 10 // Search radius threshold boundary range limit
     } = req.query;
 
-    const query = {};
-
-    // 1. Filter by City
-    if (city) {
-      query.city = { $regex: city, $options: "i" };
+    if (lat === undefined || lng === undefined || lat === "" || lng === "") {
+      return res.status(400).json({
+        success: false,
+        message: "Explicit 'lat' and 'lng' parameters are required to locate nearby shops."
+      });
     }
 
-    // 2. Search by Shop Name
+    const centerLat = Number(lat);
+    const centerLng = Number(lng);
+
+    if (isNaN(centerLat) || isNaN(centerLng)) {
+      return res.status(400).json({
+        success: false,
+        message: "Provided 'lat' and 'lng' coordinates must be valid numeric values."
+      });
+    }
+
+    // --- GEOSPATIAL BOUNDING BOX CALCULATION MATRIX ---
+    // Earth's degrees translation constants:
+    // 1 Degree of Latitude ≈ 111.1 km
+    // 1 Degree of Longitude ≈ 111.1 km * cos(latitude)
+    const kmPerDegreeLat = 111.1;
+    const kmPerDegreeLng = 111.1 * Math.cos(centerLat * (Math.PI / 180));
+
+    const latDelta = Number(maxDistanceKm) / kmPerDegreeLat;
+    const lngDelta = Number(maxDistanceKm) / kmPerDegreeLng;
+
+    // Build the query object
+    const query = {
+      latitude: { $gte: centerLat - latDelta, $lte: centerLat + latDelta },
+      longitude: { $gte: centerLng - lngDelta, $lte: centerLng + lngDelta }
+    };
+
+    // 1. Incorporate secondary search filters safely
     if (search) {
       query.shopName = { $regex: search, $options: "i" };
     }
 
-    // 3. Filter by Category
     if (category) {
       query.categoryId = category;
     }
 
-    // 4. Pagination Logic
+    // 2. Pagination Logic Setup
     const currentLimit = Number(limit);
     const skip = (Math.max(1, Number(page)) - 1) * currentLimit;
 
+    // Fetch total document pools matching the frame bounds criteria
     const total = await MerchantShop.countDocuments(query);
     
-    // Query matching storefront blocks
+    // Execute data fetch with population strings attached
     const shops = await MerchantShop.find(query)
       .populate("merchantId", "name email profileImage")
       .populate("categoryId", "label")
       .populate("subCategoryId", "label")
-      .select("-logo.data -banner.data") 
-      .sort({ createdAt: -1 })
+      .select("-logo.data -banner.data") // Keeps responses lightweight
       .skip(skip)
       .limit(currentLimit)
-      .lean(); // Converts documents to clean JS objects so we can insert the offers key easily
+      .lean();
 
-    // 5. High-Performance Bulk Offers Injection Pipeline
+    // 3. High-Performance Bulk Offers Injection Pipeline
     if (shops.length > 0) {
-      // Collect all merchant IDs from the paginated set of shops
+      // Calculate real distances manually in-memory and attach them
+      shops.forEach(shop => {
+        if (shop.latitude && shop.longitude) {
+          // Haversine formula mapping matrix
+          const R = 6371; // Earth's radius in km
+          const dLat = (shop.latitude - centerLat) * (Math.PI / 180);
+          const dLng = (shop.longitude - centerLng) * (Math.PI / 180);
+          const a = 
+            Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(centerLat * (Math.PI / 180)) * Math.cos(shop.latitude * (Math.PI / 180)) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+          shop.distanceKm = Number((R * c).toFixed(2));
+        } else {
+          shop.distanceKm = null;
+        }
+      });
+
+      // Optional: Sort by closest distance first since MongoDB didn't do it natively
+      shops.sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity));
+
       const merchantIds = shops
         .map(shop => shop.merchantId?._id || shop.merchantId)
         .filter(Boolean);
 
-      // Fetch all live, un-deleted active campaigns for these merchants in a single query
       const liveOffers = await Offer.find({
         merchant_id: { $in: merchantIds },
         is_active: true,
         is_deleted: false,
-        // Match active date windows (campaign must have started and not yet expired)
         start_date: { $lte: new Date() },
         $or: [
           { end_date: { $exists: false } },
@@ -77,7 +122,7 @@ export const getAllShops = async (req, res) => {
       .sort({ createdAt: -1 })
       .lean();
 
-      // Map out each offer by its parent merchant id key reference
+      // Index current running items cleanly matching your merchant parameters
       const offersByMerchantMap = {};
       liveOffers.forEach(offer => {
         const mId = offer.merchant_id.toString();
@@ -87,11 +132,10 @@ export const getAllShops = async (req, res) => {
         offersByMerchantMap[mId].push(offer);
       });
 
-      // Stitch the compiled offers into their respective shop objects
+      // Bind records cleanly back to parent storefront collections objects
       shops.forEach(shop => {
         const actualMerchantId = shop.merchantId?._id || shop.merchantId;
         const lookupKey = actualMerchantId ? actualMerchantId.toString() : null;
-        
         shop.offers = lookupKey ? (offersByMerchantMap[lookupKey] || []) : [];
       });
     }
@@ -105,15 +149,14 @@ export const getAllShops = async (req, res) => {
     });
 
   } catch (error) {
-    console.error("Get All Shops with Offers Bulk Processing Error:", error);
+    console.error("Bounding Box Fetch All Shops Error:", error);
     return res.status(500).json({ 
       success: false, 
-      message: "Failed to retrieve shops alongside active campaigns.",
-      error
+      message: "Failed to retrieve localized storefront records.",
+      error: error.message
     });
   }
 };
-
 // --- Get Single Shop Details ---
 
 export const getShopDetails = async (req, res) => {
