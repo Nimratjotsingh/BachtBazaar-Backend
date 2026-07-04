@@ -1201,3 +1201,216 @@ export const getNearbyShops15KmForUser = async (req, res) => {
     });
   }
 };
+
+export const getNearbyBannersForUser = async (req, res) => {
+  try {
+    const { page = 1, limit = 10, category, banner_type_id } = req.query;
+
+    // 1. Context Check: Guard against unauthenticated executions
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: "Access Denied: Missing authenticated user context profile."
+      });
+    }
+
+    const centerLat = req.user.latitude;
+    const centerLng = req.user.longitude;
+
+    if (centerLat === undefined || centerLng === undefined || centerLat === null || centerLng === null) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing location bounds: Please save or enable your profile location to view nearby banners."
+      });
+    }
+
+    const rightNow = new Date();
+    const targetRadiusKm = 15;
+    
+    // --- GEOSPATIAL BOUNDING BOX CALCULATION MATRIX (15KM THRESHOLD) ---
+    const kmPerDegreeLat = 111.1;
+    const kmPerDegreeLng = 111.1 * Math.cos(centerLat * (Math.PI / 180));
+
+    const latDelta = targetRadiusKm / kmPerDegreeLat;
+    const lngDelta = targetRadiusKm / kmPerDegreeLng;
+
+    // Fast numerical index query constraint box for nearby shops
+    const shopQuery = {
+      latitude: { $gte: centerLat - latDelta, $lte: centerLat + latDelta },
+      longitude: { $gte: centerLng - lngDelta, $lte: centerLng + lngDelta }
+    };
+
+    // If an administrative category filter is requested, filter the shops by it
+    if (category) {
+      shopQuery.categoryId = category;
+    }
+
+    // Fetch candidate shops within the bounding box zone
+    const rawShops = await MerchantShop.find(shopQuery)
+      .populate("merchantId", "name email profileImage")
+      .populate("categoryId", "label")
+      .populate("subCategoryId", "label")
+      .select("-logo.data -banner.data")
+      .lean();
+
+    if (rawShops.length === 0) {
+      return res.status(200).json({
+        success: true,
+        userLocation: { city: req.user.city, lat: centerLat, lng: centerLng },
+        totalBanners: 0,
+        data: []
+      });
+    }
+
+    // 2. Precise In-Memory Haversine Verification
+    const validMerchantIds = [];
+    const shopsMap = {};
+
+    rawShops.forEach((shop) => {
+      if (shop.latitude && shop.longitude && shop.merchantId) {
+        const R = 6371; // Earth's mean radius in km
+        const dLat = (shop.latitude - centerLat) * (Math.PI / 180);
+        const dLng = (shop.longitude - centerLng) * (Math.PI / 180);
+        
+        const a = 
+          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos(centerLat * (Math.PI / 180)) * Math.cos(shop.latitude * (Math.PI / 180)) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+          
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        const distanceKm = R * c;
+
+        // Keep only the shops inside the perfect 15km radius circle
+        if (distanceKm <= targetRadiusKm) {
+          shop.distanceKm = Number(distanceKm.toFixed(2));
+          const mIdStr = shop.merchantId._id.toString();
+          
+          validMerchantIds.push(shop.merchantId._id);
+          shopsMap[mIdStr] = shop; // Index by merchant ID for fast matching below
+        }
+      }
+    });
+
+    if (validMerchantIds.length === 0) {
+      return res.status(200).json({
+        success: true,
+        totalBanners: 0,
+        data: []
+      });
+    }
+
+    // 3. Build Active Banner Query Framework
+    const bannerQuery = {
+      merchant_id: { $in: validMerchantIds },
+      display_type: { $in: ["banner", "all"] }, // Pull items specifically marked as banners
+      is_active: true,
+      is_deleted: false,
+      start_date: { $lte: rightNow },
+      $or: [
+        { end_date: { $exists: false } },
+        { end_date: null },
+        { end_date: { $gte: rightNow } }
+      ]
+    };
+
+    // If filtration by specific template layout configurations is active (e.g., category-slider vs hero)
+    if (banner_type_id) {
+      bannerQuery.banner_type_id = banner_type_id;
+    }
+
+    // Pagination Variables
+    const currentLimit = Number(limit);
+    const skip = (Math.max(1, Number(page)) - 1) * currentLimit;
+
+    // 4. Fetch the total number of valid matching banners
+    const totalBannersCount = await Offer.countDocuments(bannerQuery);
+
+    // 5. Extract banner offers database rows
+    const liveBannersPool = await Offer.find(bannerQuery)
+      .populate({
+        path: "banner_type_id",
+        select: "name slug img description"
+      })
+      .populate({
+        path: "category_id",
+        select: "label value type image"
+      })
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(currentLimit)
+      .lean();
+
+    // 6. Format output array, embedding the matched store profile directly inside the banner object
+    const formattedBanners = liveBannersPool.map((offer) => {
+      const badgeText = offer.discount_percentage !== null
+        ? `${offer.discount_percentage}% OFF`
+        : offer.discount_value !== null
+        ? `₹${offer.discount_value} OFF`
+        : "Exclusive Deal";
+
+      // Look up the pre-calculated localized store info using the map index
+      const merchantIdStr = offer.merchant_id ? offer.merchant_id.toString() : "";
+      const matchedShop = merchantIdStr ? shopsMap[merchantIdStr] : null;
+
+      return {
+        _id: offer._id,
+        title: offer.title,
+        description: offer.description || "",
+        thumbnail: offer.thumbnail || "",
+        discountBadge: badgeText,
+        minimumPurchaseAmount: offer.minimum_purchase_amount || 0,
+        claimLimit: offer.claim_limit,
+        perUserLimit: offer.per_user_limit || 1,
+        endDate: offer.end_date,
+        location: offer.location, 
+        distanceKm: matchedShop ? matchedShop.distanceKm : null,
+        merchantId: offer.merchant_id,
+        // Embedded associated shop properties
+        shop: matchedShop ? {
+          _id: matchedShop._id,
+          shopName: matchedShop.shopName,
+          address: matchedShop.address || "",
+          city: matchedShop.city || "",
+          latitude: matchedShop.latitude,
+          longitude: matchedShop.longitude,
+          logo: matchedShop.logo || null,
+          banner: matchedShop.banner || null
+        } : null,
+        bannerType: offer.banner_type_id ? {
+          _id: offer.banner_type_id._id,
+          name: offer.banner_type_id.name,
+          slug: offer.banner_type_id.slug
+        } : null,
+        category: offer.category_id ? {
+          _id: offer.category_id._id,
+          label: offer.category_id.label,
+          value: offer.category_id.value
+        } : null
+      };
+    });
+
+    // 7. Optional: Sort the final banner offer results by closest store distance proximity
+    formattedBanners.sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity));
+
+    return res.status(200).json({
+      success: true,
+      userLocation: {
+        city: req.user.city || "unknown",
+        lat: centerLat,
+        lng: centerLng
+      },
+      totalBanners: totalBannersCount,
+      pages: Math.ceil(totalBannersCount / currentLimit) || 1,
+      currentPage: Number(page),
+      searchRadius: `${targetRadiusKm}km`,
+      data: formattedBanners
+    });
+
+  } catch (error) {
+    console.error("Geospatial Area Banner Offer Gathering Pipeline Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "An internal server error occurred while retrieving nearby banner offers.",
+      error: error.message
+    });
+  }
+};
