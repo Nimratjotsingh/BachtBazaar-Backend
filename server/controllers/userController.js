@@ -324,7 +324,7 @@ export const updateProfile = async (req, res) => {
 
     const validatedData = validate(updateUserProfileSchema, req.body);
 
-    const {latitde,longitude, city} = req.body;
+    const {latitude,longitude, city} = req.body;
 
     const user = await User.findById(req.user._id);
 
@@ -337,7 +337,7 @@ export const updateProfile = async (req, res) => {
     user.name = name || user.name;
     user.gender = gender || user.gender;
     user.address = address || user.address;
-    user.latitude = latitde || user.latitude;
+    user.latitude = latitude || user.latitude;
     user.longitude = longitude || user.longitude;
     user.city = city || user.city;
 

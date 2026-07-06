@@ -21,7 +21,7 @@ router.get("/offers/store-details/:storeId", getOffersByStoreId);
 
 
 router.get("/offers/banners", protectUser,getNearbyBannersForUser);
-router.get('/offers/banners2', protectUser,getNearbyBannersForUser);
+router.get('/offers/banners2',protectUser,getNearbyBannersForUser);
 
 router.get("/offers/:id", getOfferDetails);
 
