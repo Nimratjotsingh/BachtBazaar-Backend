@@ -1424,7 +1424,7 @@ export const getNearbyBannersForUser = async (req, res) => {
  */
 export const getNearbyCalendarOffersForUser = async (req, res) => {
   try {
-    const { start, end, page = 1, limit = 10, category } = req.query;
+    const { date, page = 1, limit = 10, category } = req.query;
 
     // 1. Context & Authentication Verification Check
     if (!req.user) {
@@ -1444,21 +1444,25 @@ export const getNearbyCalendarOffersForUser = async (req, res) => {
       });
     }
 
-    // 2. Validate Timeframe Windows
-    if (!start || !end) {
+    // 2. Validate Single Target Date
+    if (!date) {
       return res.status(400).json({
         success: false,
-        message: "Explicit 'start' and 'end' date query strings are required parameters."
+        message: "Explicit 'date' query parameter string is required (e.g., YYYY-MM-DD)."
       });
     }
 
-    const queryStartDate = new Date(start);
-    const queryEndDate = new Date(end);
+    // Set boundaries for the specific single date (start of day to end of day)
+    const targetDateStart = new Date(date);
+    targetDateStart.setHours(0, 0, 0, 0);
 
-    if (isNaN(queryStartDate.getTime()) || isNaN(queryEndDate.getTime())) {
+    const targetDateEnd = new Date(date);
+    targetDateEnd.setHours(23, 59, 59, 999);
+
+    if (isNaN(targetDateStart.getTime())) {
       return res.status(400).json({
         success: false,
-        message: "Provided 'start' or 'end' dates are formatted as invalid ISO timestamps."
+        message: "Provided 'date' is formatted as an invalid date timestamp."
       });
     }
 
@@ -1534,19 +1538,19 @@ export const getNearbyCalendarOffersForUser = async (req, res) => {
       });
     }
 
-    // 4. Build Overlapping Campaign Timeline Filters Matrix
-    // The campaign must have started before our query end boundary, 
-    // AND must wrap up after our requested query start boundary window.
+    // 4. Build Single Date Active Timeline Filters Matrix
+    // The campaign must have started BEFORE or ON the target date day ending,
+    // AND must finish AFTER or ON the target date day beginning.
     const calendarQuery = {
       merchant_id: { $in: validMerchantIds },
-      display_type: { $in: ["calendar", "all"] }, // Extract explicit calendar capabilities
+      display_type: { $in: ["calendar", "all"] },
       is_active: true,
       is_deleted: false,
-      start_date: { $lte: queryEndDate },
+      start_date: { $lte: targetDateEnd },
       $or: [
         { end_date: { $exists: false } },
         { end_date: null },
-        { end_date: { $gte: queryStartDate } }
+        { end_date: { $gte: targetDateStart } }
       ]
     };
 
@@ -1562,7 +1566,7 @@ export const getNearbyCalendarOffersForUser = async (req, res) => {
         path: "category_id",
         select: "label value type image"
       })
-      .sort({ start_date: 1 }) // Chronological step arrangement order is key for calendars
+      .sort({ createdAt: -1 })
       .skip(skip)
       .limit(currentLimit)
       .lean();
@@ -1617,10 +1621,7 @@ export const getNearbyCalendarOffersForUser = async (req, res) => {
         lat: centerLat,
         lng: centerLng
       },
-      timeframeRange: {
-        queriedStart: queryStartDate,
-        queriedEnd: queryEndDate
-      },
+      targetDate: targetDateStart.toISOString().split('T')[0],
       totalOffers: totalOffersCount,
       pages: Math.ceil(totalOffersCount / currentLimit) || 1,
       currentPage: Number(page),
@@ -1629,10 +1630,10 @@ export const getNearbyCalendarOffersForUser = async (req, res) => {
     });
 
   } catch (error) {
-    console.error("Geospatial Area Calendar Schedule Collection Pipeline Exception:", error);
+    console.error("Geospatial Area Single Date Calendar Schedule Collection Pipeline Exception:", error);
     return res.status(500).json({
       success: false,
-      message: "An internal server error occurred while retrieving nearby calendar schedule offers.",
+      message: "An internal server error occurred while retrieving nearby single-date calendar schedule offers.",
       error: error.message
     });
   }
