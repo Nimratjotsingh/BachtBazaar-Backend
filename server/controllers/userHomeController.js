@@ -1414,3 +1414,226 @@ export const getNearbyBannersForUser = async (req, res) => {
     });
   }
 };
+
+
+/**
+ * GET /api/calendar-offers/nearby-authenticated
+ * Scans the logged-in user's profile context for coordinates,
+ * identifies shops within a 15km radius, and lists out their active calendar offers 
+ * that overlap with the requested start_date and end_date timeframes.
+ */
+export const getNearbyCalendarOffersForUser = async (req, res) => {
+  try {
+    const { start, end, page = 1, limit = 10, category } = req.query;
+
+    // 1. Context & Authentication Verification Check
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: "Access Denied: Missing authenticated user context profile attributes."
+      });
+    }
+
+    const centerLat = req.user.latitude;
+    const centerLng = req.user.longitude;
+
+    if (centerLat === undefined || centerLng === undefined || centerLat === null || centerLng === null) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing location bounds: Please save your profile location coordinates to load calendar schedules."
+      });
+    }
+
+    // 2. Validate Timeframe Windows
+    if (!start || !end) {
+      return res.status(400).json({
+        success: false,
+        message: "Explicit 'start' and 'end' date query strings are required parameters."
+      });
+    }
+
+    const queryStartDate = new Date(start);
+    const queryEndDate = new Date(end);
+
+    if (isNaN(queryStartDate.getTime()) || isNaN(queryEndDate.getTime())) {
+      return res.status(400).json({
+        success: false,
+        message: "Provided 'start' or 'end' dates are formatted as invalid ISO timestamps."
+      });
+    }
+
+    const targetRadiusKm = 15;
+    
+    // --- GEOSPATIAL BOUNDING BOX CALCULATION MATRIX (15KM THRESHOLD) ---
+    const kmPerDegreeLat = 111.1;
+    const kmPerDegreeLng = 111.1 * Math.cos(centerLat * (Math.PI / 180));
+
+    const latDelta = targetRadiusKm / kmPerDegreeLat;
+    const lngDelta = targetRadiusKm / kmPerDegreeLng;
+
+    // Numerical range index query constraints bound box configuration matching shops
+    const shopQuery = {
+      latitude: { $gte: centerLat - latDelta, $lte: centerLat + latDelta },
+      longitude: { $gte: centerLng - lngDelta, $lte: centerLng + lngDelta }
+    };
+
+    if (category) {
+      shopQuery.categoryId = category;
+    }
+
+    // Identify candidate shop entities
+    const rawShops = await MerchantShop.find(shopQuery)
+      .populate("merchantId", "name email profileImage")
+      .populate("categoryId", "label")
+      .populate("subCategoryId", "label")
+      .select("-logo.data -banner.data")
+      .lean();
+
+    if (rawShops.length === 0) {
+      return res.status(200).json({
+        success: true,
+        userLocation: { city: req.user.city, lat: centerLat, lng: centerLng },
+        totalOffers: 0,
+        data: []
+      });
+    }
+
+    // 3. Exact In-Memory Haversine Verification Filter
+    const validMerchantIds = [];
+    const shopsMap = {};
+
+    rawShops.forEach((shop) => {
+      if (shop.latitude && shop.longitude && shop.merchantId) {
+        const R = 6371; // Earth's mean radius in km
+        const dLat = (shop.latitude - centerLat) * (Math.PI / 180);
+        const dLng = (shop.longitude - centerLng) * (Math.PI / 180);
+        
+        const a = 
+          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos(centerLat * (Math.PI / 180)) * Math.cos(shop.latitude * (Math.PI / 180)) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+          
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        const distanceKm = R * c;
+
+        // Strip box-corner overlaps exceeding true circular boundaries
+        if (distanceKm <= targetRadiusKm) {
+          shop.distanceKm = Number(distanceKm.toFixed(2));
+          const mIdStr = shop.merchantId._id.toString();
+          
+          validMerchantIds.push(shop.merchantId._id);
+          shopsMap[mIdStr] = shop; 
+        }
+      }
+    });
+
+    if (validMerchantIds.length === 0) {
+      return res.status(200).json({
+        success: true,
+        totalOffers: 0,
+        data: []
+      });
+    }
+
+    // 4. Build Overlapping Campaign Timeline Filters Matrix
+    // The campaign must have started before our query end boundary, 
+    // AND must wrap up after our requested query start boundary window.
+    const calendarQuery = {
+      merchant_id: { $in: validMerchantIds },
+      display_type: { $in: ["calendar", "all"] }, // Extract explicit calendar capabilities
+      is_active: true,
+      is_deleted: false,
+      start_date: { $lte: queryEndDate },
+      $or: [
+        { end_date: { $exists: false } },
+        { end_date: null },
+        { end_date: { $gte: queryStartDate } }
+      ]
+    };
+
+    const currentLimit = Number(limit);
+    const skip = (Math.max(1, Number(page)) - 1) * currentLimit;
+
+    // Fetch total active schedule elements count
+    const totalOffersCount = await Offer.countDocuments(calendarQuery);
+
+    // Retrieve final dataset lists
+    const liveOffersPool = await Offer.find(calendarQuery)
+      .populate({
+        path: "category_id",
+        select: "label value type image"
+      })
+      .sort({ start_date: 1 }) // Chronological step arrangement order is key for calendars
+      .skip(skip)
+      .limit(currentLimit)
+      .lean();
+
+    // 5. Build Formatted JSON response embedding Shop profiles inside Offer structures
+    const formattedOffers = liveOffersPool.map((offer) => {
+      const badgeText = offer.discount_percentage !== null
+        ? `${offer.discount_percentage}% OFF`
+        : offer.discount_value !== null
+        ? `₹${offer.discount_value} OFF`
+        : "Exclusive Deal";
+
+      const merchantIdStr = offer.merchant_id ? offer.merchant_id.toString() : "";
+      const matchedShop = merchantIdStr ? shopsMap[merchantIdStr] : null;
+
+      return {
+        _id: offer._id,
+        title: offer.title,
+        description: offer.description || "",
+        thumbnail: offer.thumbnail || "",
+        discountBadge: badgeText,
+        minimumPurchaseAmount: offer.minimum_purchase_amount || 0,
+        claimLimit: offer.claim_limit,
+        perUserLimit: offer.per_user_limit || 1,
+        startDate: offer.start_date,
+        endDate: offer.end_date,
+        location: offer.location, 
+        distanceKm: matchedShop ? matchedShop.distanceKm : null,
+        merchantId: offer.merchant_id,
+        shop: matchedShop ? {
+          _id: matchedShop._id,
+          shopName: matchedShop.shopName,
+          address: matchedShop.address || "",
+          city: matchedShop.city || "",
+          latitude: matchedShop.latitude,
+          longitude: matchedShop.longitude,
+          logo: matchedShop.logo || null,
+          banner: matchedShop.banner || null
+        } : null,
+        category: offer.category_id ? {
+          _id: offer.category_id._id,
+          label: offer.category_id.label,
+          value: offer.category_id.value
+        } : null
+      };
+    });
+
+    return res.status(200).json({
+      success: true,
+      userLocation: {
+        city: req.user.city || "unknown",
+        lat: centerLat,
+        lng: centerLng
+      },
+      timeframeRange: {
+        queriedStart: queryStartDate,
+        queriedEnd: queryEndDate
+      },
+      totalOffers: totalOffersCount,
+      pages: Math.ceil(totalOffersCount / currentLimit) || 1,
+      currentPage: Number(page),
+      searchRadius: `${targetRadiusKm}km`,
+      data: formattedOffers
+    });
+
+  } catch (error) {
+    console.error("Geospatial Area Calendar Schedule Collection Pipeline Exception:", error);
+    return res.status(500).json({
+      success: false,
+      message: "An internal server error occurred while retrieving nearby calendar schedule offers.",
+      error: error.message
+    });
+  }
+};
