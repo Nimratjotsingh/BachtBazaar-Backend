@@ -13,6 +13,8 @@ import {
   tempUpdatePass,
   logoutMerchant
 } from "../controllers/merchantAuthController.js";
+
+import {getNearbyCustomerRequestsForMerchant} from '../controllers/MerchantBidController.js'
 import { protectMerchant } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
@@ -29,5 +31,6 @@ router.post("/forgot-password", forgotPassword);
 router.post("/temp-change-pass",tempUpdatePass);
 router.put("/password", protectMerchant, updatePassword);
 router.post("/merchant/auth/logout", protectMerchant, logoutMerchant);
+router.get("/user-requests",protectMerchant,getNearbyCustomerRequestsForMerchant)
 
 export default router;

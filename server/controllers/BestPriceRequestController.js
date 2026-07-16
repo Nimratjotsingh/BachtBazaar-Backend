@@ -1,0 +1,174 @@
+import BestPriceRequest from "../models/BestPriceModel.js";
+import Category from "../models/categoryModel.js"; // Optional validation target
+
+
+export const createBestPriceRequest = async (req, res) => {
+  try {
+    const { title, description, categoryId, budget, timeframe, formattedAddress } = req.body;
+
+    // 1. Core Profile Context Check
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: "Access Denied: Unauthenticated user transaction routing profile."
+      });
+    }
+
+    // 2. Structural Parameter Verification Matrix
+    if (!title || !categoryId || !budget || !timeframe) {
+      return res.status(400).json({
+        success: false,
+        message: "Required parameters missing. Provide title, categoryId, budget, and timeframe."
+      });
+    }
+
+    // Extract coordinates directly from req.user to keep locations accurate
+    const userLat = req.user.latitude;
+    const userLng = req.user.longitude;
+    const userCity = req.user.city;
+
+    if (userLat === undefined || userLng === undefined || userLat === null || userLng === null) {
+      return res.status(400).json({
+        success: false,
+        message: "Profile location parameters missing. Please set your account profile coordinates before requesting deals."
+      });
+    }
+
+    // 3. Document Provisioning Hook
+    const newRequest = new BestPriceRequest({
+      userId: req.user._id,
+      title,
+      description,
+      categoryId,
+      budget: Number(budget),
+      timeframe,
+      latitude: userLat,
+      longitude: userLng,
+      city: userCity || "unknown",
+      formattedAddress: formattedAddress || "",
+      status: "active"
+    });
+
+    await newRequest.save();
+
+    return res.status(201).json({
+      success: true,
+      message: "Your best price offer search pipeline request was created successfully.",
+      data: newRequest
+    });
+
+  } catch (error) {
+    console.error("Create Best Price Request Exception Pipeline:", error);
+    return res.status(500).json({
+      success: false,
+      message: "An internal server error occurred while creating your price search pipeline.",
+      error: error.message
+    });
+  }
+};
+
+/**
+ * GET /api/best-price-requests/my-requests
+ * Fetches all RFQ pipeline structures requested specifically by the logged-in user (with pagination)
+ */
+export const getUserBestPriceRequests = async (req, res) => {
+  try {
+    const { page = 1, limit = 10, status } = req.query;
+
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: "Access Denied: Missing user authentication profile signature keys."
+      });
+    }
+
+    // Build query block targeting the specific user
+    const query = { userId: req.user._id };
+
+    // Allow user to filter their history lists by status (active, completed, cancelled)
+    if (status) {
+      query.status = status;
+    }
+
+    const currentLimit = Number(limit);
+    const skip = (Math.max(1, Number(page)) - 1) * currentLimit;
+
+    const total = await BestPriceRequest.countDocuments(query);
+
+    const requestsList = await BestPriceRequest.find(query)
+      .populate("categoryId", "label value image")
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(currentLimit)
+      .lean();
+
+    return res.status(200).json({
+      success: true,
+      total,
+      pages: Math.ceil(total / currentLimit) || 1,
+      currentPage: Number(page),
+      data: requestsList
+    });
+
+  } catch (error) {
+    console.error("Get User Best Price Requests Processing Fault:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to retrieve your personal best price request logs.",
+      error: error.message
+    });
+  }
+};
+
+/**
+ * PUT /api/best-price-requests/cancel/:id
+ * Allows a user to close or cancel their deal request pipeline manually
+ */
+export const cancelBestPriceRequest = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: "Access Denied: Missing profile parameters mapping contexts."
+      });
+    }
+
+    // Find request document and verify ownership
+    const requestItem = await BestPriceRequest.findOne({ _id: id, userId: req.user._id });
+
+    if (!requestItem) {
+      return res.status(404).json({
+        success: false,
+        message: "The requested best price profile registry was not found or access is restricted."
+      });
+    }
+
+    if (requestItem.status === "completed" || requestItem.status === "cancelled") {
+      return res.status(400).json({
+        success: false,
+        message: `This lookup target pipeline cannot be altered because its current state is already marked as ${requestItem.status}.`
+      });
+    }
+
+    requestItem.status = "cancelled";
+    await requestItem.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "The price request pipeline has been successfully closed and marked cancelled.",
+      data: requestItem
+    });
+
+  } catch (error) {
+    console.error("Cancel Best Price Request Execution Failure:", error);
+    return res.status(500).json({
+      success: false,
+      message: "An internal processing error occurred while altering status profiles.",
+      error: error.message
+    });
+  }
+};
+
+

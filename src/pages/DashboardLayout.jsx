@@ -34,6 +34,8 @@ const navItems = [
   { label: "Offers", to: "/dashboard/offers", icon: LucideActivity },
   { label: "AdminBanner", to: "/dashboard/adminbanner", icon: LucideActivity },
   { label: "Banner Types", to: "/dashboard/bannerTypes", icon: LucideActivity },
+  { label: "Quick Offer Merchant Bid", to: "/dashboard/quickOffer", icon: LucideActivity },
+  
 ];
 
 const DashboardLayout = ({token,onLogout}) => {

@@ -34,6 +34,9 @@ import areasRoutes from './routes/areaRoutes.js';
 import userHomeExtended from './routes/userHomeExtend.js';
 import bannerTypeRoutes from './routes/bannerTypeRoutes.js';
 import bannerRoutes from './routes/bannerRoutes.js';
+import bestPriceRoutes from './routes/bestPriceRequestRoutes.js';
+import MerchantBidRoutes from './routes/MerchantBidRoutes.js';
+import QuickOfferRoutes from './routes/quickOfferRoutes.js';
 
 dotenv.config();
 // console.log(process.env.MONGO_URI)
@@ -99,6 +102,10 @@ app.use('/api/subOfferType',subOfferTypeRoute);
 app.use('/api/analytics', userAnalytics);
 app.use('/api/adminbanners',adminBanner);
 app.use('/api/areas',areasRoutes);
+app.use('/api/user/best-request',bestPriceRoutes);
+app.use("/api/merchant-bids",MerchantBidRoutes);
+app.use("/api/quick-offer-routes",QuickOfferRoutes);
+
 
 app.use('/api/users/others',userHomeExtended);
 app.use('/api/banner-types', bannerTypeRoutes)

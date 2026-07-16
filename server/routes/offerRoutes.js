@@ -33,6 +33,7 @@ router.get("/search/:display_type", protectMerchant, searchOffersByDisplayType);
 router.patch("/merchant/revive/:id", protectMerchant, revivePastOffer);
 router.get("/stats-summary", protectSuperAdmin, getOffersStatsSummary);
 
+
 // Parametized reference routes
 router.get("/:id", protectMerchant, getOfferDetails);
 router.put("/:id", protectMerchant, upload.single("thumbnail"), updateOffer);
