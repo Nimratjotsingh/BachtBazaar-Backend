@@ -33,7 +33,7 @@ const merchantBidSchema = new mongoose.Schema(
     },
     status: {
         type: String,
-        enum: ["submitted", "accepted", "rejected", "withdrawn"],
+        enum: ["submitted", "accepted", "rejected", "withdrawn","closed"],
         default: "submitted",
         index: true
     },

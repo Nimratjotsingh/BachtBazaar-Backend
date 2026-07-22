@@ -428,3 +428,82 @@ export const updateUserBidStatus = async (req, res) => {
     });
   }
 };
+
+
+
+/**
+ * PATCH /api/bids/merchant/close/:bidId
+ * Allows an authenticated merchant to withdraw/close their active bid
+ */
+export const closeMerchantBid = async (req, res) => {
+  try {
+    const { bidId } = req.params;
+
+    // 1. Context Authorization Check
+    if (!req.merchant) {
+      return res.status(401).json({
+        success: false,
+        message: "Access Denied: Merchant authentication context missing."
+      });
+    }
+
+    // 2. Fetch merchant storefront
+    const shop = await MerchantShop.findOne({ merchantId: req.merchant._id });
+    if (!shop) {
+      return res.status(404).json({
+        success: false,
+        message: "Store profile configuration not found."
+      });
+    }
+
+    // 3. Locate target bid and verify ownership
+    const bid = await MerchantBid.findOne({ _id: bidId, shopId: shop._id });
+
+    if (!bid) {
+      return res.status(404).json({
+        success: false,
+        message: "Bid record not found or does not belong to your storefront."
+      });
+    }
+
+    // 4. State validation check
+    if (bid.status === "closed") {
+      return res.status(400).json({
+        success: false,
+        message: "This bid has already been closed/withdrawn."
+      });
+    }
+
+    if (bid.status === "accepted") {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot withdraw this bid because it has already been accepted by the customer."
+      });
+    }
+
+    if (bid.status === "rejected") {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot withdraw a bid that was already rejected."
+      });
+    }
+
+    // 5. Update state to 'withdrawn'
+    bid.status = "closed";
+    await bid.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Your bid has been successfully closed and withdrawn.",
+      data: bid
+    });
+
+  } catch (error) {
+    console.error("Close Merchant Bid Processing Exception:", error);
+    return res.status(500).json({
+      success: false,
+      message: "An internal server error occurred while withdrawing the bid.",
+      error: error.message
+    });
+  }
+};
