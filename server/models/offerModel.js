@@ -135,6 +135,15 @@ const offerSchema = new mongoose.Schema(
       default: false,
       index: true,
     },
+    // Add these fields into your existing Offer schema:
+    redeemedCount: {
+      type: Number,
+      default: 0
+    },
+    claimedCount: {
+      type: Number,
+      default: 0
+    },
     is_active: {
       type: Boolean,
       default: true,
