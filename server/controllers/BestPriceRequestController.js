@@ -1,5 +1,6 @@
 import BestPriceRequest from "../models/BestPriceModel.js";
 import Category from "../models/categoryModel.js"; // Optional validation target
+import MerchantBid from '../models/MerchantBidModel.js';
 
 
 export const createBestPriceRequest = async (req, res) => {
@@ -239,6 +240,49 @@ export const updateBestPriceRequest = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "An internal server error occurred while updating your price search request.",
+      error: error.message
+    });
+  }
+};
+
+export const deleteBestPriceRequest = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // 1. Core Profile Context Check
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: "Access Denied: Unauthenticated user transaction routing profile."
+      });
+    }
+
+    // 2. Locate request document and verify user ownership
+    const requestItem = await BestPriceRequest.findOne({ _id: id, userId: req.user._id });
+
+    if (!requestItem) {
+      return res.status(404).json({
+        success: false,
+        message: "The requested best price request was not found or access is restricted."
+      });
+    }
+
+    // 3. Remove the parent request document from database indexes
+    await BestPriceRequest.findByIdAndDelete(id);
+
+    // 4. Cascade cleanup: Delete all merchant bids associated with this request
+    await MerchantBid.deleteMany({ requestId: id });
+
+    return res.status(200).json({
+      success: true,
+      message: "Your best price request and all associated merchant bids have been permanently deleted."
+    });
+
+  } catch (error) {
+    console.error("Delete Best Price Request Exception Pipeline:", error);
+    return res.status(500).json({
+      success: false,
+      message: "An internal server error occurred while deleting your price search request.",
       error: error.message
     });
   }
