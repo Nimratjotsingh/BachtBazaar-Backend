@@ -172,3 +172,74 @@ export const cancelBestPriceRequest = async (req, res) => {
 };
 
 
+export const updateBestPriceRequest = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, description, categoryId, budget, timeframe, formattedAddress } = req.body;
+
+    // 1. Core Profile Context Check
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: "Access Denied: Unauthenticated user transaction routing profile."
+      });
+    }
+
+    // 2. Find request document and verify ownership
+    const requestItem = await BestPriceRequest.findOne({ _id: id, userId: req.user._id });
+
+    if (!requestItem) {
+      return res.status(404).json({
+        success: false,
+        message: "The requested best price request was not found or access is restricted."
+      });
+    }
+
+    // 3. State Validation Check: Do not allow editing completed or cancelled requests
+    if (requestItem.status === "completed" || requestItem.status === "cancelled") {
+      return res.status(400).json({
+        success: false,
+        message: `This price request cannot be updated because its status is '${requestItem.status}'.`
+      });
+    }
+
+    // 4. Optionally update categoryId validation
+    if (categoryId) {
+      const categoryExists = await Category.findById(categoryId);
+      if (!categoryExists) {
+        return res.status(404).json({
+          success: false,
+          message: "The specified categoryId does not exist."
+        });
+      }
+      requestItem.categoryId = categoryId;
+    }
+
+    // 5. Apply partial field updates
+    if (title !== undefined) requestItem.title = title.trim();
+    if (description !== undefined) requestItem.description = description;
+    if (budget !== undefined) requestItem.budget = Number(budget);
+    if (timeframe !== undefined) requestItem.timeframe = timeframe;
+    if (formattedAddress !== undefined) requestItem.formattedAddress = formattedAddress;
+
+    // Save updated request document
+    await requestItem.save();
+
+    // Populate category metadata for response payload consistency
+    await requestItem.populate("categoryId", "label value image");
+
+    return res.status(200).json({
+      success: true,
+      message: "Your best price request was updated successfully.",
+      data: requestItem
+    });
+
+  } catch (error) {
+    console.error("Update Best Price Request Exception Pipeline:", error);
+    return res.status(500).json({
+      success: false,
+      message: "An internal server error occurred while updating your price search request.",
+      error: error.message
+    });
+  }
+};

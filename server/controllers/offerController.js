@@ -27,7 +27,7 @@ const normalizeToMidnight = (dateString) => {
 export const getMerchantSlotStatus = async (req, res) => {
   try {
     const { lat, lng, date } = req.query;
-    const merchantId = req.user?._id; 
+    const merchantId = req.merchant?._id; 
 
     if (!date) {
       return res.status(400).json({

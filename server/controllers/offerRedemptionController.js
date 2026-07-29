@@ -455,3 +455,135 @@ export const getUserOfferHistory = async (req, res) => {
     });
   }
 };
+
+export const deleteUserAccount = async (req, res) => {
+  try {
+    const userId = req.user?._id;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Access Denied: Missing authenticated user context."
+      });
+    }
+
+    const { mode = "soft" } = req.query; // Expects mode = "soft" (default) or "hard"
+
+    if (mode === "hard") {
+      // --- OPTION A: HARD DELETE (Permanent removal) ---
+      
+      // 1. Wipe or cleanup dependent records (Optional cleanup pipeline)
+      await OfferRedemption.deleteMany({ userId });
+      await BestPriceRequest.deleteMany({ userId });
+
+      // 2. Permanently delete the user document
+      const deletedUser = await User.findByIdAndDelete(userId);
+
+      if (!deletedUser) {
+        return res.status(404).json({
+          success: false,
+          message: "User profile record not found."
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: "Your account and associated personal data have been permanently deleted."
+      });
+
+    } else {
+      // --- OPTION B: SOFT DELETE (Recommended for Data Integrity) ---
+      
+      const user = await User.findById(userId);
+
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: "User profile record not found."
+        });
+      }
+
+      if (user.is_deleted) {
+        return res.status(400).json({
+          success: false,
+          message: "This account has already been deleted."
+        });
+      }
+
+      // Anonymize personal details to comply with privacy rules while keeping system references intact
+      user.is_deleted = true;
+      user.is_active = false;
+      user.deletedAt = new Date();
+      user.name = "Deleted User";
+      user.email = `deleted_${userId}_${Date.now()}@deleted.com`;
+      user.phoneNumber = null;
+      user.profileImage = null;
+
+      await user.save();
+
+      return res.status(200).json({
+        success: true,
+        message: "Your account has been successfully deactivated and marked for deletion."
+      });
+    }
+
+  } catch (error) {
+    console.error("User Deletion Controller Exception:", error);
+    return res.status(500).json({
+      success: false,
+      message: "An internal server error occurred while processing account deletion.",
+      error: error.message
+    });
+  }
+};
+
+export const cancelUserOfferRedemption = async (req, res) => {
+  try {
+    const { redemptionId } = req.params;
+    const userId = req.user._id;
+
+    // 1. Locate the redemption document belonging to the authenticated user
+    const redemption = await OfferRedemption.findOne({
+      _id: redemptionId,
+      userId
+    });
+
+    if (!redemption) {
+      return res.status(404).json({
+        success: false,
+        message: "Redemption record not found or access denied."
+      });
+    }
+
+    // 2. Prevent deletion if the offer has already been claimed in-store
+    if (redemption.status === "claimed") {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot cancel a redemption that has already been claimed in-store."
+      });
+    }
+
+    const offerId = redemption.offerId;
+
+    // 3. Delete the redemption document
+    await OfferRedemption.findByIdAndDelete(redemptionId);
+
+    // 4. Atomically decrement redeemedCount on the parent Offer (ensuring it doesn't drop below 0)
+    await Offer.findByIdAndUpdate(offerId, {
+      $inc: { redeemedCount: -1 }
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Offer redemption successfully cancelled and removed."
+    });
+
+  } catch (error) {
+    console.error("Cancel User Offer Redemption Exception:", error);
+    return res.status(500).json({
+      success: false,
+      message: "An internal server error occurred while cancelling your redemption.",
+      error: error.message
+    });
+  }
+};
