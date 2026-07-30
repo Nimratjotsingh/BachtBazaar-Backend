@@ -6,6 +6,7 @@ import Merchant from '../models/merchantModel.js';
 import Category from '../models/categoryModel.js';
 import mongoose from "mongoose";
 import Area from "../models/AreaModel.js";
+import {trackDailyMetric,trackDailyMetric2, trackOfferMetric} from '../utils/analyticsTracker.js';
 
 
 
@@ -175,6 +176,7 @@ export const getShopDetails = async (req, res) => {
     }
 
     const merchantId = shop.merchantId._id;
+    trackDailyMetric(shop._id, shop.merchantId._id, "totalViewers");
 
     // 2. Fetch Products, Services, and Active Offers in parallel for optimal performance
     const [products, services, offers] = await Promise.all([
@@ -502,7 +504,7 @@ export const getOfferDetails = async (req, res) => {
       .populate({
         path: "merchant_id",
         select: "name store_name email phone profileImage status isBlocked",
-        model: "User" // Points to your underlying user/merchant profile model
+        model: "Merchant" // Points to your underlying user/merchant profile model
       })
       .populate("offer_type_id", "label value icon description")
       .populate("sub_offer_type_id", "label value icon description")
@@ -524,6 +526,9 @@ export const getOfferDetails = async (req, res) => {
         message: "Access to this offer is restricted because the merchant account has been deactivated."
       });
     }
+    trackDailyMetric2(offer.merchant_id._id, "offerClicks");
+
+    trackOfferMetric(offer._id, offer.merchant_id._id, "clicks");
 
     const rightNow = new Date();
     

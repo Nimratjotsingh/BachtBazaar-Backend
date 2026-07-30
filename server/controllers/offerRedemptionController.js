@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import Offer from "../models/offerModel.js";
 import OfferRedemption from "../models/offerRedemptionModel.js";
+import { trackDailyMetric2, trackOfferMetric } from "../utils/analyticsTracker.js";
 
 // ==========================================
 //   USER SIDE CONTROLLERS
@@ -78,6 +79,9 @@ export const redeemOffer = async (req, res) => {
       expiresAt: finalExpiresAt,
       status: "redeemed"
     });
+
+    trackDailyMetric2( offer.merchant_id._id, "redeems");
+    trackOfferMetric(offer._id, offer.merchant_id._id, "redeems");
 
     await redemption.save();
 
@@ -347,6 +351,17 @@ export const userSelfClaimOffer = async (req, res) => {
         ...(redemption.redemptionCode === "CLAIMED-DIRECT" ? { redeemedCount: 1 } : {})
       }
     });
+
+    trackDailyMetric2( offer.merchant_id, "footfall");
+    await trackOfferMetric(
+    offer._id,
+    offer.merchant_id,
+  "claims",
+  {
+    userId: req.user._id,
+    redemptionCode: redemption._id,
+  }
+);
 
     return res.status(200).json({
       success: true,
