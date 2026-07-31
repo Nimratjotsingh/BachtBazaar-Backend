@@ -4,7 +4,8 @@ import {
   getUserBestPriceRequests, 
   cancelBestPriceRequest, 
   updateBestPriceRequest,
-  deleteBestPriceRequest
+  deleteBestPriceRequest,
+  closeBestPriceRequest
 } from "../controllers/BestPriceRequestController.js";
 import { protectUser as protect } from "../middleware/authMiddleware.js"; // Replace with your standard token decode middleware path
 
@@ -16,5 +17,6 @@ router.get("/my-requests", protect, getUserBestPriceRequests);
 router.put("/cancel/:id", protect, cancelBestPriceRequest);
 router.put("/edit/:id", protect, updateBestPriceRequest);
 router.delete("/delete/:id", protect, deleteBestPriceRequest);
+router.put('/close/:id',protect,closeBestPriceRequest)
 
 export default router;

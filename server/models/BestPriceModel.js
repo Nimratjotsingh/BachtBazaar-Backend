@@ -61,7 +61,7 @@ const bestPriceRequestSchema = new mongoose.Schema(
     // Administrative lifecycle controls
     status: {
       type: String,
-      enum: ["pending", "active", "completed", "expired", "cancelled"],
+      enum: ["pending", "active", "completed", "expired", "cancelled","closed"],
       default: "active",
       index: true
     },

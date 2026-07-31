@@ -287,3 +287,56 @@ export const deleteBestPriceRequest = async (req, res) => {
     });
   }
 };
+
+export const closeBestPriceRequest = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // 1. Core Profile Context Check
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: "Access Denied: Unauthenticated user transaction routing profile."
+      });
+    }
+
+    // 2. Find request document and verify ownership
+    const requestItem = await BestPriceRequest.findOne({ _id: id, userId: req.user._id });
+
+    if (!requestItem) {
+      return res.status(404).json({
+        success: false,
+        message: "The requested best price request was not found or access is restricted."
+      });
+    }
+
+    // 3. State Validation Check: Cannot close if already completed, cancelled, or closed
+    if (["completed", "cancelled", "closed"].includes(requestItem.status)) {
+      return res.status(400).json({
+        success: false,
+        message: `This price request cannot be closed because its current status is already '${requestItem.status}'.`
+      });
+    }
+
+    // 4. Update status to closed
+    requestItem.status = "closed";
+    await requestItem.save();
+
+    // Optionally populate category metadata for response consistency
+    await requestItem.populate("categoryId", "label value image");
+
+    return res.status(200).json({
+      success: true,
+      message: "Your best price request has been successfully marked as closed.",
+      data: requestItem
+    });
+
+  } catch (error) {
+    console.error("Close Best Price Request Exception Pipeline:", error);
+    return res.status(500).json({
+      success: false,
+      message: "An internal server error occurred while closing your price search request.",
+      error: error.message
+    });
+  }
+};

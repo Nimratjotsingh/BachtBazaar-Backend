@@ -2,6 +2,7 @@ import crypto from "crypto";
 import Offer from "../models/offerModel.js";
 import OfferRedemption from "../models/offerRedemptionModel.js";
 import { trackDailyMetric2, trackOfferMetric } from "../utils/analyticsTracker.js";
+import MerchantShop from '../models/merchantShopModel.js';
 
 // ==========================================
 //   USER SIDE CONTROLLERS
@@ -282,15 +283,15 @@ export const userSelfClaimOffer = async (req, res) => {
     }
 
     // 3. Optional: Verify Shop PIN if walk-in validation is required
-    if (offer.only_for_walk_in_customers ) {
-      const shop = await MerchantShop.findOne({ merchantId: offer.merchant_id });
-      if (shop) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid Store PIN. Please ask the shop owner for the verification PIN."
-        });
-      }
-    }
+    // if (offer.only_for_walk_in_customers ) {
+    //   const shop = await MerchantShop.findOne({ merchantId: offer.merchant_id });
+    //   if (shop) {
+    //     return res.status(400).json({
+    //       success: false,
+    //       message: "Invalid Store PIN. Please ask the shop owner for the verification PIN."
+    //     });
+    //   }
+    // }
 
     // 4. ENFORCE CLAIM LIMIT (Total limit across all users)
     if (offer.claim_limit !== undefined && offer.claim_limit !== null) {

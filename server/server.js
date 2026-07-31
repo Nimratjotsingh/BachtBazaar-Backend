@@ -40,6 +40,7 @@ import QuickOfferRoutes from './routes/quickOfferRoutes.js';
 import offerRedemptionRoutes from './routes/offerRedemptionRoutes.js';
 import offerRedemptionMerchantRoutes from './routes/offerRedemptionMerchantRoutes.js';
 import merchantAnalyticRoutes from './routes/merchantAnalyticsRoutes.js';
+import offerWishlistRoutes from './routes/wishlistRoutes.js';
 
 dotenv.config();
 // console.log(process.env.MONGO_URI)
@@ -106,6 +107,9 @@ app.use('/api/analytics', userAnalytics);
 app.use('/api/adminbanners',adminBanner);
 app.use('/api/areas',areasRoutes);
 app.use('/api/user/best-request',bestPriceRoutes);
+
+app.use('/api/user/offer-wishlist',offerWishlistRoutes);
+
 app.use("/api/merchant-bids",MerchantBidRoutes);
 app.use("/api/quick-offer-routes",QuickOfferRoutes);
 app.use('/api/offer-redemption/user',offerRedemptionRoutes);
