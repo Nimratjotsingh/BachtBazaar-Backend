@@ -115,13 +115,10 @@ export const redeemOffer = async (req, res) => {
 //   MERCHANT SIDE CONTROLLERS
 // ==========================================
 
-/**
- * POST /api/merchant/offers/claim
- * Merchant scans the QR code or types the user's redemption code in-store to finalize the claim.
- */
+
 export const claimOfferInStore = async (req, res) => {
   try {
-    const { redemptionCode } = req.body;
+    const { redemptionCode, offerId, userId } = req.body;
 
     if (!req.merchant) {
       return res.status(401).json({
@@ -130,26 +127,55 @@ export const claimOfferInStore = async (req, res) => {
       });
     }
 
-    if (!redemptionCode) {
+    if (!offerId) {
       return res.status(400).json({
         success: false,
-        message: "Redemption code is required."
+        message: "Target offerId is required to verify in-store claim."
       });
     }
 
-    // 1. Locate redemption matching merchant and code
-    const redemption = await OfferRedemption.findOne({
-      redemptionCode: redemptionCode.trim().toUpperCase(),
+    // 1. Verify that the offer exists and belongs to this merchant
+    const offer = await Offer.findOne({
+      _id: offerId,
+      merchant_id: req.merchant._id,
+      is_deleted: false
+    });
+
+    if (!offer) {
+      return res.status(404).json({
+        success: false,
+        message: "Offer not found or does not belong to your store profile."
+      });
+    }
+
+    // 2. Locate the redemption document
+    const redemptionQuery = {
+      offerId,
       merchantId: req.merchant._id
-    }).populate("offerId");
+    };
+
+    if (redemptionCode) {
+      redemptionQuery.redemptionCode = redemptionCode.trim().toUpperCase();
+    } else if (userId) {
+      redemptionQuery.userId = userId;
+      redemptionQuery.status = "redeemed";
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: "Provide either a redemptionCode or userId to identify the target redemption record."
+      });
+    }
+
+    const redemption = await OfferRedemption.findOne(redemptionQuery);
 
     if (!redemption) {
       return res.status(404).json({
         success: false,
-        message: "Invalid or unrecognized redemption code for your store."
+        message: "No active redemption found for this offer matching the provided code/user."
       });
     }
 
+    // 3. Status and Expiration validations
     if (redemption.status === "claimed") {
       return res.status(400).json({
         success: false,
@@ -164,29 +190,39 @@ export const claimOfferInStore = async (req, res) => {
       });
     }
 
-    const offer = redemption.offerId;
-
-    // 2. ENFORCE CLAIM LIMIT AT CLAIMING STAGE AS SAFEGUARD
+    // 4. Enforce claim limit as safeguard
     if (offer.claim_limit !== undefined && offer.claim_limit !== null) {
       if (offer.claimedCount >= offer.claim_limit) {
         return res.status(400).json({
           success: false,
-          message: `Claim limit reached: All ${offer.claim_limit} claims for this offer have already been processed.`
+          message: `Claim limit reached: All ${offer.claim_limit} claims for this offer have been processed.`
         });
       }
     }
 
-    // 3. Mark redemption as claimed
+    // 5. Mark redemption as claimed
     redemption.status = "claimed";
     redemption.claimedAt = new Date();
     await redemption.save();
 
-    // 4. Atomically increment claimedCount on the primary offer document
-    await Offer.findByIdAndUpdate(offer._id, { $inc: { claimedCount: 1 } });
+    // 6. Atomically increment claimedCount on primary offer document
+    await Offer.findByIdAndUpdate(offerId, { $inc: { claimedCount: 1 } });
+
+    // 7. Fire metric tracking pipelines
+    trackDailyMetric2(req.merchant._id, "footfall");
+    await trackOfferMetric(
+      offer._id,
+      req.merchant._id,
+      "claims",
+      {
+        userId: redemption.userId,
+        redemptionCode: redemption.redemptionCode
+      }
+    );
 
     return res.status(200).json({
       success: true,
-      message: "Offer successfully verified and claimed!",
+      message: "Offer successfully verified and claimed in-store!",
       data: {
         offerTitle: offer.title,
         redemptionCode: redemption.redemptionCode,

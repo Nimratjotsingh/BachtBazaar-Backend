@@ -8,7 +8,7 @@ import { protectMerchant } from "../middleware/authMiddleware.js"; // Merchant-s
 const router = express.Router();
 
 
-
+router.post('/',protectMerchant,claimOfferInStore);
 // GET /api/merchant/offers/analytics -> Displays redeemed, claimed, and remaining limit metrics
 router.get("/analytics", protectMerchant, getMerchantOfferAnalytics);
 
