@@ -10,7 +10,7 @@ import { protectUser } from "../middleware/authMiddleware.js";
 const router = express.Router();
 
 router.post("/:type/:itemId", protectUser, toggleWishlistItem);
-router.get("/", protectUser, getUserWishlist);
+router.get("/:type", protectUser, getUserWishlist);
 router.delete("/remove/:type/:itemId", protectUser, removeItemFromWishlist);
 router.delete("/clear", protectUser, clearWishlistSection);
 
