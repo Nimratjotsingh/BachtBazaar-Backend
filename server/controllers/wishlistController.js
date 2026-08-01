@@ -1,72 +1,95 @@
-import OfferWishlist from "../models/OfferWishlistModel.js";
+import Wishlist from "../models/wishlistModel.js";
 import Offer from "../models/offerModel.js";
+import MerchantShop from "../models/merchantShopModel.js";
+import Product from "../models/productModel.js"; // Import your Product/Service model here
 
 /**
- * POST /api/wishlist/toggle/:offerId
- * Toggles an offer in the user's wishlist array (adds if not present, pulls if already exists).
+ * POST /api/wishlist/toggle/:type/:itemId
+ * Params:
+ *  - type: "offers" | "products" | "shops"
+ *  - itemId: The target ID of the item to add or remove
  */
-export const toggleOfferWishlist = async (req, res) => {
+export const toggleWishlistItem = async (req, res) => {
   try {
-    const { offerId } = req.params;
+    const { type, itemId } = req.params;
     const userId = req.user._id;
 
-    // 1. Verify offer existence
-    const offer = await Offer.findOne({ _id: offerId, is_deleted: false });
-    if (!offer) {
-      return res.status(404).json({
+    // 1. Validate entity type
+    const validTypes = ["offers", "products", "shops"];
+    if (!validTypes.includes(type)) {
+      return res.status(400).json({
         success: false,
-        message: "The offer you are trying to wishlist does not exist or was deleted.",
+        message: "Invalid wishlist target type. Must be 'offers', 'products', or 'shops'.",
       });
     }
 
-    // 2. Fetch or initialize the user's wishlist document
-    let wishlist = await OfferWishlist.findOne({ userId });
+    // 2. Target Item Model Verification
+    if (type === "offers") {
+      const offerExists = await Offer.findOne({ _id: itemId, is_deleted: false });
+      if (!offerExists) {
+        return res.status(404).json({ success: false, message: "Offer not found." });
+      }
+    } else if (type === "shops") {
+      const shopExists = await MerchantShop.findById(itemId);
+      if (!shopExists) {
+        return res.status(404).json({ success: false, message: "Shop not found." });
+      }
+    }
+    // Add product/service checks here if applicable
+
+    // 3. Find or initialize user's wishlist
+    let wishlist = await Wishlist.findOne({ userId });
 
     if (!wishlist) {
-      wishlist = new OfferWishlist({ userId, offers: [offerId] });
+      wishlist = new Wishlist({
+        userId,
+        [type]: [itemId],
+      });
       await wishlist.save();
+
       return res.status(201).json({
         success: true,
         isWishlisted: true,
-        message: "Offer saved to your wishlist!",
-        totalWishlisted: wishlist.offers.length,
+        message: `Item added to your ${type} wishlist!`,
+        data: wishlist,
       });
     }
 
-    // 3. Check if the offer is already saved in the array
-    const isSaved = wishlist.offers.some((id) => id.toString() === offerId);
+    // 4. Check if item already exists in the target array
+    const itemArray = wishlist[type] || [];
+    const isSaved = itemArray.some((id) => id.toString() === itemId);
 
     if (isSaved) {
-      // Pull offer out of array
-      wishlist = await OfferWishlist.findOneAndUpdate(
+      // Remove item using $pull
+      wishlist = await Wishlist.findOneAndUpdate(
         { userId },
-        { $pull: { offers: offerId } },
+        { $pull: { [type]: itemId } },
         { new: true }
       );
 
       return res.status(200).json({
         success: true,
         isWishlisted: false,
-        message: "Offer removed from your wishlist.",
-        totalWishlisted: wishlist.offers.length,
+        message: `Item removed from your ${type} wishlist.`,
+        data: wishlist,
       });
     } else {
-      // Add offer to array without duplicates ($addToSet)
-      wishlist = await OfferWishlist.findOneAndUpdate(
+      // Add item using $addToSet (prevents duplicates)
+      wishlist = await Wishlist.findOneAndUpdate(
         { userId },
-        { $addToSet: { offers: offerId } },
+        { $addToSet: { [type]: itemId } },
         { new: true }
       );
 
       return res.status(200).json({
         success: true,
         isWishlisted: true,
-        message: "Offer added to your wishlist!",
-        totalWishlisted: wishlist.offers.length,
+        message: `Item saved to your ${type} wishlist!`,
+        data: wishlist,
       });
     }
   } catch (error) {
-    console.error("Toggle Offer Wishlist Error:", error);
+    console.error("Toggle Wishlist Error:", error);
     return res.status(500).json({
       success: false,
       message: "An error occurred while updating your wishlist.",
@@ -77,100 +100,147 @@ export const toggleOfferWishlist = async (req, res) => {
 
 /**
  * GET /api/wishlist
- * Fetches the user's wishlist document with populated offer details.
+ * Query parameter: ?type=offers (Optional filter: "offers", "products", "shops", or "all")
  */
 export const getUserWishlist = async (req, res) => {
   try {
     const userId = req.user._id;
+    const { type = "all" } = req.query;
 
-    const wishlist = await OfferWishlist.findOne({ userId }).populate({
-      path: "offers",
-      match: { is_deleted: false, is_active: true }, // Populate only active, non-deleted offers
-      populate: [
-        { path: "merchant_id", select: "shopName address city logo phone" },
-        { path: "category_id", select: "label value image" },
-      ],
-    });
+    let query = Wishlist.findOne({ userId });
+
+    if (type === "all" || type === "offers") {
+      query = query.populate({
+        path: "offers",
+        match: { is_deleted: false, is_active: true },
+        populate: { path: "merchant_id", select: "shopName address city logo phone" },
+      });
+    }
+
+    if (type === "all" || type === "shops") {
+      query = query.populate({
+        path: "shops",
+        select: "shopName address city phone logo banner ratings",
+      });
+    }
+
+    if (type === "all" || type === "products") {
+      query = query.populate({
+        path: "products",
+        // match: { is_deleted: false }
+      });
+    }
+
+    const wishlist = await query.lean();
 
     if (!wishlist) {
       return res.status(200).json({
         success: true,
-        total: 0,
-        data: [],
+        data: { offers: [], products: [], shops: [] },
       });
     }
 
-    // Clean out null instances (for offers that were deleted after saving)
-    const validOffers = wishlist.offers.filter((offer) => offer !== null);
+    // Clean null references (in case items were deleted from main DB)
+    const formattedData = {
+      offers: (wishlist.offers || []).filter(Boolean),
+      products: (wishlist.products || []).filter(Boolean),
+      shops: (wishlist.shops || []).filter(Boolean),
+    };
 
     return res.status(200).json({
       success: true,
-      total: validOffers.length,
-      data: validOffers,
+      data: type !== "all" ? formattedData[type] : formattedData,
     });
   } catch (error) {
     console.error("Get User Wishlist Error:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to fetch your wishlist offers.",
+      message: "Failed to retrieve your wishlist.",
       error: error.message,
     });
   }
 };
 
 /**
- * DELETE /api/wishlist/remove/:offerId
- * Removes a specific offer ID from the array.
+ * DELETE /api/wishlist/clear/:type
+ * Clears an entire array or whole wishlist ("offers", "products", "shops", or "all")
  */
-export const removeFromWishlist = async (req, res) => {
+export const clearWishlistSection = async (req, res) => {
   try {
-    const { offerId } = req.params;
+    const { type } = req.params;
     const userId = req.user._id;
 
-    const wishlist = await OfferWishlist.findOneAndUpdate(
-      { userId },
-      { $pull: { offers: offerId } },
-      { new: true }
-    );
+    let updateQuery = {};
+
+    if (type === "all") {
+      updateQuery = { $set: { offers: [], products: [], shops: [] } };
+    } else if (["offers", "products", "shops"].includes(type)) {
+      updateQuery = { $set: { [type]: [] } };
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid type. Provide 'offers', 'products', 'shops', or 'all'.",
+      });
+    }
+
+    await Wishlist.findOneAndUpdate({ userId }, updateQuery);
 
     return res.status(200).json({
       success: true,
-      message: "Offer successfully removed from wishlist.",
-      totalWishlisted: wishlist ? wishlist.offers.length : 0,
+      message: `Wishlist section '${type}' cleared successfully.`,
     });
   } catch (error) {
-    console.error("Remove From Wishlist Error:", error);
+    console.error("Clear Wishlist Section Error:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to remove offer from wishlist.",
+      message: "Failed to clear wishlist section.",
       error: error.message,
     });
   }
 };
 
-/**
- * DELETE /api/wishlist/clear
- * Clears the array of wishlisted offers for the user.
- */
-export const clearWishlist = async (req, res) => {
+export const removeItemFromWishlist = async (req, res) => {
   try {
+    const { type, itemId } = req.params;
     const userId = req.user._id;
 
-    await OfferWishlist.findOneAndUpdate(
+    // 1. Validate entity type
+    const validTypes = ["offers", "products", "shops"];
+    if (!validTypes.includes(type)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid wishlist target type. Must be 'offers', 'products', or 'shops'.",
+      });
+    }
+
+    // 2. Remove the single item using $pull
+    const updatedWishlist = await Wishlist.findOneAndUpdate(
       { userId },
-      { $set: { offers: [] } },
+      { $pull: { [type]: itemId } },
       { new: true }
     );
 
+    if (!updatedWishlist) {
+      return res.status(404).json({
+        success: false,
+        message: "Wishlist not found for this user.",
+      });
+    }
+
     return res.status(200).json({
       success: true,
-      message: "Your wishlist has been cleared.",
+      message: `Item successfully removed from your ${type} wishlist.`,
+      data: {
+        type,
+        remainingCount: (updatedWishlist[type] || []).length,
+      },
     });
+
   } catch (error) {
-    console.error("Clear Wishlist Error:", error);
+    console.error("Remove Single Wishlist Item Error:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to clear wishlist.",
+      message: "An error occurred while removing the item from your wishlist.",
       error: error.message,
     });
   }
