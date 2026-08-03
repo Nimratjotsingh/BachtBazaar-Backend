@@ -9,7 +9,7 @@ const router = express.Router();
  * @desc    Get all merchant shops (Paginated)
  * @access  Public
 */
-router.get("/", getAllShops);
+router.get("/", protectUser,getAllShops);
 
 router.get('/all', protectUser,getNearbyShops15KmForUser)
 

@@ -6,6 +6,7 @@ import Merchant from '../models/merchantModel.js';
 import Category from '../models/categoryModel.js';
 import mongoose from "mongoose";
 import Area from "../models/AreaModel.js";
+import Wishlist from "../models/wishlistModel.js";
 import {trackDailyMetric,trackDailyMetric2, trackOfferMetric} from '../utils/analyticsTracker.js';
 
 
@@ -161,32 +162,33 @@ export const getShopDetails = async (req, res) => {
     const rightNow = new Date();
 
     // 1. Fetch Shop Details
-    const shop = await MerchantShop.findById(id)
+    const shopDoc = await MerchantShop.findById(id)
       .populate("merchantId", "name email phone profileImage status")
       .populate("categoryId", "label")
-      .populate("subCategoryId", "label");
+      .populate("subCategoryId", "label")
+      .lean();
 
-    if (!shop) {
+    if (!shopDoc) {
       return res.status(404).json({ success: false, message: "Shop not found." });
     }
 
     // Safety fallback check: If the merchant account has been restricted by an admin, block access
-    if (shop.merchantId?.status === "banned" || shop.merchantId?.isBlocked === true) {
+    if (shopDoc.merchantId?.status === "banned" || shopDoc.merchantId?.isBlocked === true) {
       return res.status(403).json({ success: false, message: "This merchant profile has been restricted." });
     }
 
-    const merchantId = shop.merchantId._id;
-    
+    const merchantId = shopDoc.merchantId._id;
 
-    // 2. Fetch Products, Services, and Active Offers in parallel for optimal performance
-    const [products, services, offers] = await Promise.all([
+    // 2. Fetch Products, Services, Active Offers, and User Wishlist in parallel
+    const [products, services, offers, userWishlist] = await Promise.all([
       Product.find({ 
         merchant_id: merchantId, 
         is_deleted: false, 
         is_active: true 
       })
       .select("name price discounted_price thumbnail stock is_featured")
-      .sort({ createdAt: -1 }),
+      .sort({ createdAt: -1 })
+      .lean(),
 
       Service.find({ 
         merchant_id: merchantId, 
@@ -194,7 +196,8 @@ export const getShopDetails = async (req, res) => {
         is_active: true 
       })
       .select("name price discounted_price thumbnail pricing_type is_featured")
-      .sort({ createdAt: -1 }),
+      .sort({ createdAt: -1 })
+      .lean(),
 
       // Dynamic Active Offers Lookup
       Offer.find({
@@ -207,31 +210,62 @@ export const getShopDetails = async (req, res) => {
       .select("title description thumbnail display_type discount_percentage discount_value minimum_purchase_amount end_date code")
       .populate("offer_type_id", "label value")
       .sort({ createdAt: -1 })
+      .lean(),
+
+      // User Wishlist Lookup
+      req.user ? Wishlist.findOne({ userId: req.user._id }).lean() : null
     ]);
 
-    trackDailyMetric(shop._id, merchantId, "totalViewers", req.user._id);
+    // 3. Create Wishlist Lookup Sets for O(1) performance
+    const wishlistedShopsSet = new Set((userWishlist?.shops || []).map((sId) => sId.toString()));
+    const wishlistedProductsSet = new Set((userWishlist?.products || []).map((pId) => pId.toString()));
+    const wishlistedOffersSet = new Set((userWishlist?.offers || []).map((oId) => oId.toString()));
 
-    // 3. Construct the synchronized response payload
-    res.status(200).json({
+    // 4. Attach isWishlisted flags
+    const shop = {
+      ...shopDoc,
+      isWishlisted: wishlistedShopsSet.has(shopDoc._id.toString())
+    };
+
+    const formattedProducts = products.map((product) => ({
+      ...product,
+      isWishlisted: wishlistedProductsSet.has(product._id.toString())
+    }));
+
+    const formattedServices = services.map((service) => ({
+      ...service,
+    }));
+
+    const formattedOffers = offers.map((offer) => ({
+      ...offer,
+      isWishlisted: wishlistedOffersSet.has(offer._id.toString())
+    }));
+
+    // 5. Track metric
+    trackDailyMetric(shopDoc._id, merchantId, "totalViewers", req.user?._id);
+
+    // 6. Construct the synchronized response payload
+    return res.status(200).json({
       success: true,
       data: {
         shop,
         inventory: {
-          productCount: products.length,
-          serviceCount: services.length,
-          offerCount: offers.length,
-          products,
-          services,
-          offers // Aggregated valid marketing campaigns arrays
+          productCount: formattedProducts.length,
+          serviceCount: formattedServices.length,
+          offerCount: formattedOffers.length,
+          products: formattedProducts,
+          services: formattedServices,
+          offers: formattedOffers
         }
       }
     });
 
   } catch (error) {
     console.error("Shop Details Matrix Aggregation Error:", error);
-    res.status(500).json({ 
+    return res.status(500).json({ 
       success: false, 
-      message: "Error retrieving shop inventory parameters package." 
+      message: "Error retrieving shop inventory parameters package.",
+      error: error.message
     });
   }
 };
@@ -923,7 +957,7 @@ export const getCityBannerOffers2 = async (req, res) => {
     });
   }
 };
-export const getOffersByStoreId = async (req,res) => {
+export const getOffersByStoreId = async (req, res) => {
   try {
     const { storeId } = req.params;
     const rightNow = new Date();
@@ -960,12 +994,25 @@ export const getOffersByStoreId = async (req,res) => {
     .sort({ createdAt: -1 })
     .lean();
 
+    // --- WISHLIST LOOKUP BLOCK ---
+    let wishlistedOfferIdsSet = new Set();
+    if (req.user) {
+      const userWishlist = await Wishlist.findOne({ userId: req.user._id }).lean();
+      if (userWishlist?.offers) {
+        wishlistedOfferIdsSet = new Set(
+          userWishlist.offers.map((id) => id.toString())
+        );
+      }
+    }
+
     // 3. Separate the matching pool streams natively into your 3 layout groups
     const banners = [];
     const calendarSlots = [];
     const standardOffers = [];
 
     activeOffersPool.forEach((offer) => {
+      const offerIdStr = offer._id.toString();
+
       // Structure crisp presentation layers matching your customer feed views
       const labelBadge = offer.discount_percentage !== null
         ? `${offer.discount_percentage}% OFF`
@@ -985,6 +1032,7 @@ export const getOffersByStoreId = async (req,res) => {
         remainingDays: Math.max(0, Math.ceil((new Date(offer.end_date) - rightNow) / (1000 * 60 * 60 * 24))),
         mechanicType: offer.offer_type_id?.label || "General Deal",
         subMechanicType: offer.sub_offer_type_id?.label || null,
+        isWishlisted: wishlistedOfferIdsSet.has(offerIdStr), // Dynamic wishlist status flag
         restrictions: {
           walkInOnly: offer.only_for_walk_in_customers,
           qrRequired: offer.qr_redemption_required
@@ -1022,7 +1070,8 @@ export const getOffersByStoreId = async (req,res) => {
     console.error("Store campaigns lookup error exception:", error);
     return res.status(500).json({
       success: false,
-      message: "An error occurred while compiling active storefront promotional lists."
+      message: "An error occurred while compiling active storefront promotional lists.",
+      error: error.message
     });
   }
 };
@@ -1150,8 +1199,15 @@ export const getNearbyShops15KmForUser = async (req, res) => {
     const totalWithinRadius = validShopsInRadius.length;
     const paginatedShops = validShopsInRadius.slice(skip, skip + currentLimit);
 
-    // 5. High-Performance Bulk Offers Insertion Pipeline
+    // 5. Bulk Wishlist & Live Offers Lookup Pipeline
     if (paginatedShops.length > 0) {
+      // --- WISHLIST LOOKUP BLOCK ---
+      const userWishlist = await Wishlist.findOne({ userId: req.user._id }).lean();
+      const wishlistedShopIdsSet = new Set(
+        (userWishlist?.shops || []).map((id) => id.toString())
+      );
+
+      // --- LIVE OFFERS LOOKUP BLOCK ---
       const merchantIds = paginatedShops
         .map(shop => shop.merchantId?._id || shop.merchantId)
         .filter(Boolean);
@@ -1180,8 +1236,11 @@ export const getNearbyShops15KmForUser = async (req, res) => {
         offersMap[mId].push(offer);
       });
 
-      // Stitch back onto parent storefront profiles
+      // Stitch wishlist flag & offers back onto shop profiles
       paginatedShops.forEach(shop => {
+        const shopIdStr = shop._id.toString();
+        shop.isWishlisted = wishlistedShopIdsSet.has(shopIdStr);
+
         const lookupKey = shop.merchantId?._id?.toString() || shop.merchantId?.toString();
         shop.offers = lookupKey ? (offersMap[lookupKey] || []) : [];
       });
@@ -1548,8 +1607,6 @@ export const getNearbyCalendarOffersForUser = async (req, res) => {
     }
 
     // 4. Build Single Date Active Timeline Filters Matrix
-    // The campaign must have started BEFORE or ON the target date day ending,
-    // AND must finish AFTER or ON the target date day beginning.
     const calendarQuery = {
       merchant_id: { $in: validMerchantIds },
       display_type: { $in: ["calendar", "all"] },
@@ -1580,8 +1637,21 @@ export const getNearbyCalendarOffersForUser = async (req, res) => {
       .limit(currentLimit)
       .lean();
 
+    // --- WISHLIST LOOKUP BLOCK ---
+    let wishlistedOfferIdsSet = new Set();
+    if (req.user) {
+      const userWishlist = await Wishlist.findOne({ userId: req.user._id }).lean();
+      if (userWishlist?.offers) {
+        wishlistedOfferIdsSet = new Set(
+          userWishlist.offers.map((id) => id.toString())
+        );
+      }
+    }
+
     // 5. Build Formatted JSON response embedding Shop profiles inside Offer structures
     const formattedOffers = liveOffersPool.map((offer) => {
+      const offerIdStr = offer._id.toString();
+
       const badgeText = offer.discount_percentage !== null
         ? `${offer.discount_percentage}% OFF`
         : offer.discount_value !== null
@@ -1605,6 +1675,7 @@ export const getNearbyCalendarOffersForUser = async (req, res) => {
         location: offer.location, 
         distanceKm: matchedShop ? matchedShop.distanceKm : null,
         merchantId: offer.merchant_id,
+        isWishlisted: wishlistedOfferIdsSet.has(offerIdStr), // Injected dynamic wishlist status flag
         shop: matchedShop ? {
           _id: matchedShop._id,
           shopName: matchedShop.shopName,
