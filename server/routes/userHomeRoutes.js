@@ -25,7 +25,7 @@ router.get('/offers/banners2',protectUser,getNearbyBannersForUser);
 
 router.get("/offers/calender",protectUser,getNearbyCalendarOffersForUser);
 
-router.get("/offers/:id", getOfferDetails);
+router.get("/offers/:id", protectUser,getOfferDetails);
 
 
 
@@ -34,6 +34,6 @@ router.get("/offers/:id", getOfferDetails);
  * @desc    Get full details of a specific shop
  * @access  Public
  */
-router.get("/:id", getShopDetails);
+router.get("/:id", protectUser,getShopDetails);
 
 export default router;

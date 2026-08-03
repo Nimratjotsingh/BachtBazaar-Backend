@@ -1,10 +1,11 @@
 import MerchantDailyAnalytics from "../models/MerchantDailyAnalytics.js";
 import Offer from "../models/offerModel.js";
+import OfferAnalytics from "../models/offerDailyAnalytics.js";
 
 /**
  * GET /api/merchant/analytics/dashboard
  * Query Params: ?days=7 (or 30, 1), ?shopId=... (optional)
- * Returns aggregated totals and a daily breakdown array for charts/graphs.
+ * Aggregates daily metrics and populates unique user activities with boolean flags.
  */
 export const getMerchantDailyAnalytics = async (req, res) => {
   try {
@@ -23,17 +24,20 @@ export const getMerchantDailyAnalytics = async (req, res) => {
       date: { $gte: startDate }
     };
 
-    // Filter by specific shop branch if shopId is provided
     if (shopId) {
       query.shopId = shopId;
     }
 
-    // 3. Query daily records
+    // 3. Query daily records and populate user details across all action arrays
     const analyticsLogs = await MerchantDailyAnalytics.find(query)
+      .populate("viewerUsers.userId", "name email phone profileImage")
+      .populate("clickedUsers.userId", "name email phone profileImage")
+      .populate("redeemedUsers.userId", "name email phone profileImage")
+      .populate("footfallUsers.userId", "name email phone profileImage")
       .sort({ date: 1 })
       .lean();
 
-    // 4. Compute aggregated totals for top summary cards
+    // 4. Compute aggregated totals
     const summaryTotals = analyticsLogs.reduce(
       (acc, log) => {
         acc.totalViewers += log.totalViewers || 0;
@@ -44,6 +48,60 @@ export const getMerchantDailyAnalytics = async (req, res) => {
       },
       { totalViewers: 0, offerClicks: 0, redeems: 0, footfall: 0 }
     );
+
+    // 5. Consolidate logs into day-by-day aggregated user activity profiles
+    const formattedLogs = analyticsLogs.map((log) => {
+      const userMap = new Map();
+
+      // Helper function to consolidate user records per day
+      const processUserArray = (array, flagName, timeField) => {
+        (array || []).forEach((item) => {
+          if (!item.userId || !item.userId._id) return;
+          const uid = item.userId._id.toString();
+
+          if (!userMap.has(uid)) {
+            userMap.set(uid, {
+              user: item.userId,
+              hasViewed: false,
+              hasClicked: false,
+              hasRedeemed: false,
+              hasVisitedFootfall: false,
+              viewedAt: null,
+              clickedAt: null,
+              redeemedAt: null,
+              visitedAt: null,
+              redemptionCode: item.redemptionCode || ""
+            });
+          }
+
+          const record = userMap.get(uid);
+          record[flagName] = true;
+          if (timeField && item[timeField]) {
+            record[timeField] = item[timeField];
+          }
+          if (item.redemptionCode) {
+            record.redemptionCode = item.redemptionCode;
+          }
+        });
+      };
+
+      processUserArray(log.viewerUsers, "hasViewed", "viewedAt");
+      processUserArray(log.clickedUsers, "hasClicked", "clickedAt");
+      processUserArray(log.redeemedUsers, "hasRedeemed", "redeemedAt");
+      processUserArray(log.footfallUsers, "hasVisitedFootfall", "visitedAt");
+
+      return {
+        _id: log._id,
+        merchantId: log.merchantId,
+        shopId: log.shopId,
+        date: log.date,
+        totalViewers: log.totalViewers,
+        offerClicks: log.offerClicks,
+        redeems: log.redeems,
+        footfall: log.footfall,
+        userActivity: Array.from(userMap.values())
+      };
+    });
 
     // Calculate Conversion Rates
     const clickToRedeemRate = summaryTotals.offerClicks > 0
@@ -64,7 +122,7 @@ export const getMerchantDailyAnalytics = async (req, res) => {
           redeemToClaimFootfall: redeemToClaimFootfallRate
         }
       },
-      dailyBreakdown: analyticsLogs
+      dailyBreakdown: formattedLogs
     });
 
   } catch (error) {
@@ -79,8 +137,6 @@ export const getMerchantDailyAnalytics = async (req, res) => {
 
 /**
  * GET /api/merchant/analytics/offers-breakdown
- * Returns a list of all active/past offers with live counter comparisons
- * (Redeemed Count vs Claimed In-Store Footfall Count)
  */
 export const getMerchantOffersAnalyticsBreakdown = async (req, res) => {
   try {
@@ -126,12 +182,9 @@ export const getMerchantOffersAnalyticsBreakdown = async (req, res) => {
   }
 };
 
-import OfferAnalytics from "../models/offerDailyAnalytics.js";
-
-
 /**
  * GET /api/merchant/analytics/offers/:offerId
- * Returns total clicks, redeems, claims, footfall, and the user claim list.
+ * Returns total clicks, redeems, claims, footfall, and a unified list of unique users with status flags.
  */
 export const getOfferAnalytics = async (req, res) => {
   try {
@@ -147,12 +200,12 @@ export const getOfferAnalytics = async (req, res) => {
       });
     }
 
-    // 2. Query analytics and populate claimed user details
+    // 2. Query analytics and populate all user reference arrays
     const analytics = await OfferAnalytics.findOne({ offerId, merchantId })
-      .populate({
-        path: "claimedUsers.userId",
-        select: "name email phone profileImage",
-      })
+      .populate("clickedUsers.userId", "name email phone profileImage")
+      .populate("redeemedUsers.userId", "name email phone profileImage")
+      .populate("claimedUsers.userId", "name email phone profileImage")
+      .populate("footfallUsers.userId", "name email phone profileImage")
       .lean();
 
     // Fallback if no analytics record exists yet
@@ -161,8 +214,53 @@ export const getOfferAnalytics = async (req, res) => {
       redeems: 0,
       claims: 0,
       footfall: 0,
+      clickedUsers: [],
+      redeemedUsers: [],
       claimedUsers: [],
+      footfallUsers: []
     };
+
+    // 3. Consolidate user arrays into a single Map keyed by userId
+    const userMap = new Map();
+
+    const processArray = (array, flagName, timeField) => {
+      (array || []).forEach((item) => {
+        if (!item.userId || !item.userId._id) return;
+        const uid = item.userId._id.toString();
+
+        if (!userMap.has(uid)) {
+          userMap.set(uid, {
+            user: item.userId,
+            hasClicked: false,
+            hasRedeemed: false,
+            hasClaimed: false,
+            hasVisitedFootfall: false,
+            clickedAt: null,
+            redeemedAt: null,
+            claimedAt: null,
+            visitedAt: null,
+            redemptionCode: item.redemptionCode || ""
+          });
+        }
+
+        const record = userMap.get(uid);
+        record[flagName] = true;
+        if (timeField && item[timeField]) {
+          record[timeField] = item[timeField];
+        }
+        if (item.redemptionCode) {
+          record.redemptionCode = item.redemptionCode;
+        }
+      });
+    };
+
+    processArray(data.clickedUsers, "hasClicked", "clickedAt");
+    processArray(data.redeemedUsers, "hasRedeemed", "redeemedAt");
+    processArray(data.claimedUsers, "hasClaimed", "claimedAt");
+    processArray(data.footfallUsers, "hasVisitedFootfall", "visitedAt");
+
+    // Convert Map to clean Array
+    const unifiedUserActivity = Array.from(userMap.values());
 
     // Calculate Conversion Rates
     const clickToRedeemRate = data.clicks > 0
@@ -186,10 +284,11 @@ export const getOfferAnalytics = async (req, res) => {
         totalRedeems: data.redeems,
         totalClaims: data.claims,
         totalFootfall: data.footfall,
+        uniqueUsersCount: unifiedUserActivity.length,
         clickToRedeemRate,
         redeemToClaimRate,
       },
-      claimedUsers: data.claimedUsers,
+      userActivity: unifiedUserActivity,
     });
 
   } catch (error) {

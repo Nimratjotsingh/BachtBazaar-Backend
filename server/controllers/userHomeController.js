@@ -176,7 +176,7 @@ export const getShopDetails = async (req, res) => {
     }
 
     const merchantId = shop.merchantId._id;
-    trackDailyMetric(shop._id, shop.merchantId._id, "totalViewers");
+    
 
     // 2. Fetch Products, Services, and Active Offers in parallel for optimal performance
     const [products, services, offers] = await Promise.all([
@@ -208,6 +208,8 @@ export const getShopDetails = async (req, res) => {
       .populate("offer_type_id", "label value")
       .sort({ createdAt: -1 })
     ]);
+
+    trackDailyMetric(shop._id, merchantId, "totalViewers", req.user._id);
 
     // 3. Construct the synchronized response payload
     res.status(200).json({
@@ -526,9 +528,11 @@ export const getOfferDetails = async (req, res) => {
         message: "Access to this offer is restricted because the merchant account has been deactivated."
       });
     }
-    trackDailyMetric2(offer.merchant_id._id, "offerClicks");
 
-    trackOfferMetric(offer._id, offer.merchant_id._id, "clicks");
+    
+    
+    trackDailyMetric2( offer.merchant_id._id, "offerClicks", { userId: req.user._id, id });
+    trackOfferMetric(offer._id, offer.merchant_id._id, "clicks", req.user._id);
 
     const rightNow = new Date();
     

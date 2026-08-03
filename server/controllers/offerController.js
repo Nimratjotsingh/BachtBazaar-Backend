@@ -449,6 +449,7 @@ export const getOfferDetails = async (req, res) => {
       return res.status(404).json({ success: false, message: "Offer campaign not found." });
     }
 
+    
     res.status(200).json({ success: true, data: offer });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

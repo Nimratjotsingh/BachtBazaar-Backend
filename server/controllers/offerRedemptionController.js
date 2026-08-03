@@ -81,8 +81,10 @@ export const redeemOffer = async (req, res) => {
       status: "redeemed"
     });
 
-    trackDailyMetric2( offer.merchant_id._id, "redeems");
-    trackOfferMetric(offer._id, offer.merchant_id._id, "redeems");
+    trackDailyMetric2( offer.merchant_id._id, "redeems", { userId: req.user._id, offerId, redemptionCode });
+
+    trackOfferMetric(offerId, offer.merchant_id._id, "redeems", { userId: req.user._id, redemptionCode });
+    
 
     await redemption.save();
 
@@ -208,17 +210,13 @@ export const claimOfferInStore = async (req, res) => {
     // 6. Atomically increment claimedCount on primary offer document
     await Offer.findByIdAndUpdate(offerId, { $inc: { claimedCount: 1 } });
 
+    const code  = redemption.redemptionCode;
     // 7. Fire metric tracking pipelines
-    trackDailyMetric2(req.merchant._id, "footfall");
-    await trackOfferMetric(
-      offer._id,
-      req.merchant._id,
-      "claims",
-      {
-        userId: redemption.userId,
-        redemptionCode: redemption.redemptionCode
-      }
-    );
+    await trackDailyMetric2(req.merchant._id, "footfall", { userId, offerId, code });
+    
+    await trackOfferMetric(offerId, req.merchant._id, "claims", { userId: userId, code });
+    await trackOfferMetric(offerId, req.merchant._id, "footfall", { userId: userId, code });
+   
 
     return res.status(200).json({
       success: true,
@@ -388,17 +386,11 @@ export const userSelfClaimOffer = async (req, res) => {
         ...(redemption.redemptionCode === "CLAIMED-DIRECT" ? { redeemedCount: 1 } : {})
       }
     });
+    const redemptionCode = redemption._id;
 
-    trackDailyMetric2( offer.merchant_id, "footfall");
-    await trackOfferMetric(
-    offer._id,
-    offer.merchant_id,
-  "claims",
-  {
-    userId: req.user._id,
-    redemptionCode: redemption._id,
-  }
-);
+    await trackDailyMetric2(offer.merchant_id, "footfall", { userId: req.user._id, offerId, redemptionCode });
+    await trackOfferMetric(offerId, offer.merchant_id, "claims", { userId: req.user._id, redemptionCode });
+    await trackOfferMetric(offerId, offer.merchant_id, "footfall", { userId: req.user._id, redemptionCode });
 
     return res.status(200).json({
       success: true,
