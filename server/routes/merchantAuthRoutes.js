@@ -11,11 +11,15 @@ import {
   updatePassword,
   createTestMerchant,
   tempUpdatePass,
-  logoutMerchant
+  logoutMerchant,
+  updateMerchantDeliveryStatus,
+  checkMerchantDeliveryStatus,
+  updateMerchantFcmToken
 } from "../controllers/merchantAuthController.js";
 
 import {getNearbyCustomerRequestsForMerchant} from '../controllers/MerchantBidController.js'
 import { protectMerchant } from "../middleware/authMiddleware.js";
+import { updateFcmToken } from "../controllers/userController.js";
 
 const router = express.Router();
 
@@ -32,5 +36,8 @@ router.post("/temp-change-pass",tempUpdatePass);
 router.put("/password", protectMerchant, updatePassword);
 router.post("/merchant/auth/logout", protectMerchant, logoutMerchant);
 router.get("/user-requests",protectMerchant,getNearbyCustomerRequestsForMerchant)
+router.patch('/delivery-status',protectMerchant,updateMerchantDeliveryStatus);
+router.get('/:id/delivery-status',checkMerchantDeliveryStatus);
+router.patch('/fcm-token',protectMerchant,updateMerchantFcmToken);
 
 export default router;

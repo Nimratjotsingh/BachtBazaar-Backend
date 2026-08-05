@@ -15,7 +15,10 @@ import {
   Calendar,
   ToyBrick,
   LucideActivity,
-  Building2Icon
+  Building2Icon,
+  FileQuestion,
+  FlagTriangleLeft,
+  FlagTriangleRight
 } from "lucide-react";
 
 const navItems = [
@@ -35,6 +38,11 @@ const navItems = [
   { label: "AdminBanner", to: "/dashboard/adminbanner", icon: LucideActivity },
   { label: "Banner Types", to: "/dashboard/bannerTypes", icon: LucideActivity },
   { label: "Quick Offer Merchant Bid", to: "/dashboard/quickOffer", icon: LucideActivity },
+   { label: "FAQ", to: "/dashboard/faq", icon: FileQuestion },
+   { label: "Help Article Management", to: "/dashboard/helpArticle", icon: FileQuestion },
+    { label: "League", to: "/dashboard/league", icon: FlagTriangleLeft },
+    { label: "TaskManagement", to: "/dashboard/task-management", icon: FlagTriangleRight },
+    { label: "Notifications", to: "/dashboard/notifications", icon: FlagTriangleRight },
   
 ];
 

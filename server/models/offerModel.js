@@ -38,7 +38,7 @@ const offerSchema = new mongoose.Schema(
       type: [mongoose.Schema.Types.ObjectId],
       ref: "Product",
       index: true,
-      default: []
+      default: [],
     },
     title: {
       type: String,
@@ -69,40 +69,38 @@ const offerSchema = new mongoose.Schema(
     free_quantity: {
       type: Number,
       default: 1,
-      min: [1, "Free item allocation value must start at 1 if defined"]
+      min: [1, "Free item allocation value must start at 1 if defined"],
     },
     max_free_quantity: {
       type: Number,
       default: 1,
-      min: [1, "Maximum free limit pool must start at 1 if defined"]
+      min: [1, "Maximum free limit pool must start at 1 if defined"],
     },
     redeem_time_hours: {
       type: Number,
       default: 24,
-      min: [1, "Redemption validation window must be at least 1 hour"]
+      min: [1, "Redemption validation window must be at least 1 hour"],
     },
-    claim_limit:{
+    claim_limit: {
       type: Number,
     },
     per_user_limit: {
       type: Number,
       default: 1,
-      min: [1, "Per user constraint threshold must allow at least 1 redemption"]
+      min: [1, "Per user constraint threshold must allow at least 1 redemption"],
     },
-    
-    // --- NEW: GeoJSON Location Point Field ---
-    // Storing as a proper GeoJSON point makes running radius queries super fast
+
+    // --- GeoJSON Location Point Field ---
     location: {
       type: {
         type: String,
         enum: ["Point"],
-        default: "Point"
+        default: "Point",
       },
-      // Format MUST follow: [longitude, latitude] -> Note that longitude comes FIRST in GeoJSON!
       coordinates: {
-        type: [Number],
-        default: [0, 0] 
-      }
+        type: [Number], // [longitude, latitude]
+        default: [0, 0],
+      },
     },
 
     start_date: {
@@ -135,15 +133,26 @@ const offerSchema = new mongoose.Schema(
       default: false,
       index: true,
     },
-    // Add these fields into your existing Offer schema:
     redeemedCount: {
       type: Number,
-      default: 0
+      default: 0,
     },
     claimedCount: {
       type: Number,
-      default: 0
+      default: 0,
     },
+
+    // --- DRAFT CONTROL FIELDS ---
+    is_draft: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    draft_step: {
+      type: Number,
+      default: 1, // Step tracker for multi-stage creation wizards (e.g. 1, 2, 3)
+    },
+
     is_active: {
       type: Boolean,
       default: true,
@@ -152,7 +161,7 @@ const offerSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
       index: true,
-    }
+    },
   },
   {
     timestamps: true,
@@ -160,11 +169,16 @@ const offerSchema = new mongoose.Schema(
 );
 
 // --- Geospatial Index Configuration ---
-// Crucial for running '$near' or '$geoWithin' queries (e.g., finding offers within 5km of a user)
 offerSchema.index({ location: "2dsphere" });
 
-// --- Composite Optimization Index ---
-offerSchema.index({ is_active: 1, is_deleted: 1, start_date: 1, end_date: 1 });
+// --- Composite Optimization Index (Excludes Drafts from Customer Searches) ---
+offerSchema.index({
+  is_draft: 1,
+  is_active: 1,
+  is_deleted: 1,
+  start_date: 1,
+  end_date: 1,
+});
 
-const Offer = mongoose.model("Offer", offerSchema);
+const Offer = mongoose.models.Offer || mongoose.model("Offer", offerSchema);
 export default Offer;

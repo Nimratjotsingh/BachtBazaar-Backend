@@ -41,10 +41,18 @@ import offerRedemptionRoutes from './routes/offerRedemptionRoutes.js';
 import offerRedemptionMerchantRoutes from './routes/offerRedemptionMerchantRoutes.js';
 import merchantAnalyticRoutes from './routes/merchantAnalyticsRoutes.js';
 import offerWishlistRoutes from './routes/wishlistRoutes.js';
+import faqRoutes from './routes/faqRoutes.js';
+import helpArticeRoutes from './routes/helpArticeRoutes.js';
+import draftRoutes from './routes/offerDraftRoutes.js';
+import leagueRoutes from './routes/leagueRoutes.js';
+import deliveryRoutes from './routes/deliveryRoutes.js';
+
+
 
 dotenv.config();
 // console.log(process.env.MONGO_URI)
-
+import './utils/firebase.js';
+import notificationRoutes from './routes/notificationRoutes.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -79,6 +87,7 @@ app.use('/api/subcategories',subCategory)
 app.use('/api/merchant/products',product);
 app.use('/api/merchant/services',service);
 app.use('/api/users/shop',userHome);
+app.use('/api/faqs',faqRoutes)
 
 app.use("/api/merchant/auth", merchantAuthRoutes);
 app.use("/api/merchants", merchantAuthRoutes);
@@ -108,6 +117,8 @@ app.use('/api/adminbanners',adminBanner);
 app.use('/api/areas',areasRoutes);
 app.use('/api/user/best-request',bestPriceRoutes);
 
+app.use('/api/draft/offers',draftRoutes)
+
 app.use('/api/user/offer-wishlist',offerWishlistRoutes);
 
 app.use("/api/merchant-bids",MerchantBidRoutes);
@@ -119,6 +130,11 @@ app.use('/api/merchant/analytics',merchantAnalyticRoutes);
 app.use('/api/users/others',userHomeExtended);
 app.use('/api/banner-types', bannerTypeRoutes)
 app.use('/api/banner', bannerRoutes);
+app.use("/api/help-articles", helpArticeRoutes);
+app.use('/api/league',leagueRoutes);
+app.use('/api/delivery',deliveryRoutes);
+app.use('/api/notifications',notificationRoutes);
+
 
 app.get("/health", (req, res) => {
   res.json({ message: "Server is healthy!" });

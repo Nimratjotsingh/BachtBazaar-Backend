@@ -21,6 +21,11 @@ import AdminBanner from './pages/AdminBanner/AdminBanner'
 import AdminAreasDashboard from "./pages/Area/Area";
 import BannerTypesDashboard from "./pages/BannerTypes/BannerTypes";
 import QuickOfferDashboard from './pages/QuickOffer/QuickOffer';
+import AdminFaqManagement from "./pages/Faq/Faq";
+import AdminHelpArticleManagement from "./pages/AdminHelpArticleManagement/AdminHelpArticleManagement";
+import AdminLeagueManagement from "./pages/AdminLeague/AdminLeague";
+import AdminTaskManagement from "./pages/TaskManagement/TaskManagement";
+import AdminNotificationCenter from "./pages/Notification/Notification";
 
 const TOKEN_STORAGE_KEY = "bb_admin_token";
 const gmaps_key = import.meta.env.VITE_API_GMAPS_KEY;
@@ -93,6 +98,11 @@ function App() {
         <Route path="area" element={<AdminAreasDashboard token={token} googleMapsApiKey={gmaps_key}/>}/> 
         <Route path="bannerTypes" element={<BannerTypesDashboard token={token}/>}/>
         <Route path="quickOffer" element={<QuickOfferDashboard token={token}/>}/>
+        <Route path="faq" element={<AdminFaqManagement token={token}/>}/>
+        <Route path="helpArticle" element={<AdminHelpArticleManagement token={token}/>}/>
+        <Route path="league" element={<AdminLeagueManagement token={token}/>}/>
+        <Route path="task-management" element={<AdminTaskManagement token={token}/>}/>
+        <Route path="notifications" element={<AdminNotificationCenter token={token}/>}/>
       </Route>
 
       {/* 🔁 Fallback Catch-All for unknown URLs */}

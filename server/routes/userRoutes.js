@@ -11,7 +11,8 @@ import {
     deleteUserAccount,
     logoutUser,
     googleAuthUser,
-    createUser
+    createUser,
+    updateFcmToken
 } from "../controllers/userController.js";
 import { getProfileImage } from "../controllers/userController.js";
 
@@ -30,7 +31,9 @@ router.post("/auth/login-password", loginWithPassword);
 router.post("/auth/login-otp", loginWithOtp);
 router.post("/auth/forgot-password", forgotPassword);
 router.post("/auth/logout", logoutUser);
-router.post("/auth/login-google", googleAuthUser)
+router.post("/auth/login-google", googleAuthUser);
+
+router.post("/fcmToken", protectUser,updateFcmToken);
 
 router.delete("/auth/delete-account", protectUser, deleteUserAccount);
 

@@ -417,3 +417,214 @@ export const logoutMerchant = async (req, res) => {
     });
   }
 };
+
+export const updateMerchantDeliveryStatus = async (req, res) => {
+  try {
+    const merchantId = req.merchant?._id || req.user?._id;
+    const { isDeliveryEnabled } = req.body;
+
+    if (typeof isDeliveryEnabled !== "boolean") {
+      return res.status(400).json({
+        success: false,
+        message: "Field 'isDeliveryEnabled' must be a valid boolean (true or false).",
+      });
+    }
+
+    const merchant = await Merchant.findByIdAndUpdate(
+      merchantId,
+      { isDeliveryEnabled },
+      { new: true }
+    ).select("-password");
+
+    if (!merchant) {
+      return res.status(404).json({
+        success: false,
+        message: "Merchant account not found.",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Delivery services have been ${
+        merchant.isDeliveryEnabled ? "enabled" : "disabled"
+      } successfully.`,
+      data: {
+        _id: merchant._id,
+        name: merchant.name,
+        isDeliveryEnabled: merchant.isDeliveryEnabled,
+      },
+    });
+  } catch (error) {
+    console.error("Update Merchant Delivery Status Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update delivery status.",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * PATCH /api/admin/merchants/:merchantId/toggle-delivery
+ * Admin endpoint to forcibly enable or disable delivery for a specific merchant
+ */
+export const toggleAdminMerchantDelivery = async (req, res) => {
+  try {
+    const { merchantId } = req.params;
+
+    const merchant = await Merchant.findById(merchantId);
+
+    if (!merchant) {
+      return res.status(404).json({
+        success: false,
+        message: "Merchant record not found.",
+      });
+    }
+
+    merchant.isDeliveryEnabled = !merchant.isDeliveryEnabled;
+    await merchant.save();
+
+    return res.status(200).json({
+      success: true,
+      message: `Delivery feature for merchant '${merchant.name || merchant.phone}' has been ${
+        merchant.isDeliveryEnabled ? "enabled" : "disabled"
+      }.`,
+      data: {
+        _id: merchant._id,
+        isDeliveryEnabled: merchant.isDeliveryEnabled,
+      },
+    });
+  } catch (error) {
+    console.error("Toggle Admin Merchant Delivery Exception:", error);
+    return res.status(500).json({
+      success: false,
+      message: "An error occurred while toggling merchant delivery capabilities.",
+      error: error.message,
+    });
+  }
+};
+
+export const checkMerchantDeliveryStatus = async (req, res) => {
+  try {
+    const { id  } = req.params;
+    const merchantId = id;
+    console.log(merchantId)
+
+    const merchant = await Merchant.findById(merchantId).select(
+      "name isDeliveryEnabled status isBlocked"
+    );
+
+    if (!merchant) {
+      return res.status(404).json({
+        success: false,
+        message: "Merchant record not found.",
+      });
+    }
+
+    if (merchant.isBlocked) {
+      return res.status(403).json({
+        success: false,
+        message: "Merchant account is blocked or inactive.",
+        isDeliveryAvailable: false,
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        merchantId: merchant._id,
+        merchantName: merchant.name,
+        isDeliveryEnabled: merchant.isDeliveryEnabled ?? false,
+      },
+    });
+  } catch (error) {
+    console.error("Check Merchant Delivery Status Exception:", error);
+    return res.status(500).json({
+      success: false,
+      message: "An error occurred while checking merchant delivery status.",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * GET /api/merchant/my-delivery-status
+ * Authenticated Merchant endpoint: Allows logged-in merchant to inspect their own delivery state
+ */
+export const getOwnDeliveryStatus = async (req, res) => {
+  try {
+    const merchantId = req.merchant?._id || req.user?._id;
+
+    const merchant = await Merchant.findById(merchantId).select("name isDeliveryEnabled");
+
+    if (!merchant) {
+      return res.status(404).json({
+        success: false,
+        message: "Merchant account not found.",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        merchantId: merchant._id,
+        isDeliveryEnabled: merchant.isDeliveryEnabled ?? false,
+      },
+    });
+  } catch (error) {
+    console.error("Get Own Delivery Status Exception:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to retrieve your delivery settings.",
+      error: error.message,
+    });
+  }
+};
+
+export const updateMerchantFcmToken = async (req, res) => {
+  try {
+    const merchantId = req.merchant._id;
+    const { fcmToken, deviceType = "android" } = req.body;
+
+    if (!fcmToken) {
+      return res.status(400).json({
+        success: false,
+        message: "FCM token is required.",
+      });
+    }
+
+    const merchant = await Merchant.findById(merchantId);
+    if (!merchant) {
+      return res.status(404).json({
+        success: false,
+        message: "Merchant account not found.",
+      });
+    }
+
+    merchant.fcmToken = fcmToken;
+
+    // Maintain device token array
+    const existingIndex = merchant.fcmTokens.findIndex(
+      (t) => t.token === fcmToken
+    );
+    if (existingIndex > -1) {
+      merchant.fcmTokens[existingIndex].updatedAt = new Date();
+    } else {
+      merchant.fcmTokens.push({ token: fcmToken, deviceType });
+    }
+
+    await merchant.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Merchant FCM token saved successfully.",
+    });
+  } catch (error) {
+    console.error("Update Merchant FCM Token Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update FCM token.",
+      error: error.message,
+    });
+  }
+};

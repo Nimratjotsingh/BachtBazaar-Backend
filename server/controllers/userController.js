@@ -640,3 +640,61 @@ export const googleAuthUser = async (req, res) => {
     });
   }
 };
+
+// 1. Save or Update Push Notification FCM Token
+export const updateFcmToken = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { fcmToken, deviceType = "android" } = req.body;
+
+    if (!fcmToken) {
+      return res.status(400).json({ success: false, message: "FCM token is required." });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found." });
+    }
+
+    user.fcmToken = fcmToken;
+
+    // Add to fcmTokens array if not already present
+    const existingIndex = user.fcmTokens.findIndex((t) => t.token === fcmToken);
+    if (existingIndex > -1) {
+      user.fcmTokens[existingIndex].updatedAt = new Date();
+    } else {
+      user.fcmTokens.push({ token: fcmToken, deviceType });
+    }
+
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Push notification FCM token saved successfully.",
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// 2. Toggle Notification Preferences ON/OFF
+export const toggleNotificationSettings = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { isNotificationEnabled } = req.body;
+
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { isNotificationEnabled },
+      { new: true }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: `Notifications ${isNotificationEnabled ? "enabled" : "disabled"}.`,
+      isNotificationEnabled: user.isNotificationEnabled,
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
