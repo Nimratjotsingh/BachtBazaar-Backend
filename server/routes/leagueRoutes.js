@@ -27,6 +27,8 @@ router.post(
   createLeague
 );
 
+router.get('/',getAllLeagues);
+
 router.get("/admin/leagues", protectAdmin, getAllLeagues);
 
 router.put(
