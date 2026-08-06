@@ -435,6 +435,18 @@ export const getMerchantGamificationDashboard = async (req, res) => {
       }
     }
 
+    // --- LEVEL POINT CALCULATIONS ---
+    const currentLeagueMinPoints = currentLeague.minPointsRequired;
+    const currentLeagueMaxPoints = nextLeague ? nextLeague.minPointsRequired : null;
+
+    // Total points needed in this specific level to progress to the next
+    const totalPointsInCurrentLeague = nextLeague
+      ? nextLeague.minPointsRequired - currentLeagueMinPoints
+      : 0;
+
+    // Points accumulated within the scope of the current level
+    const pointsEarnedInCurrentLevel = totalPoints - currentLeagueMinPoints;
+
     // 5. Filter tasks relevant to the merchant's current league tier
     const currentLeagueTasks = allTasks
       .filter((t) => t.leagueId.toString() === currentLeague._id.toString())
@@ -452,7 +464,7 @@ export const getMerchantGamificationDashboard = async (req, res) => {
         };
       });
 
-    // 6. Sync computed standings into MerchantProgress document (used for leaderboards & admin metrics)
+    // 6. Sync computed standings into MerchantProgress document
     await MerchantProgress.findOneAndUpdate(
       { merchantId },
       {
@@ -463,11 +475,15 @@ export const getMerchantGamificationDashboard = async (req, res) => {
       { upsert: true, new: true, setDefaultsOnInsert: true }
     );
 
-    // 7. Return complete state
+    // 7. Return complete state including level points metrics
     return res.status(200).json({
       success: true,
       data: {
         totalPoints,
+        pointsEarnedInCurrentLevel,
+        totalPointsInCurrentLeague,
+        currentLeagueMinPoints,
+        currentLeagueMaxPoints,
         currentLeague,
         nextLeague,
         pointsToNextLeague: nextLeague
