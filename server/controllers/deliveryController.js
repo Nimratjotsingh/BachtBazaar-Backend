@@ -24,6 +24,7 @@ export const createDeliveryOrder = async (req, res) => {
       note,
       deliveryAddress,
       contactPhone,
+      estimatedMinutes, // Optional custom time request from user
     } = req.body;
 
     if (!merchantId) {
@@ -128,6 +129,10 @@ export const createDeliveryOrder = async (req, res) => {
       deliveryFee,
       platformFee,
       totalAmount,
+      estimatedDeliveryTime: {
+        value: Number(estimatedMinutes) || 30,
+        unit: "minutes",
+      },
       status: "pending",
     });
 
@@ -197,13 +202,13 @@ export const cancelDeliveryOrder = async (req, res) => {
 
 /**
  * PATCH /api/merchant/delivery-orders/:orderId/respond
- * Merchant accepts or declines a pending delivery request
+ * Merchant accepts or declines a pending delivery request and sets estimated delivery time
  */
 export const respondToDeliveryOrder = async (req, res) => {
   try {
     const merchantId = req.merchant._id;
     const { orderId } = req.params;
-    const { action, declineReason } = req.body; // action: "accept" or "decline"
+    const { action, declineReason, estimatedMinutes, timeUnit = "minutes" } = req.body; // action: "accept" or "decline"
 
     if (!["accept", "decline"].includes(action)) {
       return res.status(400).json({
@@ -227,6 +232,20 @@ export const respondToDeliveryOrder = async (req, res) => {
 
     if (action === "accept") {
       order.status = "accepted";
+
+      // Set estimated delivery duration and calculate expected date/time
+      const durationValue = Number(estimatedMinutes) || order.estimatedDeliveryTime?.value || 30;
+      order.estimatedDeliveryTime = {
+        value: durationValue,
+        unit: timeUnit,
+      };
+
+      const now = new Date();
+      let multiplier = 60000; // minutes to ms
+      if (timeUnit === "hours") multiplier = 3600000;
+      if (timeUnit === "days") multiplier = 86400000;
+
+      order.expectedDeliveryAt = new Date(now.getTime() + durationValue * multiplier);
     } else {
       order.status = "declined";
       order.declineReason = declineReason || "Declined by merchant.";
@@ -251,13 +270,13 @@ export const respondToDeliveryOrder = async (req, res) => {
 
 /**
  * PATCH /api/merchant/delivery-orders/:orderId/status
- * Merchant updates delivery progress and manages payment status
+ * Merchant updates delivery progress, payment status, and optional delivery time adjustment
  */
 export const updateDeliveryOrderStatus = async (req, res) => {
   try {
     const merchantId = req.merchant._id;
     const { orderId } = req.params;
-    const { status, paymentStatus } = req.body;
+    const { status, paymentStatus, estimatedMinutes, timeUnit = "minutes" } = req.body;
 
     const order = await DeliveryOrder.findOne({ _id: orderId, merchantId });
 
@@ -278,6 +297,22 @@ export const updateDeliveryOrderStatus = async (req, res) => {
 
     if (paymentStatus) {
       order.paymentStatus = paymentStatus;
+    }
+
+    // Optional ETA updates mid-fulfillment
+    if (estimatedMinutes) {
+      const durationValue = Number(estimatedMinutes);
+      order.estimatedDeliveryTime = {
+        value: durationValue,
+        unit: timeUnit,
+      };
+
+      const now = new Date();
+      let multiplier = 60000;
+      if (timeUnit === "hours") multiplier = 3600000;
+      if (timeUnit === "days") multiplier = 86400000;
+
+      order.expectedDeliveryAt = new Date(now.getTime() + durationValue * multiplier);
     }
 
     await order.save();

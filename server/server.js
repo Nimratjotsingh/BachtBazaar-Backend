@@ -46,6 +46,7 @@ import helpArticeRoutes from './routes/helpArticeRoutes.js';
 import draftRoutes from './routes/offerDraftRoutes.js';
 import leagueRoutes from './routes/leagueRoutes.js';
 import deliveryRoutes from './routes/deliveryRoutes.js';
+import expiredOffers from './routes/expiredOffersRoutes.js';
 
 
 
@@ -92,7 +93,8 @@ app.use('/api/faqs',faqRoutes)
 app.use("/api/merchant/auth", merchantAuthRoutes);
 app.use("/api/merchants", merchantAuthRoutes);
 app.use('/api/super-admin',superAuth);
-app.use('/api/legal',legal)
+app.use('/api/legal',legal);
+app.use('/api/expired/offers',expiredOffers);
 app.use("/api/merchant/profile", merchantProfileRoutes);
 app.use("/api/merchants/profile", merchantProfileRoutes);
 app.use("/api/merchant/personal-docs", merchantPersonalDocRoutes);
@@ -118,6 +120,7 @@ app.use('/api/areas',areasRoutes);
 app.use('/api/user/best-request',bestPriceRoutes);
 
 app.use('/api/draft/offers',draftRoutes)
+
 
 app.use('/api/user/offer-wishlist',offerWishlistRoutes);
 

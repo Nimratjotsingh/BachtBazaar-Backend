@@ -77,6 +77,24 @@ const deliveryOrderSchema = new mongoose.Schema(
       required: true,
     },
 
+    // --- ESTIMATED DELIVERY TIME ---
+    estimatedDeliveryTime: {
+      value: {
+        type: Number,
+        default: 30, // Default 30 mins, or set by merchant upon order acceptance
+        min: [1, "Estimated time value must be at least 1."],
+      },
+      unit: {
+        type: String,
+        enum: ["minutes", "hours", "days"],
+        default: "minutes",
+      },
+    },
+    expectedDeliveryAt: {
+      type: Date,
+      default: null, // Dynamic timestamp calculated when order status becomes 'accepted' or 'dispatched'
+    },
+
     // Order Lifecycle Status
     status: {
       type: String,
