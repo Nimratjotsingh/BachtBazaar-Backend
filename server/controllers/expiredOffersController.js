@@ -10,7 +10,7 @@ export const getExpiredOffers = async (req, res) => {
     const now = new Date();
 
     // 1. Auto-deactivate offers whose end_date has passed
-    await Offer.updateMany(
+    const re1 = await Offer.updateMany(
       {
         merchant_id: merchantId,
         is_active: true,
@@ -21,13 +21,13 @@ export const getExpiredOffers = async (req, res) => {
         $set: { is_active: false },
       }
     );
+    
 
     // 2. Query expired or manually deactivated offers
     const expiredOffers = await Offer.find({
       merchant_id: merchantId,
-      is_deleted: false,
-      is_draft: false,
-      $or: [{ end_date: { $lt: now } }, { is_active: false }],
+     
+      end_date: { $lt: now } ,
     })
       .populate("offer_type_id", "title name")
       .populate("sub_offer_type_id", "title name")
