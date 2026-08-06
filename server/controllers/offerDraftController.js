@@ -4,6 +4,27 @@ import Area from "../models/AreaModel.js";
 import CalendarConfig from "../models/calenderConfigModel.js";
 
 /**
+ * Helper to safely extract uploaded thumbnail path from req
+ */
+const getThumbnailPath = (req) => {
+  if (req.file) {
+    return `/uploads/${req.file.filename}`;
+  }
+  if (req.files) {
+    if (Array.isArray(req.files) && req.files.length > 0) {
+      return `/uploads/${req.files[0].filename}`;
+    }
+    if (typeof req.files === "object") {
+      const keys = Object.keys(req.files);
+      if (keys.length > 0 && req.files[keys[0]][0]) {
+        return `/uploads/${req.files[keys[0]][0].filename}`;
+      }
+    }
+  }
+  return null;
+};
+
+/**
  * POST /api/merchant/offers/draft
  * Create or save an initial offer draft
  */
@@ -12,12 +33,13 @@ export const saveOfferDraft = async (req, res) => {
     const data = { ...req.body };
     const merchantId = req.merchant._id;
 
-    // Handle file upload if included
-    if (req.file) {
-      data.thumbnail = `/uploads/${req.file.filename}`;
+    // 1. Process File Upload
+    const uploadedThumbnail = getThumbnailPath(req);
+    if (uploadedThumbnail) {
+      data.thumbnail = uploadedThumbnail;
     }
 
-    // Process latitude and longitude if provided
+    // 2. Process Geolocation Coordinates
     const lat = req.query.lat || req.body.lat;
     const lng = req.query.lng || req.body.lng;
 
@@ -33,7 +55,7 @@ export const saveOfferDraft = async (req, res) => {
       };
     }
 
-    // Process array fields
+    // 3. Process Array Fields (tags & product_id)
     if (typeof data.tags === "string") {
       data.tags = data.tags.split(",").map((t) => t.trim()).filter(Boolean);
     }
@@ -46,10 +68,11 @@ export const saveOfferDraft = async (req, res) => {
       }
     }
 
-    // Clean up dates if provided
+    // 4. Process Date Fields
     const startDate = data.start_date ? new Date(data.start_date) : undefined;
     const endDate = data.end_date ? new Date(data.end_date) : undefined;
 
+    // 5. Construct Draft Document
     const newDraft = new Offer({
       ...data,
       merchant_id: merchantId,
@@ -93,7 +116,12 @@ export const updateOfferDraft = async (req, res) => {
     const merchantId = req.merchant._id;
     const updates = { ...req.body };
 
-    const draft = await Offer.findOne({ _id: draftId, merchant_id: merchantId, is_draft: true, is_deleted: false });
+    const draft = await Offer.findOne({
+      _id: draftId,
+      merchant_id: merchantId,
+      is_draft: true,
+      is_deleted: false,
+    });
 
     if (!draft) {
       return res.status(404).json({
@@ -102,11 +130,13 @@ export const updateOfferDraft = async (req, res) => {
       });
     }
 
-    if (req.file) {
-      updates.thumbnail = `/uploads/${req.file.filename}`;
+    // Process File Upload
+    const uploadedThumbnail = getThumbnailPath(req);
+    if (uploadedThumbnail) {
+      updates.thumbnail = uploadedThumbnail;
     }
 
-    // Process coordinates update if passed
+    // Process Location Coordinates
     const lat = req.query.lat || req.body.lat;
     const lng = req.query.lng || req.body.lng;
     if (lat && lng && !isNaN(Number(lat)) && !isNaN(Number(lng))) {
@@ -116,7 +146,7 @@ export const updateOfferDraft = async (req, res) => {
       };
     }
 
-    // Process arrays
+    // Process Array Fields
     if (typeof updates.tags === "string") {
       updates.tags = updates.tags.split(",").map((t) => t.trim()).filter(Boolean);
     }
@@ -163,8 +193,8 @@ export const getMerchantOfferDrafts = async (req, res) => {
       is_draft: true,
       is_deleted: false,
     })
-      .populate("offer_type_id", "label value")
-      .populate("category_id", "label value")
+      .populate("offer_type_id", "label value title name")
+      .populate("category_id", "label value name")
       .sort({ updatedAt: -1 })
       .lean();
 
@@ -192,7 +222,12 @@ export const publishOfferDraft = async (req, res) => {
     const { draftId } = req.params;
     const merchantId = req.merchant._id;
 
-    const draft = await Offer.findOne({ _id: draftId, merchant_id: merchantId, is_draft: true, is_deleted: false });
+    const draft = await Offer.findOne({
+      _id: draftId,
+      merchant_id: merchantId,
+      is_draft: true,
+      is_deleted: false,
+    });
 
     if (!draft) {
       return res.status(404).json({
@@ -201,7 +236,7 @@ export const publishOfferDraft = async (req, res) => {
       });
     }
 
-    // 1. Mandatory Location Validation for Live Offer
+    // 1. Mandatory Location Validation
     const coords = draft.location?.coordinates;
     const lng = coords ? coords[0] : null;
     const lat = coords ? coords[1] : null;
@@ -213,7 +248,7 @@ export const publishOfferDraft = async (req, res) => {
       });
     }
 
-    // 2. Resolve Geofenced Area
+    // 2. Geofenced Operational Area Lookup
     const geoResults = await Area.aggregate([
       {
         $geoNear: {
@@ -237,7 +272,7 @@ export const publishOfferDraft = async (req, res) => {
 
     const targetAreaId = closestArea._id;
 
-    // 3. Calendar Capacity Validations if display_type is "calendar"
+    // 3. Calendar Capacity & Cooldown Checks
     if (draft.display_type === "calendar") {
       if (!draft.start_date || !draft.end_date) {
         return res.status(400).json({
@@ -279,12 +314,15 @@ export const publishOfferDraft = async (req, res) => {
         });
       }
 
-      // Check Regional Capacity Slots
+      // Check Regional Sector Capacity Slots
       const globalDefaultLimit = 5;
       const targetDateLookup = new Date(draft.start_date);
       targetDateLookup.setUTCHours(0, 0, 0, 0);
 
-      const areaMerchantIds = await mongoose.model("MerchantShop").find({ area_id: targetAreaId }).distinct("merchantId");
+      const areaMerchantIds = await mongoose
+        .model("MerchantShop")
+        .find({ area_id: targetAreaId })
+        .distinct("merchantId");
 
       const [dateRule, currentAreaBookingsCount] = await Promise.all([
         CalendarConfig.findOne({ area_id: targetAreaId, date: targetDateLookup }).lean(),
@@ -302,7 +340,7 @@ export const publishOfferDraft = async (req, res) => {
         if (dateRule.is_locked) {
           return res.status(400).json({
             success: false,
-            message: "Calendar bookings for this date are locked by the administrator.",
+            message: "Calendar bookings for this date are locked by administrator.",
           });
         }
         const effectiveBooked = Math.max(currentAreaBookingsCount, dateRule.current_booked_count || 0);
@@ -320,12 +358,12 @@ export const publishOfferDraft = async (req, res) => {
       }
     }
 
-    // 4. Update Draft to Live Offer
+    // 4. Promote Draft to Active Live Offer
     draft.is_draft = false;
     draft.is_active = true;
     await draft.save();
 
-    // 5. Increment calendar counter if calendar offer
+    // 5. Increment Sector Calendar Slot Count
     if (draft.display_type === "calendar") {
       const targetDateLookup = new Date(draft.start_date);
       targetDateLookup.setUTCHours(0, 0, 0, 0);
@@ -354,7 +392,7 @@ export const publishOfferDraft = async (req, res) => {
 
 /**
  * DELETE /api/merchant/offers/draft/:draftId
- * Soft delete or discard a draft
+ * Delete or discard a draft
  */
 export const discardOfferDraft = async (req, res) => {
   try {
