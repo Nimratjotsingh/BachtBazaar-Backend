@@ -15,7 +15,7 @@ const router = express.Router();
 // 🔐 ADMIN
 router.post("/", protectSuperAdmin, createLegal);
 router.get("/", getAllLegals);
-router.get("/:id", protectSuperAdmin, getLegalById);
+router.get("/:id", getLegalById);
 router.put("/:id", protectSuperAdmin, updateLegal);
 router.delete("/:id", protectSuperAdmin, deleteLegal);
 
