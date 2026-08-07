@@ -47,7 +47,7 @@ import draftRoutes from './routes/offerDraftRoutes.js';
 import leagueRoutes from './routes/leagueRoutes.js';
 import deliveryRoutes from './routes/deliveryRoutes.js';
 import expiredOffers from './routes/expiredOffersRoutes.js';
-
+import cartRoutes from './routes/cartRoutes.js';
 
 
 dotenv.config();
@@ -118,6 +118,7 @@ app.use('/api/analytics', userAnalytics);
 app.use('/api/adminbanners',adminBanner);
 app.use('/api/areas',areasRoutes);
 app.use('/api/user/best-request',bestPriceRoutes);
+app.use('/api/cart',cartRoutes);
 
 app.use('/api/draft/offers',draftRoutes)
 

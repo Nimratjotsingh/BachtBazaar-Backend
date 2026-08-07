@@ -9,13 +9,15 @@ import Product from "../models/productModel.js";
 
 /**
  * POST /api/delivery-orders
- * User creates a new delivery request featuring product/item details
+ * User creates a new delivery request with single or multiple products/items
  */
 export const createDeliveryOrder = async (req, res) => {
   try {
     const userId = req.user._id;
     const {
       merchantId,
+      items, // Expecting array: [{ productId, productName, quantity, unitPrice, variantInfo }]
+      // Fallback single-item parameters
       productId,
       customItemName,
       quantity = 1,
@@ -24,7 +26,7 @@ export const createDeliveryOrder = async (req, res) => {
       note,
       deliveryAddress,
       contactPhone,
-      estimatedMinutes, // Optional custom time request from user
+      estimatedMinutes,
     } = req.body;
 
     if (!merchantId) {
@@ -50,39 +52,63 @@ export const createDeliveryOrder = async (req, res) => {
       });
     }
 
-    // 2. Resolve Product Details
-    let resolvedProductName = customItemName || "Custom Item";
-    let unitPrice = 0;
-    let thumbnail = "";
-    let finalProductId = null;
-
-    if (productId) {
-      const dbProduct = await Product.findById(productId);
-      if (!dbProduct || dbProduct.is_deleted) {
-        return res.status(404).json({
-          success: false,
-          message: "Selected product is unavailable or deleted.",
-        });
-      }
-
-      finalProductId = dbProduct._id;
-      resolvedProductName = dbProduct.title || dbProduct.name;
-      unitPrice = dbProduct.price || dbProduct.discount_price || Number(itemPrice) || 0;
-      thumbnail = dbProduct.thumbnail || dbProduct.image || "";
+    // 2. Standardize multi-item vs single-item request payload
+    let rawItemsList = [];
+    if (Array.isArray(items) && items.length > 0) {
+      rawItemsList = items;
     } else {
-      if (!itemPrice) {
-        return res.status(400).json({
-          success: false,
-          message: "Item price is required when creating a custom item delivery request.",
-        });
-      }
-      unitPrice = Number(itemPrice);
+      rawItemsList = [
+        {
+          productId,
+          productName: customItemName,
+          quantity,
+          unitPrice: itemPrice,
+          variantInfo,
+        },
+      ];
     }
 
-    const orderQuantity = Math.max(1, Number(quantity));
-    const totalItemPrice = unitPrice * orderQuantity;
+    // 3. Resolve each item in the array
+    const resolvedItems = [];
 
-    // 3. Resolve User Address and Contact Phone
+    for (const rawItem of rawItemsList) {
+      let resolvedName = rawItem.productName || rawItem.customItemName || "Custom Item";
+      let resolvedUnitPrice = Number(rawItem.unitPrice || rawItem.itemPrice) || 0;
+      let thumbnail = rawItem.productThumbnail || "";
+      let finalProductId = null;
+
+      if (rawItem.productId) {
+        const dbProduct = await Product.findById(rawItem.productId);
+        if (dbProduct && !dbProduct.is_deleted) {
+          finalProductId = dbProduct._id;
+          resolvedName = dbProduct.title || dbProduct.name || resolvedName;
+          resolvedUnitPrice =
+            dbProduct.discount_price || dbProduct.price || resolvedUnitPrice;
+          thumbnail = dbProduct.thumbnail || dbProduct.image || thumbnail;
+        }
+      }
+
+      const itemQty = Math.max(1, Number(rawItem.quantity) || 1);
+
+      resolvedItems.push({
+        productId: finalProductId,
+        productName: resolvedName,
+        quantity: itemQty,
+        unitPrice: resolvedUnitPrice,
+        productThumbnail: thumbnail,
+        variantInfo: rawItem.variantInfo || "",
+        itemTotal: resolvedUnitPrice * itemQty,
+      });
+    }
+
+    if (resolvedItems.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "At least one valid item is required to create a delivery order.",
+      });
+    }
+
+    // 4. Resolve User Address and Contact Phone
     const user = await User.findById(userId);
     if (!user) {
       return res.status(404).json({ success: false, message: "User record not found." });
@@ -105,30 +131,20 @@ export const createDeliveryOrder = async (req, res) => {
       });
     }
 
-    // 4. Calculate Constant Fees from .env
+    // 5. Calculate Fees from .env
     const deliveryFee = Number(process.env.DEFAULT_DELIVERY_FEE) || 30;
     const platformFee = Number(process.env.DEFAULT_PLATFORM_FEE) || 10;
-    const totalAmount = totalItemPrice + deliveryFee + platformFee;
 
-    // 5. Construct and Save Order
+    // 6. Construct Order (pre-save hook will automatically update itemPrice & totalAmount)
     const newOrder = new DeliveryOrder({
       userId,
       merchantId,
-      productId: finalProductId,
-      productDetails: {
-        productName: resolvedProductName,
-        quantity: orderQuantity,
-        unitPrice,
-        productThumbnail: thumbnail,
-        variantInfo: variantInfo || "",
-      },
+      items: resolvedItems,
       deliveryAddress: finalAddress,
       contactPhone: finalPhone,
       note: note ? note.trim() : "",
-      itemPrice: totalItemPrice,
       deliveryFee,
       platformFee,
-      totalAmount,
       estimatedDeliveryTime: {
         value: Number(estimatedMinutes) || 30,
         unit: "minutes",
@@ -140,7 +156,7 @@ export const createDeliveryOrder = async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      message: "Delivery request submitted successfully with item details.",
+      message: "Delivery request submitted successfully.",
       data: newOrder,
     });
   } catch (error) {
@@ -169,7 +185,6 @@ export const cancelDeliveryOrder = async (req, res) => {
       return res.status(404).json({ success: false, message: "Delivery order not found." });
     }
 
-    // Strictly enforce cancellation ONLY before merchant accepts
     if (order.status !== "pending") {
       return res.status(400).json({
         success: false,
@@ -202,13 +217,13 @@ export const cancelDeliveryOrder = async (req, res) => {
 
 /**
  * PATCH /api/merchant/delivery-orders/:orderId/respond
- * Merchant accepts or declines a pending delivery request and sets estimated delivery time
+ * Merchant accepts or declines a pending delivery request
  */
 export const respondToDeliveryOrder = async (req, res) => {
   try {
     const merchantId = req.merchant._id;
     const { orderId } = req.params;
-    const { action, declineReason, estimatedMinutes, timeUnit = "minutes" } = req.body; // action: "accept" or "decline"
+    const { action, declineReason, estimatedMinutes, timeUnit = "minutes" } = req.body;
 
     if (!["accept", "decline"].includes(action)) {
       return res.status(400).json({
@@ -233,7 +248,6 @@ export const respondToDeliveryOrder = async (req, res) => {
     if (action === "accept") {
       order.status = "accepted";
 
-      // Set estimated delivery duration and calculate expected date/time
       const durationValue = Number(estimatedMinutes) || order.estimatedDeliveryTime?.value || 30;
       order.estimatedDeliveryTime = {
         value: durationValue,
@@ -270,7 +284,7 @@ export const respondToDeliveryOrder = async (req, res) => {
 
 /**
  * PATCH /api/merchant/delivery-orders/:orderId/status
- * Merchant updates delivery progress, payment status, and optional delivery time adjustment
+ * Merchant updates delivery progress and payment status
  */
 export const updateDeliveryOrderStatus = async (req, res) => {
   try {
@@ -299,7 +313,6 @@ export const updateDeliveryOrderStatus = async (req, res) => {
       order.paymentStatus = paymentStatus;
     }
 
-    // Optional ETA updates mid-fulfillment
     if (estimatedMinutes) {
       const durationValue = Number(estimatedMinutes);
       order.estimatedDeliveryTime = {
@@ -334,7 +347,7 @@ export const updateDeliveryOrderStatus = async (req, res) => {
 
 /**
  * GET /api/merchant/delivery-orders
- * Merchant fetches incoming delivery requests populated with product details
+ * Merchant fetches incoming delivery requests populated with product items
  */
 export const getMerchantDeliveryOrders = async (req, res) => {
   try {
@@ -346,7 +359,7 @@ export const getMerchantDeliveryOrders = async (req, res) => {
 
     const orders = await DeliveryOrder.find(query)
       .populate("userId", "name phone email")
-      .populate("productId", "title thumbnail category_id")
+      .populate("items.productId", "title thumbnail category_id price")
       .sort({ createdAt: -1 })
       .lean();
 
@@ -360,6 +373,127 @@ export const getMerchantDeliveryOrders = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Failed to retrieve delivery orders.",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * GET /api/delivery-orders/:orderId
+ * Fetch full details and live status of a specific delivery order
+ * Accessible by both the user who placed it or the merchant fulfilling it
+ */
+export const getDeliveryOrderById = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const userId = req.user?._id;
+    const merchantId = req.merchant?._id;
+
+    // 1. Build access query (must match either the user or the merchant)
+    const accessQuery = { _id: orderId };
+    if (userId) {
+      accessQuery.userId = userId;
+    } else if (merchantId) {
+      accessQuery.merchantId = merchantId;
+    }
+
+    // 2. Query order with populated references
+    const order = await DeliveryOrder.findOne(accessQuery)
+      .populate("userId", "name phone email")
+      .populate("merchantId", "name shop_name phone logo address")
+      .populate("items.productId", "title thumbnail category_id price")
+      .lean();
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Delivery order not found or access denied.",
+      });
+    }
+
+    // 3. Compute live status metadata for dynamic UI tracking
+    const isCompleted = order.status === "delivered";
+    const isCanceledOrDeclined = ["declined", "canceled_by_user"].includes(order.status);
+    
+    // Calculate remaining estimated delivery time in minutes if active
+    let minutesRemaining = null;
+    if (order.expectedDeliveryAt && !isCompleted && !isCanceledOrDeclined) {
+      const now = new Date();
+      const expected = new Date(order.expectedDeliveryAt);
+      const diffMs = expected.getTime() - now.getTime();
+      minutesRemaining = Math.max(0, Math.ceil(diffMs / 60000));
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        ...order,
+        trackingMeta: {
+          isCompleted,
+          isCanceledOrDeclined,
+          minutesRemaining,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Get Delivery Order By ID Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to retrieve delivery order status.",
+      error: error.message,
+    });
+  }
+};
+
+export const getDeliveryOrders = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { status } = req.query;
+
+    const query = { userId };
+    if (status) {
+      query.status = status;
+    }
+
+    const orders = await DeliveryOrder.find(query)
+      .populate("merchantId", "name shop_name phone logo address")
+      .populate("items.productId", "title thumbnail category_id price")
+      .sort({ createdAt: -1 })
+      .lean();
+
+    // Map tracking metadata across all retrieved orders
+    const formattedOrders = orders.map((order) => {
+      const isCompleted = order.status === "delivered";
+      const isCanceledOrDeclined = ["declined", "canceled_by_user"].includes(order.status);
+
+      let minutesRemaining = null;
+      if (order.expectedDeliveryAt && !isCompleted && !isCanceledOrDeclined) {
+        const now = new Date();
+        const expected = new Date(order.expectedDeliveryAt);
+        const diffMs = expected.getTime() - now.getTime();
+        minutesRemaining = Math.max(0, Math.ceil(diffMs / 60000));
+      }
+
+      return {
+        ...order,
+        trackingMeta: {
+          isCompleted,
+          isCanceledOrDeclined,
+          minutesRemaining,
+        },
+      };
+    });
+
+    return res.status(200).json({
+      success: true,
+      total: formattedOrders.length,
+      data: formattedOrders,
+    });
+  } catch (error) {
+    console.error("Get User Delivery Orders Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to retrieve user delivery orders.",
       error: error.message,
     });
   }

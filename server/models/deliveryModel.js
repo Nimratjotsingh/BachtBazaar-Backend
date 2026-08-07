@@ -1,5 +1,49 @@
 import mongoose from "mongoose";
 
+// Sub-schema for individual items within a delivery order
+const deliveryOrderItemSchema = new mongoose.Schema(
+  {
+    productId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Product",
+      default: null,
+      index: true,
+    },
+    productName: {
+      type: String,
+      required: [true, "Product name is required."],
+      trim: true,
+    },
+    quantity: {
+      type: Number,
+      required: true,
+      default: 1,
+      min: [1, "Quantity must be at least 1."],
+    },
+    unitPrice: {
+      type: Number,
+      required: true,
+      min: [0, "Unit price cannot be negative."],
+    },
+    productThumbnail: {
+      type: String,
+      default: "",
+    },
+    variantInfo: {
+      type: String,
+      default: "", // e.g., "Color: Red, Size: XL"
+      trim: true,
+    },
+    itemTotal: {
+      type: Number,
+      required: true,
+      min: [0, "Item total cannot be negative."],
+    },
+  },
+  { _id: true }
+);
+
+// Main Delivery Order Schema
 const deliveryOrderSchema = new mongoose.Schema(
   {
     orderNumber: {
@@ -21,19 +65,13 @@ const deliveryOrderSchema = new mongoose.Schema(
       index: true,
     },
 
-    // --- PRODUCT / ITEM DETAILS ---
-    productId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Product",
-      default: null,
-      index: true,
-    },
-    productDetails: {
-      productName: { type: String, required: true },
-      quantity: { type: Number, required: true, default: 1, min: 1 },
-      unitPrice: { type: Number, required: true, min: 0 },
-      productThumbnail: { type: String, default: "" },
-      variantInfo: { type: String, default: "" }, // e.g., "Color: Red, Size: XL"
+    // --- MULTIPLE PRODUCTS / ITEMS ARRAY ---
+    items: {
+      type: [deliveryOrderItemSchema],
+      validate: [
+        (val) => val.length > 0,
+        "At least one item is required in a delivery order.",
+      ],
     },
 
     // User Delivery Address Snapshot
@@ -131,6 +169,22 @@ deliveryOrderSchema.pre("validate", async function () {
   if (!this.orderNumber) {
     const randomDigits = Math.floor(100000 + Math.random() * 900000);
     this.orderNumber = `DEL-${randomDigits}`;
+  }
+});
+
+// Auto-calculate item sub-totals, sum itemPrice, and totalAmount
+deliveryOrderSchema.pre("save", async function () {
+  if (this.items && this.items.length > 0) {
+    let calculatedItemPrice = 0;
+
+    this.items.forEach((item) => {
+      item.itemTotal = item.unitPrice * item.quantity;
+      calculatedItemPrice += item.itemTotal;
+    });
+
+    this.itemPrice = calculatedItemPrice;
+    this.totalAmount =
+      calculatedItemPrice + (this.deliveryFee || 0) + (this.platformFee || 0);
   }
 });
 
