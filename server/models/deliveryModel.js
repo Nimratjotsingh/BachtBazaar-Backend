@@ -76,8 +76,8 @@ const deliveryOrderSchema = new mongoose.Schema(
 
     // User Delivery Address Snapshot
     deliveryAddress: {
-      street: { type: String, required: true },
-      city: { type: String, required: true },
+      street: { type: String },
+      city: { type: String },
       state: { type: String },
       zipCode: { type: String },
       landmark: { type: String, default: "" },
