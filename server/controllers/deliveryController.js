@@ -117,19 +117,19 @@ export const createDeliveryOrder = async (req, res) => {
     const finalAddress = deliveryAddress || user.address;
     const finalPhone = contactPhone || user.phone || user.mobile;
 
-    if (!finalAddress || !finalAddress.street || !finalAddress.city) {
-      return res.status(400).json({
-        success: false,
-        message: "Complete delivery address (street and city) is required.",
-      });
-    }
+    // if (!finalAddress || !finalAddress.street || !finalAddress.city) {
+    //   return res.status(400).json({
+    //     success: false,
+    //     message: "Complete delivery address (street and city) is required.",
+    //   });
+    // }
 
-    if (!finalPhone) {
-      return res.status(400).json({
-        success: false,
-        message: "Contact phone number is required.",
-      });
-    }
+    // if (!finalPhone) {
+    //   return res.status(400).json({
+    //     success: false,
+    //     message: "Contact phone number is required.",
+    //   });
+    // }
 
     // 5. Calculate Fees from .env
     const deliveryFee = Number(process.env.DEFAULT_DELIVERY_FEE) || 30;

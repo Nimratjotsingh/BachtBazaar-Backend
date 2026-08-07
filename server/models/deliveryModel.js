@@ -97,7 +97,6 @@ const deliveryOrderSchema = new mongoose.Schema(
     // Financial Breakdown
     itemPrice: {
       type: Number,
-      required: [true, "Total item price is required."],
       min: [0, "Item price cannot be negative."],
     },
     deliveryFee: {
@@ -112,7 +111,7 @@ const deliveryOrderSchema = new mongoose.Schema(
     },
     totalAmount: {
       type: Number,
-      required: true,
+      
     },
 
     // --- ESTIMATED DELIVERY TIME ---
