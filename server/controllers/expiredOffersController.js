@@ -108,6 +108,7 @@ export const republishOffer = async (req, res) => {
       claim_limit,
     } = req.body;
 
+    console.log(req.body)
     if (!end_date) {
       return res.status(400).json({
         success: false,
