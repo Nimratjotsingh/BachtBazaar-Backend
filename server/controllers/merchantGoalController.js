@@ -1,4 +1,4 @@
-import MerchantGoal from "../models/MerchantGoalModel.js";
+import MerchantGoal from "../models/merchantGoalModel.js";
 import Product from "../models/productModel.js";
 import Service from "../models/serviceModel.js";
 import Offer from "../models/offerModel.js";
