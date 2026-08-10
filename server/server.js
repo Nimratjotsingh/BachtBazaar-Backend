@@ -48,6 +48,11 @@ import leagueRoutes from './routes/leagueRoutes.js';
 import deliveryRoutes from './routes/deliveryRoutes.js';
 import expiredOffers from './routes/expiredOffersRoutes.js';
 import cartRoutes from './routes/cartRoutes.js';
+import coinRoutes from './routes/merchantCoinRoutes.js';
+import merchantQuestRoutes from './routes/merchantQuestRoutes.js';
+import adminQuestRoutes from './routes/adminQuestRoutes.js';
+import goalsRoutes from './routes/merchantGoalRoutes.js';
+
 
 
 dotenv.config();
@@ -131,6 +136,7 @@ app.use('/api/offer-redemption/user',offerRedemptionRoutes);
 app.use('/api/offer-redemption/merchant',offerRedemptionMerchantRoutes);
 app.use('/api/merchant/analytics',merchantAnalyticRoutes);
 
+app.use('/api/merchant/goals',goalsRoutes);
 app.use('/api/users/others',userHomeExtended);
 app.use('/api/banner-types', bannerTypeRoutes)
 app.use('/api/banner', bannerRoutes);
@@ -138,6 +144,9 @@ app.use("/api/help-articles", helpArticeRoutes);
 app.use('/api/league',leagueRoutes);
 app.use('/api/delivery',deliveryRoutes);
 app.use('/api/notifications',notificationRoutes);
+app.use('/api/coin',coinRoutes);
+app.use('/api/quests',merchantQuestRoutes);
+app.use('/api/admin/quests',adminQuestRoutes);
 
 
 app.get("/health", (req, res) => {

@@ -5,7 +5,7 @@ import OfferAnalytics from "../models/offerDailyAnalytics.js";
  * Tracks shop-specific daily metrics (Shop-level) with user logging & deduplication.
  * @param {String|ObjectId} shopId 
  * @param {String|ObjectId} merchantId 
- * @param {String} metricField - "totalViewers" | "offerClicks" | "redeems" | "footfall"
+ * @param {String} metricField - "totalViewers" | "offerClicks" | "redeems" | "footfall" | "bannerViews"
  * @param {Object|String|null} [userData=null] - { userId, offerId, redemptionCode } or userId string
  * @param {Number} [count=1] - Amount to increment
  */
@@ -29,7 +29,7 @@ export const trackDailyMetric = async (
     const updateQuery = {};
 
     if (userId) {
-      if (metricField === "totalViewers") {
+      if (metricField === "totalViewers" || metricField === "bannerViews") {
         updateQuery.$addToSet = {
           viewerUsers: { userId, viewedAt: new Date() },
         };
@@ -51,7 +51,8 @@ export const trackDailyMetric = async (
         updateQuery.$inc = { footfall: count };
       }
     } else {
-      updateQuery.$inc = { [metricField]: count };
+      const dbField = metricField === "bannerViews" ? "totalViewers" : metricField;
+      updateQuery.$inc = { [dbField]: count };
     }
 
     await MerchantDailyAnalytics.findOneAndUpdate(
@@ -67,7 +68,7 @@ export const trackDailyMetric = async (
 /**
  * Tracks merchant-level daily metrics (where shopId is null) with user logging & deduplication.
  * @param {String|ObjectId} merchantId 
- * @param {String} metricField - "totalViewers" | "offerClicks" | "redeems" | "footfall"
+ * @param {String} metricField - "totalViewers" | "offerClicks" | "redeems" | "footfall" | "bannerViews"
  * @param {Object|String|null} [userData=null] - { userId, offerId, redemptionCode } or userId string
  * @param {Number} [count=1] - Amount to increment
  */
@@ -90,7 +91,7 @@ export const trackDailyMetric2 = async (
     const updateQuery = {};
 
     if (userId) {
-      if (metricField === "totalViewers") {
+      if (metricField === "totalViewers" || metricField === "bannerViews") {
         updateQuery.$addToSet = {
           viewerUsers: { userId, viewedAt: new Date() },
         };
@@ -112,7 +113,8 @@ export const trackDailyMetric2 = async (
         updateQuery.$inc = { footfall: count };
       }
     } else {
-      updateQuery.$inc = { [metricField]: count };
+      const dbField = metricField === "bannerViews" ? "totalViewers" : metricField;
+      updateQuery.$inc = { [dbField]: count };
     }
 
     await MerchantDailyAnalytics.findOneAndUpdate(
@@ -150,7 +152,6 @@ export const trackOfferMetric = async (
 
     if (userId) {
       if (metricField === "clicks") {
-        // Use $addToSet on user clicks to prevent duplicate clicks by the same user
         updateQuery.$addToSet = {
           clickedUsers: { userId, clickedAt: new Date() },
         };
@@ -182,5 +183,60 @@ export const trackOfferMetric = async (
     );
   } catch (error) {
     console.error(`Failed to track offer metric [${metricField}]:`, error.message);
+  }
+};
+
+/**
+ * Helper to execute full tracking across Merchant, Shop, and Offer Analytics simultaneously.
+ * @param {Object} params
+ * @param {String|ObjectId} params.merchantId
+ * @param {String|ObjectId} [params.shopId=null]
+ * @param {String|ObjectId} [params.offerId=null]
+ * @param {String} params.metric - "view" | "click" | "redeem" | "claim" | "footfall"
+ * @param {Object|String|null} [params.userData=null]
+ */
+export const trackFullAnalytics = async ({
+  merchantId,
+  shopId = null,
+  offerId = null,
+  metric,
+  userData = null,
+}) => {
+  try {
+    const promises = [];
+
+    // Map metric shorthand to field names
+    const dailyMetricMap = {
+      view: "totalViewers",
+      click: "offerClicks",
+      redeem: "redeems",
+      footfall: "footfall",
+    };
+
+    const offerMetricMap = {
+      click: "clicks",
+      redeem: "redeems",
+      claim: "claims",
+      footfall: "footfall",
+    };
+
+    // 1. Track Merchant level
+    if (dailyMetricMap[metric]) {
+      promises.push(trackDailyMetric2(merchantId, dailyMetricMap[metric], userData));
+    }
+
+    // 2. Track Shop level if shopId exists
+    if (shopId && dailyMetricMap[metric]) {
+      promises.push(trackDailyMetric(shopId, merchantId, dailyMetricMap[metric], userData));
+    }
+
+    // 3. Track Offer level if offerId exists
+    if (offerId && offerMetricMap[metric]) {
+      promises.push(trackOfferMetric(offerId, merchantId, offerMetricMap[metric], userData));
+    }
+
+    await Promise.all(promises);
+  } catch (error) {
+    console.error("Failed to execute full analytics tracking:", error.message);
   }
 };

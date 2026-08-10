@@ -26,6 +26,7 @@ import AdminHelpArticleManagement from "./pages/AdminHelpArticleManagement/Admin
 import AdminLeagueManagement from "./pages/AdminLeague/AdminLeague";
 import AdminTaskManagement from "./pages/TaskManagement/TaskManagement";
 import AdminNotificationCenter from "./pages/Notification/Notification";
+import AdminQuestManagement from "./pages/Quests/Quest";
 
 const TOKEN_STORAGE_KEY = "bb_admin_token";
 const gmaps_key = import.meta.env.VITE_API_GMAPS_KEY;
@@ -103,6 +104,7 @@ function App() {
         <Route path="league" element={<AdminLeagueManagement token={token}/>}/>
         <Route path="task-management" element={<AdminTaskManagement token={token}/>}/>
         <Route path="notifications" element={<AdminNotificationCenter token={token}/>}/>
+        <Route path="quest" element={<AdminQuestManagement token={token}/>}/>
       </Route>
 
       {/* 🔁 Fallback Catch-All for unknown URLs */}

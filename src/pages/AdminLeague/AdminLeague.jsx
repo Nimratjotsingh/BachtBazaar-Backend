@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   Plus, Edit3, Trash2, Search, Save, Loader2, ArrowLeft, Check, X,
-  Trophy, RefreshCw, Image as ImageIcon, Shield, Award, Sparkles, Layers
+  Trophy, RefreshCw, Image as ImageIcon, Shield, Award, Sparkles, Layers, Coins
 } from "lucide-react";
 import { accountClient, buildAuthHeaders } from "../../lib/api";
 
@@ -33,6 +33,8 @@ const AdminLeagueManagement = ({ token }) => {
     name: "",
     tierRank: 1,
     minPointsRequired: 0,
+    rewardCoins: 0,
+    validityDaysOverride: "",
     themeColor: "#3B82F6",
     description: "",
     cycleType: "monthly",
@@ -93,6 +95,12 @@ const AdminLeagueManagement = ({ token }) => {
       multipartBody.append("name", formData.name.trim());
       multipartBody.append("tierRank", Number(formData.tierRank));
       multipartBody.append("minPointsRequired", Number(formData.minPointsRequired));
+      multipartBody.append("rewardCoins", Number(formData.rewardCoins));
+      
+      if (formData.validityDaysOverride) {
+        multipartBody.append("validityDaysOverride", Number(formData.validityDaysOverride));
+      }
+      
       multipartBody.append("themeColor", formData.themeColor);
       multipartBody.append("description", formData.description.trim());
       multipartBody.append("cycleType", formData.cycleType);
@@ -145,6 +153,8 @@ const AdminLeagueManagement = ({ token }) => {
       name: "",
       tierRank: leagues.length + 1,
       minPointsRequired: 0,
+      rewardCoins: 0,
+      validityDaysOverride: "",
       themeColor: "#3B82F6",
       description: "",
       cycleType: "monthly",
@@ -250,6 +260,43 @@ const AdminLeagueManagement = ({ token }) => {
                     onChange={(e) => setFormData({ ...formData, themeColor: e.target.value })}
                   />
                 </div>
+              </div>
+            </div>
+
+            {/* Bachat Coins Reward & Validity Override */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-amber-50/50 rounded-2xl border border-amber-200/60">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black text-amber-600 uppercase tracking-widest flex items-center gap-1.5">
+                  <Coins size={14} /> Reward Bachat Coins
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  className="w-full px-4 py-3 bg-white border border-amber-200 rounded-xl text-xs font-bold font-mono text-slate-800 outline-none focus:ring-2 focus:ring-amber-500/20 transition-all"
+                  value={formData.rewardCoins}
+                  onChange={(e) => setFormData({ ...formData, rewardCoins: e.target.value })}
+                  placeholder="e.g. 250"
+                />
+                <p className="text-[10px] text-amber-600/80 font-medium">
+                  Coins rewarded upon reaching or unlocking this league.
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black text-amber-600 uppercase tracking-widest block">
+                  Coin Expiry (Days) Override
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  className="w-full px-4 py-3 bg-white border border-amber-200 rounded-xl text-xs font-bold font-mono text-slate-800 outline-none focus:ring-2 focus:ring-amber-500/20 transition-all"
+                  value={formData.validityDaysOverride}
+                  onChange={(e) => setFormData({ ...formData, validityDaysOverride: e.target.value })}
+                  placeholder="Default Global Setting (e.g. 60)"
+                />
+                <p className="text-[10px] text-amber-600/80 font-medium">
+                  Leave blank to use global admin coin validity settings.
+                </p>
               </div>
             </div>
 
@@ -413,7 +460,7 @@ const AdminLeagueManagement = ({ token }) => {
             <Trophy className="text-blue-600 w-8 h-8" /> Merchant Gamification Leagues
           </h1>
           <p className="text-slate-500 text-sm mt-0.5">
-            Configure competitive tier ranks, point thresholds, and badge graphics
+            Configure competitive tier ranks, point thresholds, Bachat Coins rewards, and badge graphics
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -459,6 +506,7 @@ const AdminLeagueManagement = ({ token }) => {
                 <th className="px-6 py-4">Hierarchy Rank</th>
                 <th className="px-6 py-4">League Tier & Badge</th>
                 <th className="px-6 py-4">Points Requirement</th>
+                <th className="px-6 py-4">Coin Reward</th>
                 <th className="px-6 py-4">Cycle Timeframe</th>
                 <th className="px-6 py-4">Merchant Perks</th>
                 <th className="px-6 py-4 text-right">Actions</th>
@@ -467,7 +515,7 @@ const AdminLeagueManagement = ({ token }) => {
             <tbody className="divide-y divide-slate-50 text-xs font-semibold text-slate-700">
               {loading ? (
                 <tr>
-                  <td colSpan="6" className="py-24 text-center">
+                  <td colSpan="7" className="py-24 text-center">
                     <Loader2 className="animate-spin text-blue-500 inline-block mb-2" size={32} />
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">
                       Streaming League Hierarchy...
@@ -477,7 +525,7 @@ const AdminLeagueManagement = ({ token }) => {
               ) : filteredData.length === 0 ? (
                 <tr>
                   <td
-                    colSpan="6"
+                    colSpan="7"
                     className="py-20 text-center font-bold text-slate-400 bg-slate-50/20 italic text-xs uppercase tracking-wider"
                   >
                     No league tiers configured in system database.
@@ -525,6 +573,18 @@ const AdminLeagueManagement = ({ token }) => {
                     </td>
 
                     <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center gap-1.5 font-mono text-xs font-bold text-amber-600 bg-amber-50 px-3 py-1 rounded-lg border border-amber-200/60 w-fit">
+                        <Coins size={14} />
+                        {league.rewardCoins || 0}
+                        {league.validityDaysOverride && (
+                          <span className="text-[9px] text-amber-500 font-sans font-normal">
+                            ({league.validityDaysOverride}d)
+                          </span>
+                        )}
+                      </div>
+                    </td>
+
+                    <td className="px-6 py-4 whitespace-nowrap">
                       <span className="capitalize font-bold text-[10px] px-2.5 py-1 rounded-xl bg-blue-50 text-blue-600 border border-blue-100">
                         {league.cycleType?.replace(/_/g, " ")}
                       </span>
@@ -561,6 +621,8 @@ const AdminLeagueManagement = ({ token }) => {
                             name: league.name,
                             tierRank: league.tierRank,
                             minPointsRequired: league.minPointsRequired,
+                            rewardCoins: league.rewardCoins || 0,
+                            validityDaysOverride: league.validityDaysOverride || "",
                             themeColor: league.themeColor || "#3B82F6",
                             description: league.description || "",
                             cycleType: league.cycleType || "monthly",

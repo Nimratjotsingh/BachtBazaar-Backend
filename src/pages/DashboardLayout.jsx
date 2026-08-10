@@ -18,7 +18,8 @@ import {
   Building2Icon,
   FileQuestion,
   FlagTriangleLeft,
-  FlagTriangleRight
+  FlagTriangleRight,
+  Coins
 } from "lucide-react";
 
 const navItems = [
@@ -43,6 +44,7 @@ const navItems = [
     { label: "League", to: "/dashboard/league", icon: FlagTriangleLeft },
     { label: "TaskManagement", to: "/dashboard/task-management", icon: FlagTriangleRight },
     { label: "Notifications", to: "/dashboard/notifications", icon: FlagTriangleRight },
+    { label: "Quest", to: "/dashboard/quest", icon: Coins },
   
 ];
 

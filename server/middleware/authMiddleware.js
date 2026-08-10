@@ -1,7 +1,8 @@
 import jwt from "jsonwebtoken";
 import Merchant from "../models/merchantModel.js";
-import User from "../models/userModel.js"
+import User from "../models/userModel.js";
 import { ACCOUNT_TYPES, ROLES } from "../constants/roles.js";
+import { recordMerchantLogin } from "../utils/streakHelper.js";
 
 const extractBearerToken = (req) => {
   if (req.headers.authorization && req.headers.authorization.startsWith("Bearer")) {
@@ -15,7 +16,7 @@ const verifyJwt = (token) => jwt.verify(token, process.env.JWT_SECRET);
 const buildAuthContext = (account, accountType) => ({
   id: account._id,
   role: account.role,
-  accountType
+  accountType,
 });
 
 export const protectUser = async (req, res, next) => {
@@ -26,49 +27,52 @@ export const protectUser = async (req, res, next) => {
 
   try {
     const decoded = verifyJwt(token);
-   
 
     const user = await User.findById(decoded.id).select("-password");
     if (!user) {
       return res.status(401).json({ message: "Not authorized" });
     }
 
-    
     req.user = user;
-    
+
     return next();
   } catch (error) {
     return res.status(401).json({ message: "Not authorized" });
   }
 };
 
-
 export const protectMerchant = async (req, res, next) => {
   const token = extractBearerToken(req);
-  
+
   if (!token) {
     return res.status(401).json({ message: "No token" });
   }
 
   try {
-    
     const decoded = verifyJwt(token);
-    console.log(decoded)
+
     if (decoded.accountType && decoded.accountType !== ACCOUNT_TYPES.MERCHANT) {
       return res.status(403).json({ message: "Forbidden: invalid account type" });
     }
 
     const merchant = await Merchant.findById(decoded.id).select("-password");
-    console.log(merchant)
+
     if (!merchant) {
       return res.status(401).json({ message: "Not authorized" });
     }
 
     req.merchant = merchant;
     req.auth = buildAuthContext(merchant, ACCOUNT_TYPES.MERCHANT);
+
+    // --- AUTOMATIC DAILY STREAK CHECK ---
+    // Runs asynchronously so API response time is unaffected
+    recordMerchantLogin(merchant._id).catch((err) =>
+      console.error("Streak Auto-Check Error:", err)
+    );
+
     return next();
   } catch (error) {
-    console.log(error)
+    console.error("protectMerchant Auth Error:", error);
     return res.status(401).json({ message: "Not authorized" });
   }
 };
@@ -104,8 +108,14 @@ export const protectAny = async (req, res, next) => {
     if (accountType === ACCOUNT_TYPES.USER) {
       req.user = account;
     }
+
     if (accountType === ACCOUNT_TYPES.MERCHANT) {
       req.merchant = account;
+
+      // --- AUTOMATIC DAILY STREAK CHECK (WHEN MERCHANT USES SHARED ROUTES) ---
+      recordMerchantLogin(account._id).catch((err) =>
+        console.error("Streak Auto-Check Error:", err)
+      );
     }
 
     req.auth = buildAuthContext(account, accountType);

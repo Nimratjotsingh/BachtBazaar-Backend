@@ -16,7 +16,7 @@ const taskSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "League",
       required: true,
-      index: true, // Links this task to a specific league tier
+      index: true, 
     },
     metricType: {
       type: String,
@@ -27,10 +27,22 @@ const taskSchema = new mongoose.Schema(
         "CLAIMS_HANDLED",
         "REDEMPTIONS_COMPLETED",
         "STORE_VIEWS",
+        "LOGIN_STREAK",   
+        "TOTAL_LOGINS",
+        "BANNER_VIEWS",           
+        "CUSTOMER_VISITS",        
+        "NEW_CUSTOMERS",          
+        "REPEAT_CUSTOMERS",
       ],
       required: true,
       index: true,
     },
+    // Add this field to both TaskSchema and MerchantQuestSchema
+      offerTypeConstraint: {
+        type: String,
+        enum: ["ALL", "BANNER", "CALENDAR"],
+        default: "ALL",
+      },
     targetValue: {
       type: Number,
       required: [true, "Target value milestone is required."],
@@ -60,6 +72,8 @@ const taskSchema = new mongoose.Schema(
       ref: "Admin",
       required: true,
     },
+    rewardCoins: { type: Number, required: true },
+  validityDaysOverride: { type: Number, default: null }
   },
   { timestamps: true }
 );

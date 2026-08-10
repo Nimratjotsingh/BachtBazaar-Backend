@@ -52,10 +52,15 @@ const merchantProgressSchema = new mongoose.Schema(
       index: true,
     },
     taskProgress: [taskProgressSchema],
+    currentCycleEndDate: { type: Date, default: null },
     lastPromotedAt: {
       type: Date,
       default: Date.now,
     },
+    currentLoginStreak: { type: Number, default: 0 },
+    longestLoginStreak: { type: Number, default: 0 },
+    totalLogins: { type: Number, default: 0 },
+    lastLoginDate: { type: Date, default: null },
   },
   { timestamps: true }
 );

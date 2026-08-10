@@ -56,6 +56,8 @@ const leagueSchema = new mongoose.Schema(
       default: true,
       index: true,
     },
+    rewardCoins: { type: Number, required: true },
+  validityDaysOverride: { type: Number, default: null },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Admin",

@@ -1,6 +1,134 @@
 import MerchantDailyAnalytics from "../models/MerchantDailyAnalytics.js";
 import Offer from "../models/offerModel.js";
 import OfferAnalytics from "../models/offerDailyAnalytics.js";
+import OfferRedemption from "../models/offerRedemptionModel.js";
+
+/**
+ * Helper / Endpoint: Aggregates advanced stats for merchant summary
+ * Returns banner views, repeat customers, customer visits, new customers,
+ * highest redemption day, and top claimed offer for a given timeframe.
+ */
+export const getMerchantStatsOverview = async (merchantId, startDate = null) => {
+  try {
+    const cycleStartDate = startDate || new Date(new Date().getFullYear(), new Date().getMonth(), 1, 0, 0, 0, 0);
+
+    // 1. BANNER VIEWS (Sum of totalViewers from MerchantDailyAnalytics within timeframe)
+    const bannerViewsResult = await MerchantDailyAnalytics.aggregate([
+      { $match: { merchantId, date: { $gte: cycleStartDate } } },
+      { $group: { _id: null, totalViews: { $sum: "$totalViewers" } } },
+    ]);
+    const bannerViewsCount = bannerViewsResult[0]?.totalViews || 0;
+
+    // 2. NEW CUSTOMERS vs REPEAT CUSTOMERS
+    const customerRedemptions = await MerchantDailyAnalytics.aggregate([
+      { $match: { merchantId, date: { $gte: cycleStartDate } } },
+      { $unwind: "$redeemedUsers" },
+      {
+        $group: {
+          _id: "$redeemedUsers.userId",
+          redemptionCount: { $sum: 1 },
+        },
+      },
+    ]);
+
+    let newCustomersCount = 0;
+    let repeatCustomersCount = 0;
+
+    customerRedemptions.forEach((user) => {
+      if (user.redemptionCount === 1) newCustomersCount++;
+      else if (user.redemptionCount > 1) repeatCustomersCount++;
+    });
+
+    // 3. CUSTOMER VISITS (Unique visitors across viewerUsers and footfallUsers)
+    const customerVisitsResult = await MerchantDailyAnalytics.aggregate([
+      { $match: { merchantId, date: { $gte: cycleStartDate } } },
+      {
+        $project: {
+          allUsers: {
+            $concatArrays: [
+              { $ifNull: ["$viewerUsers.userId", []] },
+              { $ifNull: ["$footfallUsers.userId", []] },
+            ],
+          },
+        },
+      },
+      { $unwind: "$allUsers" },
+      { $group: { _id: "$allUsers" } },
+      { $count: "totalUniqueVisitors" },
+    ]);
+    const customerVisitsCount = customerVisitsResult[0]?.totalUniqueVisitors || 0;
+
+    // 4. HIGHEST OFFER REDEMPTION DAY
+    const highestRedemptionDayResult = await MerchantDailyAnalytics.aggregate([
+      { $match: { merchantId, date: { $gte: cycleStartDate } } },
+      {
+        $project: {
+          date: 1,
+          totalRedeems: { $size: { $ifNull: ["$redeemedUsers", []] } },
+        },
+      },
+      { $sort: { totalRedeems: -1 } },
+      { $limit: 1 },
+    ]);
+
+    const highestRedemptionDay = highestRedemptionDayResult[0]
+      ? {
+          date: highestRedemptionDayResult[0].date,
+          count: highestRedemptionDayResult[0].totalRedeems,
+        }
+      : { date: null, count: 0 };
+
+    // 5. BEST OFFER / HIGHEST CLAIMED OFFER (From OfferAnalytics)
+    const topClaimedOfferResult = await OfferAnalytics.aggregate([
+      { $match: { merchantId } },
+      {
+        $project: {
+          offerId: 1,
+          totalClaims: { $size: { $ifNull: ["$claimedUsers", []] } },
+          totalRedeems: { $size: { $ifNull: ["$redeemedUsers", []] } },
+        },
+      },
+      { $sort: { totalClaims: -1, totalRedeems: -1 } },
+      { $limit: 1 },
+    ]);
+
+    let highestClaimedOffer = null;
+    if (topClaimedOfferResult.length > 0) {
+      const topOfferDoc = await Offer.findById(topClaimedOfferResult[0].offerId)
+        .select("title thumbnail display_type")
+        .lean();
+
+      if (topOfferDoc) {
+        highestClaimedOffer = {
+          offerId: topOfferDoc._id,
+          title: topOfferDoc.title,
+          displayType: topOfferDoc.display_type,
+          claimsCount: topClaimedOfferResult[0].totalClaims,
+          redeemsCount: topClaimedOfferResult[0].totalRedeems,
+        };
+      }
+    }
+
+    return {
+      BANNER_VIEWS: bannerViewsCount,
+      CUSTOMER_VISITS: customerVisitsCount,
+      NEW_CUSTOMERS: newCustomersCount,
+      REPEAT_CUSTOMERS: repeatCustomersCount,
+      HIGHEST_REDEMPTION_DAY: highestRedemptionDay,
+      HIGHEST_CLAIMED_OFFER: highestClaimedOffer,
+    };
+  } catch (error) {
+    console.error("Get Merchant Stats Overview Error:", error);
+    return {
+      BANNER_VIEWS: 0,
+      CUSTOMER_VISITS: 0,
+      NEW_CUSTOMERS: 0,
+      REPEAT_CUSTOMERS: 0,
+      HIGHEST_REDEMPTION_DAY: { date: null, count: 0 },
+      HIGHEST_CLAIMED_OFFER: null,
+    };
+  }
+};
 
 /**
  * GET /api/merchant/analytics/dashboard
@@ -112,6 +240,9 @@ export const getMerchantDailyAnalytics = async (req, res) => {
       ? ((summaryTotals.footfall / summaryTotals.redeems) * 100).toFixed(1) + "%"
       : "0%";
 
+    // Get calculated merchant stats overview
+    const merchantStatsOverview = await getMerchantStatsOverview(merchantId, startDate);
+
     return res.status(200).json({
       success: true,
       timeframeDays,
@@ -120,7 +251,8 @@ export const getMerchantDailyAnalytics = async (req, res) => {
         conversionRates: {
           clickToRedeem: clickToRedeemRate,
           redeemToClaimFootfall: redeemToClaimFootfallRate
-        }
+        },
+        merchantStatsOverview,
       },
       dailyBreakdown: formattedLogs
     });
@@ -296,6 +428,185 @@ export const getOfferAnalytics = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Failed to retrieve offer analytics.",
+      error: error.message,
+    });
+  }
+};
+
+const getTimeframeBounds = (days = 7, startDateParam = null, endDateParam = null) => {
+  const end = endDateParam ? new Date(endDateParam) : new Date();
+  let start;
+
+  if (startDateParam) {
+    start = new Date(startDateParam);
+  } else {
+    const timeframeDays = Math.max(1, Number(days));
+    start = new Date();
+    start.setDate(start.getDate() - (timeframeDays - 1));
+  }
+
+  start.setHours(0, 0, 0, 0);
+  end.setHours(23, 59, 59, 999);
+
+  return { start, end };
+};
+
+/**
+ * GET /api/merchant/analytics/top-offers
+ * Query Params: ?days=7 (or 30, 90) | ?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD | ?limit=5
+ * Returns the highest claimed and redeemed offers in a given time frame.
+ */
+export const getTopPerformingOffers = async (req, res) => {
+  try {
+    const merchantId = req.merchant._id;
+    const { days = 7, startDate, endDate, limit = 5 } = req.query;
+
+    const { start, end } = getTimeframeBounds(days, startDate, endDate);
+    const resultLimit = Math.max(1, Number(limit));
+
+    // 1. Aggregate Top Claimed & Redeemed Offers from OfferRedemption collection
+    const redemptionAggregation = await OfferRedemption.aggregate([
+      {
+        $match: {
+          merchantId,
+          createdAt: { $gte: start, $lte: end },
+        },
+      },
+      {
+        $group: {
+          _id: "$offerId",
+          claimsCount: { $sum: 1 },
+          redemptionsCount: {
+            $sum: {
+              $cond: [{ $eq: ["$status", "redeemed"] }, 1, 0],
+            },
+          },
+        },
+      },
+      { $sort: { claimsCount: -1, redemptionsCount: -1 } },
+      { $limit: resultLimit },
+    ]);
+
+    // 2. Fallback to OfferAnalytics if OfferRedemption has no matching records
+    let topOfferStats = redemptionAggregation;
+
+    if (topOfferStats.length === 0) {
+      topOfferStats = await OfferAnalytics.aggregate([
+        { $match: { merchantId } },
+        {
+          $project: {
+            _id: "$offerId",
+            claimsCount: { $size: { $ifNull: ["$claimedUsers", []] } },
+            redemptionsCount: { $size: { $ifNull: ["$redeemedUsers", []] } },
+          },
+        },
+        { $sort: { claimsCount: -1, redemptionsCount: -1 } },
+        { $limit: resultLimit },
+      ]);
+    }
+
+    // 3. Populate Offer metadata
+    const offerIds = topOfferStats.map((item) => item._id);
+    const offerDocs = await Offer.find({ _id: { $in: offerIds }, is_deleted: false })
+      .select("title display_type thumbnail discount_percentage discount_value claim_limit is_active")
+      .lean();
+
+    const offerMap = new Map(offerDocs.map((o) => [o._id.toString(), o]));
+
+    const rankedOffers = topOfferStats
+      .map((item) => {
+        const offer = offerMap.get(item._id.toString());
+        if (!offer) return null;
+
+        const claims = item.claimsCount || 0;
+        const redeems = item.redemptionsCount || 0;
+        const conversionRate = claims > 0 ? ((redeems / claims) * 100).toFixed(1) + "%" : "0%";
+
+        return {
+          offerId: offer._id,
+          title: offer.title,
+          displayType: offer.display_type,
+          thumbnail: offer.thumbnail,
+          claimLimit: offer.claim_limit ?? "Unlimited",
+          isActive: offer.is_active,
+          metrics: {
+            claimsCount: claims,
+            redemptionsCount: redeems,
+            conversionRate,
+          },
+        };
+      })
+      .filter(Boolean);
+
+    // 4. Highlight the absolute #1 Offer
+    const highestPerformanceOffer = rankedOffers.length > 0 ? rankedOffers[0] : null;
+
+    return res.status(200).json({
+      success: true,
+      timeframe: {
+        startDate: start,
+        endDate: end,
+      },
+      summary: {
+        totalTopOffersEvaluated: rankedOffers.length,
+        highestClaimedOffer: highestPerformanceOffer,
+      },
+      topOffers: rankedOffers,
+    });
+  } catch (error) {
+    console.error("Get Top Performing Offers Controller Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to retrieve top-performing offers.",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * GET /api/merchant/analytics/highest-redemption-day
+ * Query Params: ?days=30 | ?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
+ * Returns the single date with the highest redemption volume in the requested timeframe.
+ */
+export const getHighestRedemptionDay = async (req, res) => {
+  try {
+    const merchantId = req.merchant._id;
+    const { days = 30, startDate, endDate } = req.query;
+
+    const { start, end } = getTimeframeBounds(days, startDate, endDate);
+
+    const highestDayResult = await OfferRedemption.aggregate([
+      {
+        $match: {
+          merchantId,
+          status: "redeemed",
+          updatedAt: { $gte: start, $lte: end },
+        },
+      },
+      {
+        $group: {
+          _id: { $dateToString: { format: "%Y-%m-%d", date: "$updatedAt" } },
+          totalRedemptions: { $sum: 1 },
+        },
+      },
+      { $sort: { totalRedemptions: -1 } },
+      { $limit: 1 },
+    ]);
+
+    const highestDay = highestDayResult[0]
+      ? { date: highestDayResult[0]._id, redemptionsCount: highestDayResult[0].totalRedemptions }
+      : { date: null, redemptionsCount: 0 };
+
+    return res.status(200).json({
+      success: true,
+      timeframe: { startDate: start, endDate: end },
+      highestRedemptionDay: highestDay,
+    });
+  } catch (error) {
+    console.error("Get Highest Redemption Day Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to calculate highest redemption day.",
       error: error.message,
     });
   }

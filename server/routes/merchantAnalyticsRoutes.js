@@ -1,8 +1,10 @@
 import express from "express";
 import { 
+  getHighestRedemptionDay,
   getMerchantDailyAnalytics, 
   getMerchantOffersAnalyticsBreakdown, 
-  getOfferAnalytics
+  getOfferAnalytics,
+  getTopPerformingOffers
 } from "../controllers/merchantAnalyticsController.js";
 import { protectMerchant } from "../middleware/authMiddleware.js";
 
@@ -14,6 +16,12 @@ router.get("/", protectMerchant, getMerchantDailyAnalytics);
 // GET /api/merchant/analytics/offers-breakdown
 router.get("/offers-breakdown", protectMerchant, getMerchantOffersAnalyticsBreakdown);
 
+router.get('/offers/top-performing',protectMerchant, getTopPerformingOffers);
+
+router.get('/offers/highest-redemption',protectMerchant,getHighestRedemptionDay);
+
 router.get("/offers/:offerId", protectMerchant, getOfferAnalytics);
+
+
 
 export default router;
