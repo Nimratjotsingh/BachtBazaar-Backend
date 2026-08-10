@@ -52,7 +52,7 @@ import coinRoutes from './routes/merchantCoinRoutes.js';
 import merchantQuestRoutes from './routes/merchantQuestRoutes.js';
 import adminQuestRoutes from './routes/adminQuestRoutes.js';
 import goalsRoutes from './routes/merchantGoalRoutes.js';
-
+import helpRoutes from './routes/helpTicketRoutes.js';
 
 
 dotenv.config();
@@ -147,7 +147,7 @@ app.use('/api/notifications',notificationRoutes);
 app.use('/api/coin',coinRoutes);
 app.use('/api/quests',merchantQuestRoutes);
 app.use('/api/admin/quests',adminQuestRoutes);
-
+app.use('/api/help',helpRoutes);
 
 app.get("/health", (req, res) => {
   res.json({ message: "Server is healthy!" });

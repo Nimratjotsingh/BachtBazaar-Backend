@@ -45,6 +45,7 @@ const navItems = [
     { label: "TaskManagement", to: "/dashboard/task-management", icon: FlagTriangleRight },
     { label: "Notifications", to: "/dashboard/notifications", icon: FlagTriangleRight },
     { label: "Quest", to: "/dashboard/quest", icon: Coins },
+    { label: "Help & Support", to: "/dashboard/help-support", icon: Coins },
   
 ];
 
