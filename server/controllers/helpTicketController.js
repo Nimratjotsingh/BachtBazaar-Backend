@@ -297,7 +297,6 @@ export const getAllHelpTicketsAdmin = async (req, res) => {
 
     const tickets = await HelpTicket.find(query)
       .populate("requesterId", "name email phone storeName profileImage")
-      .populate("assignedAdminId", "name email")
       .sort({ updatedAt: -1 })
       .lean();
 
