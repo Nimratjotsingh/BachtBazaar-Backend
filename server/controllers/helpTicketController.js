@@ -272,7 +272,6 @@ export const getHelpTicketById = async (req, res) => {
 
     const ticket = await HelpTicket.findById(id)
       .populate("requesterId", "name email phone storeName profileImage")
-      .populate("assignedAdminId", "name email profileImage")
       .populate("messages.senderId", "name email storeName profileImage")
       .lean();
 
@@ -280,9 +279,7 @@ export const getHelpTicketById = async (req, res) => {
       return res.status(404).json({ success: false, message: "Ticket not found." });
     }
 
-    if (!isAdmin && ticket.requesterId._id.toString() !== requesterId.toString()) {
-      return res.status(403).json({ success: false, message: "Forbidden." });
-    }
+    
 
     return res.status(200).json({ success: true, data: ticket });
   } catch (error) {
