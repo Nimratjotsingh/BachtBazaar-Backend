@@ -213,7 +213,6 @@ export const replyToTicketByAdmin = async (req, res) => {
 
     const updatedTicket = await HelpTicket.findById(id)
       .populate("requesterId", "name email phone storeName profileImage")
-      .populate("assignedAdminId", "name email")
       .populate("messages.senderId", "name email storeName profileImage")
       .lean();
 
