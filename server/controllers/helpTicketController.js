@@ -271,10 +271,6 @@ export const getHelpTicketById = async (req, res) => {
     const isAdmin = !!(req.admin || req.user?.isAdmin);
 
     const ticket = await HelpTicket.findById(id)
-      .populate("requesterId", "name email phone storeName profileImage")
-      .populate("messages.senderId", "name email storeName profileImage")
-      .lean();
-
     if (!ticket) {
       return res.status(404).json({ success: false, message: "Ticket not found." });
     }
