@@ -97,13 +97,13 @@ const helpTicketSchema = new mongoose.Schema(
 );
 
 // Pre-save hook for clean human-readable ticket ID
-helpTicketSchema.pre("save", function (next) {
+helpTicketSchema.pre("save", function () {
   if (this.isNew && !this.ticketId) {
     const randomString = Math.random().toString(36).substring(2, 8).toUpperCase();
     const prefix = this.requesterType === "Merchant" ? "M" : "U";
     this.ticketId = `TKT-${prefix}-${randomString}`;
   }
-  next();
+  
 });
 
 helpTicketSchema.index({ status: 1, priority: -1, createdAt: -1 });
