@@ -246,7 +246,6 @@ export const getMyHelpTickets = async (req, res) => {
     }
 
     const tickets = await HelpTicket.find({ requesterId, requesterType })
-      .populate("assignedAdminId", "name email")
       .sort({ updatedAt: -1 })
       .lean();
 

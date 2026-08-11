@@ -79,11 +79,7 @@ const helpTicketSchema = new mongoose.Schema(
       default: "Open",
       index: true,
     },
-    assignedAdminId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Admin",
-      default: null,
-    },
+    
 
     // --- THREADED MESSAGES ARRAY ---
     messages: [ticketMessageSchema],
