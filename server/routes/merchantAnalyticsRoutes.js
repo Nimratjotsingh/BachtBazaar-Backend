@@ -8,6 +8,7 @@ import {
 } from "../controllers/merchantAnalyticsController.js";
 import { protectMerchant } from "../middleware/authMiddleware.js";
 
+
 const router = express.Router();
 
 // GET /api/merchant/analytics/dashboard?days=7
