@@ -1,6 +1,7 @@
 import Product from "../models/productModel.js";
 import { validate } from "../validators/validate.js"; 
 import { productSchema } from "../validators/productValidator.js";
+import Wishlist from "../models/wishlistModel.js";
 
 // ==========================================
 // MERCHANT ACTIONS
@@ -261,50 +262,50 @@ export const getProduct = async (req, res) => {
 export const updateProduct = async (req, res) => {
   try {
     const { id } = req.params;
-    let updates = { ...req.body };
-    
+    const { price, ...otherUpdates } = req.body;
 
-    if (req.files && req.files.thumbnail) {
-      updates.thumbnail = `/uploads/${req.files.thumbnail[0].filename}`;
+    const existingProduct = await Product.findById(id);
+    if (!existingProduct) {
+      return res.status(404).json({ success: false, message: "Product not found." });
     }
 
-    if (req.files && req.files.images) {
-      updates.images = req.files.images.map(file => `/uploads/${file.filename}`);
+    const oldPrice = Number(existingProduct.price);
+    const newPrice = price !== undefined ? Number(price) : oldPrice;
+
+    // Detect if price was reduced
+    const isPriceReduced = newPrice < oldPrice;
+
+    // Save update in DB
+    existingProduct.price = newPrice;
+    Object.assign(existingProduct, otherUpdates);
+    await existingProduct.save();
+
+    // Trigger device push notification if price dropped
+    if (isPriceReduced) {
+      const wishlistEntries = await Wishlist.find({ productId: id }).select("userId").lean();
+      const userIds = wishlistEntries.map((entry) => entry.userId);
+
+      if (userIds.length > 0) {
+        // Send notification asynchronously in the background
+        sendPriceDropPushNotification({
+          productId: existingProduct._id,
+          productTitle: existingProduct.title,
+          oldPrice,
+          newPrice,
+          wishlistedUserIds: userIds,
+        }).catch((err) => console.error("Push Notification Background Error:", err));
+      }
     }
 
-    if (updates.category_id && typeof updates.category_id === 'string') {
-        updates.category_id = [updates.category_id];
-    }
-    if (updates.subcategory_id && typeof updates.subcategory_id === 'string') {
-        updates.subcategory_id = [updates.subcategory_id];
-    }
-
-
-    // CRITICAL SECURITY FLUX: Reset status to pending upon modifications
-    updates.approval_status = "pending";
-    updates.approved_by = null;
-    updates.approval_date = null;
-
-    const product = await Product.findOneAndUpdate(
-      { _id: id, merchant_id: req.merchant._id, is_deleted: false },
-      { $set: updates },
-      { new: true, runValidators: true }
-    );
-
-    if (!product) {
-      return res.status(404).json({ 
-        success: false, 
-        message: "Product not found or unauthorized to edit" 
-      });
-    }
-
-    res.json({ 
-      success: true, 
-      message: "Product updated successfully and resubmitted for admin review", 
-      product 
+    return res.status(200).json({
+      success: true,
+      message: "Product updated successfully.",
+      data: existingProduct,
+      priceDropDetected: isPriceReduced,
     });
   } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
+    console.error("Update Product Error:", error);
+    return res.status(500).json({ success: false, message: error.message });
   }
 };
 
