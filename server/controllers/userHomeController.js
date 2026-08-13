@@ -273,68 +273,116 @@ export const getShopDetails = async (req, res) => {
 // ====================================================================
 // --- Global Unified Search Controller (Shops, Products & Services) ---
 // ====================================================================
+
+
+// Haversine Distance Helper Function
+
+
+const calculateHaversineDistance = (lat1, lon1, lat2, lng2) => {
+  if (!lat1 || !lon1 || !lat2 || !lng2) return null;
+  const R = 6371; // Earth's mean radius in kilometers
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLng = (lng2 - lon1) * (Math.PI / 180);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * (Math.PI / 180)) *
+      Math.cos(lat2 * (Math.PI / 180)) *
+      Math.sin(dLng / 2) *
+      Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return Number((R * c).toFixed(2));
+};
+
 export const searchGlobalCatalog = async (req, res) => {
   try {
-    const { 
-      q = "", 
-      city, 
+    const {
+      q = "",
+      city,
+      lat,
+      lng,
       limit = 5,
-      type = "all" // options: 'all' | 'shop' | 'product' | 'service'
+      type = "all",          // 'all' | 'shop' | 'product' | 'service' | 'offer'
+      offerType,             // 'banner' | 'calendar' | 'all' or explicit ObjectId
+      offer_type_id,         // Explicit ObjectId for OfferType schema
     } = req.query;
 
     const searchKeyword = q.trim();
     if (!searchKeyword) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "Search query parameter string cannot be empty." 
+      return res.status(400).json({
+        success: false,
+        message: "Search query parameter string cannot be empty.",
       });
     }
 
+    const centerLat = lat ? Number(lat) : req.user?.latitude;
+    const centerLng = lng ? Number(lng) : req.user?.longitude;
+    const hasCoordinates =
+      centerLat !== null && centerLng !== null && !isNaN(centerLat) && !isNaN(centerLng);
+
     const regexSearch = { $regex: searchKeyword, $options: "i" };
     const maxResults = Math.max(1, Number(limit));
-
-    // Base scoping queries initialized
-    let shopResults = [];
-    let productResults = [];
-    let serviceResults = [];
+    const rightNow = new Date();
 
     // --- 1. CONSTRUCT SEARCH PIPELINES ---
-    
-    // Shop Search Setup
+
+    // A. Shop Search Query
     const shopQuery = { shopName: regexSearch };
     if (city) {
       shopQuery.city = { $regex: city.trim(), $options: "i" };
     }
 
-    // Product/Service Search Setup (Matches name or text descriptions/tags if added)
+    // B. Product & Service Search Query
     const itemQuery = {
       is_deleted: false,
       is_active: true,
-      $or: [
-        { name: regexSearch },
-        { description: regexSearch }
-      ]
+      $or: [{ name: regexSearch }, { description: regexSearch }],
     };
+
+    // C. Offer Search Query (Aligned with Offer Schema)
+    const offerQuery = {
+      is_deleted: false,
+      is_draft: false,
+      is_active: true,
+      start_date: { $lte: rightNow },
+      $or: [
+        { end_date: { $exists: false } },
+        { end_date: null },
+        { end_date: { $gte: rightNow } },
+      ],
+      $and: [
+        {
+          $or: [
+            { title: regexSearch },
+            { description: regexSearch },
+            { tags: regexSearch },
+          ],
+        },
+      ],
+    };
+
+    // Handle `offer_type_id` / `offerType` Filter Parameter
+    const targetOfferTypeId = offer_type_id || offerType;
+
+    if (targetOfferTypeId) {
+      if (mongoose.Types.ObjectId.isValid(targetOfferTypeId)) {
+        // Query by exact OfferType ObjectId reference
+        offerQuery.offer_type_id = new mongoose.Types.ObjectId(targetOfferTypeId);
+      } else if (["banner", "calendar", "all"].includes(targetOfferTypeId.toLowerCase())) {
+        // Query by display_type string
+        offerQuery.display_type = targetOfferTypeId.toLowerCase();
+      }
+    }
 
     // --- 2. EXECUTE ASYNCHRONOUS QUERIES IN PARALLEL ---
     const searchTasks = [];
 
+    // 1. Shops Task
     if (type === "all" || type === "shop") {
       searchTasks.push(
         MerchantShop.find(shopQuery)
+          .populate("merchantId", "name email profileImage status isBlocked")
           .populate("categoryId", "label")
-          .select("-logo.data -banner.data") // Keep payload sizes optimized
-          .limit(maxResults)
-          .lean()
-      );
-    } else {
-      searchTasks.push(Promise.resolve([])); // Static filler
-    }
-
-    if (type === "all" || type === "product") {
-      searchTasks.push(
-        Product.find(itemQuery)
-          .select("name price discounted_price thumbnail stock is_featured merchant_id")
+          .select("-logo.data -banner.data")
           .limit(maxResults)
           .lean()
       );
@@ -342,11 +390,24 @@ export const searchGlobalCatalog = async (req, res) => {
       searchTasks.push(Promise.resolve([]));
     }
 
+    // 2. Products Task
+    if (type === "all" || type === "product") {
+      searchTasks.push(
+        Product.find(itemQuery)
+          .select("name price discounted_price thumbnail stock is_featured merchant_id description")
+          .limit(maxResults)
+          .lean()
+      );
+    } else {
+      searchTasks.push(Promise.resolve([]));
+    }
+
+    // 3. Services Task
     if (type === "all" || type === "service") {
       searchTasks.push(
         Service.find(itemQuery)
           .populate("merchant_id", "name store_name")
-          .select("name price discounted_price thumbnail pricing_type is_featured merchant_id")
+          .select("name price discounted_price thumbnail pricing_type is_featured merchant_id description")
           .limit(maxResults)
           .lean()
       );
@@ -354,29 +415,152 @@ export const searchGlobalCatalog = async (req, res) => {
       searchTasks.push(Promise.resolve([]));
     }
 
-    // Resolve query arrays in a single database round-trip loop pass
-    const [shops, products, services] = await Promise.all(searchTasks);
+    // 4. Offers Task
+    if (type === "all" || type === "offer") {
+      searchTasks.push(
+        Offer.find(offerQuery)
+          .populate("merchant_id", "name store_name email profileImage")
+          .populate("offer_type_id", "label value")
+          .populate("sub_offer_type_id", "label value")
+          .select(
+            "title description thumbnail display_type discount_percentage discount_value merchant_id start_date end_date offer_type_id location minimum_purchase_amount"
+          )
+          .limit(maxResults)
+          .lean()
+      );
+    } else {
+      searchTasks.push(Promise.resolve([]));
+    }
 
-    // --- 3. RESPOND WITH COMBINED PLATFORM MATRIX ---
-    res.status(200).json({
-      success: true,
-      query: searchKeyword,
-      filters: { city: city || "all", type },
-      results: {
-        totalShopsFound: shops.length,
-        totalProductsFound: products.length,
-        totalServicesFound: services.length,
-        shops,
-        products,
-        services
-      }
+    // Execute queries
+    const [shops, products, services, offers] = await Promise.all(searchTasks);
+
+    // --- 3. STORE LOCATION LOOKUP FOR ITEMS & OFFERS ---
+    const allMerchantIds = [
+      ...new Set([
+        ...products.map((p) => p.merchant_id?.toString()).filter(Boolean),
+        ...services.map((s) => (s.merchant_id?._id || s.merchant_id)?.toString()).filter(Boolean),
+        ...offers.map((o) => (o.merchant_id?._id || o.merchant_id)?.toString()).filter(Boolean),
+      ]),
+    ];
+
+    let merchantShopsMap = {};
+    if (allMerchantIds.length > 0) {
+      const relatedShops = await MerchantShop.find({ merchantId: { $in: allMerchantIds } })
+        .select("merchantId latitude longitude shopName city")
+        .lean();
+
+      relatedShops.forEach((s) => {
+        if (s.merchantId) {
+          merchantShopsMap[s.merchantId.toString()] = s;
+        }
+      });
+    }
+
+    // --- 4. FORMAT RESULTS & ATTACH DISTANCE (distanceKm) ---
+
+    // Process Shops
+    const formattedShops = shops.map((shop) => {
+      const distanceKm = hasCoordinates
+        ? calculateHaversineDistance(centerLat, centerLng, shop.latitude, shop.longitude)
+        : null;
+      return { ...shop, distanceKm };
     });
 
+    // Process Products
+    const formattedProducts = products.map((product) => {
+      const mId = product.merchant_id?.toString();
+      const shop = mId ? merchantShopsMap[mId] : null;
+      const distanceKm =
+        hasCoordinates && shop
+          ? calculateHaversineDistance(centerLat, centerLng, shop.latitude, shop.longitude)
+          : null;
+
+      return {
+        ...product,
+        shopName: shop?.shopName || null,
+        distanceKm,
+      };
+    });
+
+    // Process Services
+    const formattedServices = services.map((service) => {
+      const mId = (service.merchant_id?._id || service.merchant_id)?.toString();
+      const shop = mId ? merchantShopsMap[mId] : null;
+      const distanceKm =
+        hasCoordinates && shop
+          ? calculateHaversineDistance(centerLat, centerLng, shop.latitude, shop.longitude)
+          : null;
+
+      return {
+        ...service,
+        shopName: shop?.shopName || null,
+        distanceKm,
+      };
+    });
+
+    // Process Offers (Using shop coordinates or fallback to Offer.location Point)
+    const formattedOffers = offers.map((offer) => {
+      const mId = (offer.merchant_id?._id || offer.merchant_id)?.toString();
+      const shop = mId ? merchantShopsMap[mId] : null;
+
+      let distanceKm = null;
+      if (hasCoordinates) {
+        if (shop?.latitude && shop?.longitude) {
+          distanceKm = calculateHaversineDistance(centerLat, centerLng, shop.latitude, shop.longitude);
+        } else if (
+          offer.location?.coordinates &&
+          Array.isArray(offer.location.coordinates) &&
+          (offer.location.coordinates[0] !== 0 || offer.location.coordinates[1] !== 0)
+        ) {
+          // GeoJSON Point array: [lng, lat]
+          const [offLng, offLat] = offer.location.coordinates;
+          distanceKm = calculateHaversineDistance(centerLat, centerLng, offLat, offLng);
+        }
+      }
+
+      return {
+        ...offer,
+        shopName: shop?.shopName || null,
+        distanceKm,
+      };
+    });
+
+    // Sort by proximity when coordinates are present
+    if (hasCoordinates) {
+      formattedShops.sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity));
+      formattedProducts.sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity));
+      formattedServices.sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity));
+      formattedOffers.sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity));
+    }
+
+    // --- 5. RESPONSE PAYLOAD ---
+    return res.status(200).json({
+      success: true,
+      query: searchKeyword,
+      filters: {
+        city: city || "all",
+        type,
+        offer_type_id: targetOfferTypeId || "all",
+        coordinates: hasCoordinates ? { lat: centerLat, lng: centerLng } : null,
+      },
+      results: {
+        totalShopsFound: formattedShops.length,
+        totalProductsFound: formattedProducts.length,
+        totalServicesFound: formattedServices.length,
+        totalOffersFound: formattedOffers.length,
+        shops: formattedShops,
+        products: formattedProducts,
+        services: formattedServices,
+        offers: formattedOffers,
+      },
+    });
   } catch (error) {
     console.error("Global Catalog Search Error:", error);
-    res.status(500).json({ 
-      success: false, 
-      message: "An internal server error occurred while scanning catalog registries." 
+    return res.status(500).json({
+      success: false,
+      message: "An internal server error occurred while scanning catalog registries.",
+      error: error.message,
     });
   }
 };
@@ -1610,7 +1794,6 @@ export const getNearbyCalendarOffersForUser = async (req, res) => {
     const calendarQuery = {
       merchant_id: { $in: validMerchantIds },
       display_type: { $in: ["calendar"] },
-      is_active: true,
       is_deleted: false,
       start_date: { $lte: targetDateEnd },
       $or: [
