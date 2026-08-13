@@ -575,38 +575,59 @@ export const getHighestRedemptionDay = async (req, res) => {
 
     const { start, end } = getTimeframeBounds(days, startDate, endDate);
 
+    // Aggregate daily counts for both "redeemed" and "claimed" statuses
     const highestDayResult = await OfferRedemption.aggregate([
       {
         $match: {
           merchantId,
-          status: "redeemed",
-          updatedAt: { $gte: start, $lte: end },
+          createdAt: { $gte: start, $lte: end },
+          status: { $in: ["redeemed", "claimed"] },
         },
       },
       {
         $group: {
-          _id: { $dateToString: { format: "%Y-%m-%d", date: "$updatedAt" } },
-          totalRedemptions: { $sum: 1 },
+          _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
+          totalClaims: {
+            $sum: {
+              $cond: [{ $eq: ["$status", "claimed"] }, 1, 0],
+            },
+          },
+          totalRedemptions: {
+            $sum: {
+              $cond: [{ $eq: ["$status", "redeemed"] }, 1, 0],
+            },
+          },
+          totalActivityVolume: { $sum: 1 }, // Combined total (Claims + Redemptions)
         },
       },
-      { $sort: { totalRedemptions: -1 } },
+      { $sort: { totalActivityVolume: -1, totalRedemptions: -1, totalClaims: -1 } },
       { $limit: 1 },
     ]);
 
     const highestDay = highestDayResult[0]
-      ? { date: highestDayResult[0]._id, redemptionsCount: highestDayResult[0].totalRedemptions }
-      : { date: null, redemptionsCount: 0 };
+      ? {
+          date: highestDayResult[0]._id,
+          claimsCount: highestDayResult[0].totalClaims,
+          redemptionsCount: highestDayResult[0].totalRedemptions,
+          totalActivityCount: highestDayResult[0].totalActivityVolume,
+        }
+      : {
+          date: null,
+          claimsCount: 0,
+          redemptionsCount: 0,
+          totalActivityCount: 0,
+        };
 
     return res.status(200).json({
       success: true,
       timeframe: { startDate: start, endDate: end },
-      highestRedemptionDay: highestDay,
+      highestActivityDay: highestDay,
     });
   } catch (error) {
-    console.error("Get Highest Redemption Day Error:", error);
+    console.error("Get Highest Activity Day Error:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to calculate highest redemption day.",
+      message: "Failed to calculate highest activity day.",
       error: error.message,
     });
   }
