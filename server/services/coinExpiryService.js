@@ -22,7 +22,7 @@ export async function processExpiredCoins() {
       let totalExpiredInWallet = 0;
 
       wallet.coinBatches.forEach((batch) => {
-        // Check if batch is past expiry and hasn't been processed yet
+        // Check if batch is past expiry and hasn't been marked expired yet
         if (batch.expiresAt <= now && !batch.isExpired && batch.remainingAmount > 0) {
           totalExpiredInWallet += batch.remainingAmount;
           batch.remainingAmount = 0;
@@ -31,21 +31,29 @@ export async function processExpiredCoins() {
       });
 
       if (totalExpiredInWallet > 0) {
-        // Recalculate balance
-        wallet.totalBalance = Math.max(0, wallet.totalBalance - totalExpiredInWallet);
+        // Recalculate total balance from active remaining amounts
+        wallet.totalBalance = wallet.coinBatches.reduce((acc, b) => {
+          if (!b.isExpired && new Date(b.expiresAt) > now && b.remainingAmount > 0) {
+            return acc + b.remainingAmount;
+          }
+          return acc;
+        }, 0);
+
         await wallet.save();
 
-        // Log the expiration in transaction history
+        // FIXED: Using wallet.merchant instead of wallet.user
         await CoinTransaction.create({
           wallet: wallet._id,
-          user: wallet.user,
+          merchant: wallet.merchant, // <--- Mapped to correct field name
           amount: totalExpiredInWallet,
           type: 'EXPIRED',
           source: 'EXPIRATION',
           description: `${totalExpiredInWallet} Bachat Coins expired.`,
         });
 
-        console.log(`[Cron Job] Expired ${totalExpiredInWallet} coins for user: ${wallet.user}`);
+        console.log(
+          `[Cron Job] Successfully expired ${totalExpiredInWallet} coins for merchant: ${wallet.merchant}`
+        );
       }
     }
   } catch (error) {

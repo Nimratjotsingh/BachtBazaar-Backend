@@ -1609,7 +1609,7 @@ export const getNearbyCalendarOffersForUser = async (req, res) => {
     // 4. Build Single Date Active Timeline Filters Matrix
     const calendarQuery = {
       merchant_id: { $in: validMerchantIds },
-      display_type: { $in: ["calendar", "all"] },
+      display_type: { $in: ["calendar"] },
       is_active: true,
       is_deleted: false,
       start_date: { $lte: targetDateEnd },
