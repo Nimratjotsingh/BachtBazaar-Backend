@@ -1,7 +1,8 @@
 import BestPriceRequest from "../models/BestPriceModel.js";
 import Category from "../models/categoryModel.js"; // Optional validation target
 import MerchantBid from '../models/MerchantBidModel.js';
-
+import { notifyNearbyMerchantsForPriceRequest } from "../utils/bestPriceNotificationHelper.js";
+import MerchantShop from '../models/merchantShopModel.js';
 
 export const createBestPriceRequest = async (req, res) => {
   try {
@@ -11,7 +12,7 @@ export const createBestPriceRequest = async (req, res) => {
     if (!req.user) {
       return res.status(401).json({
         success: false,
-        message: "Access Denied: Unauthenticated user transaction routing profile."
+        message: "Access Denied: Unauthenticated user transaction routing profile.",
       });
     }
 
@@ -19,11 +20,10 @@ export const createBestPriceRequest = async (req, res) => {
     if (!title || !categoryId || !budget || !timeframe) {
       return res.status(400).json({
         success: false,
-        message: "Required parameters missing. Provide title, categoryId, budget, and timeframe."
+        message: "Required parameters missing. Provide title, categoryId, budget, and timeframe.",
       });
     }
 
-    // Extract coordinates directly from req.user to keep locations accurate
     const userLat = req.user.latitude;
     const userLng = req.user.longitude;
     const userCity = req.user.city;
@@ -31,15 +31,16 @@ export const createBestPriceRequest = async (req, res) => {
     if (userLat === undefined || userLng === undefined || userLat === null || userLng === null) {
       return res.status(400).json({
         success: false,
-        message: "Profile location parameters missing. Please set your account profile coordinates before requesting deals."
+        message:
+          "Profile location parameters missing. Please set your account profile coordinates before requesting deals.",
       });
     }
 
-    // 3. Document Provisioning Hook
+    // 3. Save the Best Price Request Document
     const newRequest = new BestPriceRequest({
       userId: req.user._id,
-      title,
-      description,
+      title: title.trim(),
+      description: description ? description.trim() : "",
       categoryId,
       budget: Number(budget),
       timeframe,
@@ -47,23 +48,71 @@ export const createBestPriceRequest = async (req, res) => {
       longitude: userLng,
       city: userCity || "unknown",
       formattedAddress: formattedAddress || "",
-      status: "active"
+      status: "active",
     });
 
     await newRequest.save();
 
+    // 4. Background Geospatial Search: Find matching category shops within 15 km
+    (async () => {
+      try {
+        const targetRadiusKm = 15;
+        const kmPerDegreeLat = 111.1;
+        const kmPerDegreeLng = 111.1 * Math.cos(userLat * (Math.PI / 180));
+
+        const latDelta = targetRadiusKm / kmPerDegreeLat;
+        const lngDelta = targetRadiusKm / kmPerDegreeLng;
+
+        // Bounding box query filtered by the exact categoryId
+        const candidateShops = await MerchantShop.find({
+          categoryId,
+          latitude: { $gte: userLat - latDelta, $lte: userLat + latDelta },
+          longitude: { $gte: userLng - lngDelta, $lte: userLng + lngDelta },
+        })
+          .select("merchantId latitude longitude")
+          .lean();
+
+        // Filter through precise Haversine distance (<= 15 km)
+        const validMerchantIds = candidateShops
+          .filter((shop) => {
+            if (shop.latitude && shop.longitude && shop.merchantId) {
+              const distance = getDistanceKm(userLat, userLng, shop.latitude, shop.longitude);
+              return distance <= targetRadiusKm;
+            }
+            return false;
+          })
+          .map((shop) => shop.merchantId);
+
+        // Deduplicate merchant IDs (in case a merchant has multiple branches)
+        const uniqueMerchantIds = [...new Set(validMerchantIds.map((id) => id.toString()))];
+
+        if (uniqueMerchantIds.length > 0) {
+          const categoryDoc = await Category.findById(categoryId).select("label").lean();
+
+          await notifyNearbyMerchantsForPriceRequest({
+            merchantIds: uniqueMerchantIds,
+            requestTitle: newRequest.title,
+            budget: newRequest.budget,
+            requestId: newRequest._id,
+            categoryName: categoryDoc?.label || "",
+          });
+        }
+      } catch (err) {
+        console.error("Background Merchant Notification Error:", err.message);
+      }
+    })();
+
     return res.status(201).json({
       success: true,
       message: "Your best price offer search pipeline request was created successfully.",
-      data: newRequest
+      data: newRequest,
     });
-
   } catch (error) {
     console.error("Create Best Price Request Exception Pipeline:", error);
     return res.status(500).json({
       success: false,
       message: "An internal server error occurred while creating your price search pipeline.",
-      error: error.message
+      error: error.message,
     });
   }
 };

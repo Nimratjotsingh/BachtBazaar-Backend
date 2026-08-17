@@ -1,5 +1,6 @@
 import BestPriceRequest from "../models/BestPriceModel.js";
 import MerchantShop from "../models/merchantShopModel.js";
+import { notifyUserForNewBid } from "../utils/bidNotificationHelper.js ";
 
 /**
  * GET /api/merchant/nearby-customer-requests
@@ -160,23 +161,27 @@ export const submitMerchantBid = async (req, res) => {
     if (!req.merchant) {
       return res.status(401).json({
         success: false,
-        message: "Access Denied: Merchant authentication context missing."
+        message: "Access Denied: Merchant authentication context missing.",
       });
     }
 
     if (!requestId || !offerPrice) {
       return res.status(400).json({
         success: false,
-        message: "Missing parameters. Required fields: requestId, offerPrice."
+        message: "Missing parameters. Required fields: requestId, offerPrice.",
       });
     }
 
     // 2. Fetch the Merchant's physical shop profile
-    const shop = await MerchantShop.findOne({ merchantId: req.merchant._id });
+    const shop = await MerchantShop.findOne({ merchantId: req.merchant._id }).select(
+      "_id shopName merchantId"
+    );
+
     if (!shop) {
       return res.status(404).json({
         success: false,
-        message: "Store configuration parameters not found. You must configure your storefront before pitching offers."
+        message:
+          "Store configuration parameters not found. You must configure your storefront before pitching offers.",
       });
     }
 
@@ -185,14 +190,14 @@ export const submitMerchantBid = async (req, res) => {
     if (!targetRequest) {
       return res.status(404).json({
         success: false,
-        message: "The customer request you are trying to bid on does not exist."
+        message: "The customer request you are trying to bid on does not exist.",
       });
     }
 
-    if (targetRequest.status !== "active" || targetRequest.expiresAt < new Date()) {
+    if (targetRequest.status !== "active" || (targetRequest.expiresAt && targetRequest.expiresAt < new Date())) {
       return res.status(400).json({
         success: false,
-        message: "This price request pipeline is no longer active or has expired."
+        message: "This price request pipeline is no longer active or has expired.",
       });
     }
 
@@ -201,11 +206,11 @@ export const submitMerchantBid = async (req, res) => {
     if (duplicateCheck) {
       return res.status(409).json({
         success: false,
-        message: "Conflict: Your storefront has already submitted a counter-offer for this request."
+        message: "Conflict: Your storefront has already submitted a counter-offer for this request.",
       });
     }
 
-    // 5. Instantiation layer
+    // 5. Create new bid record
     const newBid = new MerchantBid({
       requestId,
       merchantId: req.merchant._id,
@@ -213,23 +218,32 @@ export const submitMerchantBid = async (req, res) => {
       offerPrice: Number(offerPrice),
       additionalOfferNotes: additionalOfferNotes || "",
       quickTemplateIds: Array.isArray(quickTemplateIds) ? quickTemplateIds : [],
-      status: "submitted"
+      status: "submitted",
     });
 
     await newBid.save();
 
+    // 6. Asynchronously trigger user push notification in background
+    await  notifyUserForNewBid({
+      userId: targetRequest.userId,
+      requestTitle: targetRequest.title,
+      offerPrice: newBid.offerPrice,
+      shopName: shop.shopName || "A nearby store",
+      requestId: targetRequest._id,
+      bidId: newBid._id,
+    }).catch((err) => console.error("Background User Bid Notification Error:", err.message));
+
     return res.status(201).json({
       success: true,
       message: "Your price counter-offer bid has been successfully pushed to the user's dashboard.",
-      data: newBid
+      data: newBid,
     });
-
   } catch (error) {
     console.error("Submit Merchant Bid Processing Error:", error);
     return res.status(500).json({
       success: false,
       message: "An internal server error occurred while processing your bid registry.",
-      error: error.message
+      error: error.message,
     });
   }
 };

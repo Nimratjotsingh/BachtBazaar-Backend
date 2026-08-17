@@ -53,6 +53,8 @@ import merchantQuestRoutes from './routes/merchantQuestRoutes.js';
 import adminQuestRoutes from './routes/adminQuestRoutes.js';
 import goalsRoutes from './routes/merchantGoalRoutes.js';
 import helpRoutes from './routes/helpTicketRoutes.js';
+import bachatCircleRoutes from './routes/bachatCircleRoutes.js';
+import NotificationsRoutes from './routes/NotificationsRoutes.js';
 
 
 dotenv.config();
@@ -124,6 +126,8 @@ app.use('/api/adminbanners',adminBanner);
 app.use('/api/areas',areasRoutes);
 app.use('/api/user/best-request',bestPriceRoutes);
 app.use('/api/cart',cartRoutes);
+app.use('/api/bachatcircle',bachatCircleRoutes);
+app.use('/api/notify',NotificationsRoutes);
 
 app.use('/api/draft/offers',draftRoutes)
 
@@ -148,6 +152,8 @@ app.use('/api/coin',coinRoutes);
 app.use('/api/quests',merchantQuestRoutes);
 app.use('/api/admin/quests',adminQuestRoutes);
 app.use('/api/help',helpRoutes);
+
+
 
 app.get("/health", (req, res) => {
   res.json({ message: "Server is healthy!" });

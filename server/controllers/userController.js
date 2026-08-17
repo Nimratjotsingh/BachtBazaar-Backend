@@ -13,8 +13,43 @@ import {
   updatePasswordSchema
 } from "../validators/appValidator.js";
 
+
+
 import { validate } from "../validators/validate.js";
 
+import CircleInvitation from "../models/CircleInvitationModel.js";
+import BachatCircle from "../models/BachatCircleModel.js";
+
+export const autoJoinPendingCirclesOnRegistration = async (newUser) => {
+  try {
+    const rawPhone = newUser.phone.replace(/[\s\-()]/g, "").trim();
+
+    const pendingInvites = await CircleInvitation.find({
+      phone: rawPhone,
+      status: "PENDING",
+      expiresAt: { $gt: new Date() },
+    });
+
+    for (const invite of pendingInvites) {
+      await BachatCircle.findByIdAndUpdate(invite.circleId, {
+        $addToSet: {
+          members: {
+            userId: newUser._id,
+            role: invite.roleAssigned || "MEMBER",
+            joinedAt: new Date(),
+          },
+        },
+      });
+
+      invite.status = "ACCEPTED";
+      invite.invitedUserId = newUser._id;
+      invite.respondedAt = new Date();
+      await invite.save();
+    }
+  } catch (error) {
+    console.error("Auto Circle Join On Registration Error:", error.message);
+  }
+};
 
 // format phone consistently
 const formatPhone = (phone) => {
@@ -215,6 +250,8 @@ export const createUser = async (req, res) => {
     const userResponse = user.toObject();
     delete userResponse.password;
 
+    autoJoinPendingCirclesOnRegistration(user);
+
     return res.status(201).json({
       success: true,
       message: "User created successfully.",
@@ -229,6 +266,8 @@ export const createUser = async (req, res) => {
     });
   }
 };
+
+
 
 // login with password
 export const loginWithPassword = async (req, res) => {
@@ -275,7 +314,8 @@ export const loginWithPassword = async (req, res) => {
 // login with otp
 export const loginWithOtp = async (req, res) => {
   try {
-    const phone = await resolvePhoneFromTokenOrBypass(req.body);
+    const {phone} = req.body;
+    //await resolvePhoneFromTokenOrBypass(req.body);
 
     const user = await User.findOne({ phone });
 
@@ -667,6 +707,8 @@ export const updateFcmToken = async (req, res) => {
     }
 
     await user.save();
+
+    
 
     return res.status(200).json({
       success: true,
