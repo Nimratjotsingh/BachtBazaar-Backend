@@ -12,6 +12,7 @@ import {
   forgotPasswordSchema,
   updatePasswordSchema
 } from "../validators/appValidator.js";
+import { generateUniqueReferralCode, processUserReferral } from "../utils/referalHelper.js";
 
 
 
@@ -210,6 +211,7 @@ export const createUser = async (req, res) => {
       latitude,
       longitude,
       address,
+      referralCode
     } = req.body;
 
     // Check if email or phone already exists
@@ -232,6 +234,7 @@ export const createUser = async (req, res) => {
     if (password) {
       hashedPassword = await bcrypt.hash(password, 10);
     }
+    const newReferralCode = await generateUniqueReferralCode();
 
     // Create user
     const user = await User.create({
@@ -239,6 +242,7 @@ export const createUser = async (req, res) => {
       email,
       phone,
       password: hashedPassword,
+      referralCode: newReferralCode,
       gender,
       city,
       latitude,
@@ -250,7 +254,12 @@ export const createUser = async (req, res) => {
     const userResponse = user.toObject();
     delete userResponse.password;
 
-    autoJoinPendingCirclesOnRegistration(user);
+    await autoJoinPendingCirclesOnRegistration(user);
+
+    if (referralCode) {
+      processUserReferral(user._id, referralCode);
+    }
+    autoJoinPendingCirclesOnRegistration(newUser);
 
     return res.status(201).json({
       success: true,

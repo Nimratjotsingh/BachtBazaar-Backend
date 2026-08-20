@@ -6,19 +6,18 @@ const templateImageSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
-    // The server path where the background image is saved via Multer
-    // e.g., "/uploads/templates/banner-bg-171576.jpg"
+   
     url: {
       type: String,
     },
-    // Optional link to a parent marketplace category
+
     category_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Category",
-      default: null, // Stored as null if it's a general-purpose layout template
+      default: null, 
       index: true,
     },
-    // Optional link to a marketplace subcategory
+
     subcategory_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "SubCategory",

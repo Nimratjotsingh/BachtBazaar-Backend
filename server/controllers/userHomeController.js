@@ -8,6 +8,7 @@ import mongoose from "mongoose";
 import Area from "../models/AreaModel.js";
 import Wishlist from "../models/wishlistModel.js";
 import {trackDailyMetric,trackDailyMetric2, trackOfferMetric} from '../utils/analyticsTracker.js';
+import { onOfferClickedHook } from "../hooks/mileStoneProgressHooks.js";
 
 
 
@@ -749,8 +750,8 @@ export const getOfferDetails = async (req, res) => {
 
     
     
-    trackDailyMetric2( offer.merchant_id._id, "offerClicks", { userId: req.user._id, id });
-    trackOfferMetric(offer._id, offer.merchant_id._id, "clicks", req.user._id);
+    await onOfferClickedHook(offer.merchant_id, userId);
+    await trackOfferMetric(offer._id, offer.merchant_id._id, "clicks", req.user._id);
 
     const rightNow = new Date();
     

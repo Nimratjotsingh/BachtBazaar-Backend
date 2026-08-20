@@ -3,6 +3,7 @@ import Offer from "../models/offerModel.js";
 import OfferRedemption from "../models/offerRedemptionModel.js";
 import { trackDailyMetric2, trackOfferMetric } from "../utils/analyticsTracker.js";
 import MerchantShop from '../models/merchantShopModel.js';
+import { onOfferClaimedHook, onOfferRedeemedHook,onFootfallVisitHook } from "../hooks/mileStoneProgressHooks.js";
 
 // ==========================================
 //   USER SIDE CONTROLLERS
@@ -81,9 +82,10 @@ export const redeemOffer = async (req, res) => {
       status: "redeemed"
     });
 
-    trackDailyMetric2( offer.merchant_id._id, "redeems", { userId: req.user._id, offerId, redemptionCode });
+    await trackDailyMetric2( offer.merchant_id._id, "redeems", { userId: req.user._id, offerId, redemptionCode });
+    await onOfferRedeemedHook(offer.merchant_id, req.user._id);
 
-    trackOfferMetric(offerId, offer.merchant_id._id, "redeems", { userId: req.user._id, redemptionCode });
+    
     
 
     await redemption.save();
@@ -212,10 +214,11 @@ export const claimOfferInStore = async (req, res) => {
 
     const code  = redemption.redemptionCode;
     // 7. Fire metric tracking pipelines
-    await trackDailyMetric2(req.merchant._id, "footfall", { userId, offerId, code });
+    await onOfferClaimedHook(req.merchant._id, userId);
     
     await trackOfferMetric(offerId, req.merchant._id, "claims", { userId: userId, code });
     await trackOfferMetric(offerId, req.merchant._id, "footfall", { userId: userId, code });
+    await onFootfallVisitHook(req.merchant._id, userId);
    
 
     return res.status(200).json({
@@ -390,7 +393,8 @@ export const userSelfClaimOffer = async (req, res) => {
 
     await trackDailyMetric2(offer.merchant_id, "footfall", { userId: req.user._id, offerId, redemptionCode });
     await trackOfferMetric(offerId, offer.merchant_id, "claims", { userId: req.user._id, redemptionCode });
-    await trackOfferMetric(offerId, offer.merchant_id, "footfall", { userId: req.user._id, redemptionCode });
+    await onOfferClaimedHook(offer.merchant_id, req.user._id);
+
 
     return res.status(200).json({
       success: true,

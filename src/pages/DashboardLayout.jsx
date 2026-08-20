@@ -46,6 +46,7 @@ const navItems = [
     { label: "Notifications", to: "/dashboard/notifications", icon: FlagTriangleRight },
     { label: "Quest", to: "/dashboard/quest", icon: Coins },
     { label: "Help & Support", to: "/dashboard/help-support", icon: Coins },
+    { label: "QR Template Management", to: "/dashboard/qr-template", icon: Coins },
   
 ];
 

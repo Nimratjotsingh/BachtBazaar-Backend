@@ -66,7 +66,11 @@ const userSchema = new mongoose.Schema(
     fcmTokens: [
       {
         token: { type: String, required: true },
-        deviceType: { type: String, enum: ["android", "ios", "web"], default: "android" },
+        deviceType: {
+          type: String,
+          enum: ["android", "ios", "web"],
+          default: "android",
+        },
         updatedAt: { type: Date, default: Date.now },
       },
     ],
@@ -79,6 +83,24 @@ const userSchema = new mongoose.Schema(
       type: String,
       enum: ["active", "banned"],
       default: "active",
+    },
+    referralCode: {
+      type: String,
+      unique: true,
+      sparse: true,
+      uppercase: true,
+      trim: true,
+      index: true,
+    },
+    referredBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+      index: true,
+    },
+    referralCount: {
+      type: Number,
+      default: 0,
     },
     bannedReason: {
       type: String,
@@ -93,7 +115,7 @@ const userSchema = new mongoose.Schema(
       default: null,
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 // --- PERFORMANCE INDEX CONFIGURATION ---

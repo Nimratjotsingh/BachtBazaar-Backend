@@ -55,7 +55,11 @@ import goalsRoutes from './routes/merchantGoalRoutes.js';
 import helpRoutes from './routes/helpTicketRoutes.js';
 import bachatCircleRoutes from './routes/bachatCircleRoutes.js';
 import NotificationsRoutes from './routes/NotificationsRoutes.js';
-
+import merchantMileStoneRoutes from './routes/merchantMileStoneRoutes.js';
+import userMilestoneRoutes from './routes/userMilestoneRoutes.js';
+import userReferalRoutes from './routes/referralRoutes.js';
+import adminQrTemplateRoutes from './routes/adminQrTemplateRoutes.js';
+import merchantQrTemplateRoutes from './routes/merchantQrTemplateRoutes.js'
 
 dotenv.config();
 // console.log(process.env.MONGO_URI)
@@ -152,8 +156,11 @@ app.use('/api/coin',coinRoutes);
 app.use('/api/quests',merchantQuestRoutes);
 app.use('/api/admin/quests',adminQuestRoutes);
 app.use('/api/help',helpRoutes);
-
-
+app.use("/api/merchant/milestones", merchantMileStoneRoutes);
+app.use("/api/user/milestones", userMilestoneRoutes);
+app.use('/api/user/referrals',userReferalRoutes);
+app.use("/api/merchant/qr-templates", merchantQrTemplateRoutes);
+app.use("/api/admin/qr-templates", adminQrTemplateRoutes);
 
 app.get("/health", (req, res) => {
   res.json({ message: "Server is healthy!" });
