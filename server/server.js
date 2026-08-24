@@ -59,7 +59,8 @@ import merchantMileStoneRoutes from './routes/merchantMileStoneRoutes.js';
 import userMilestoneRoutes from './routes/userMilestoneRoutes.js';
 import userReferalRoutes from './routes/referralRoutes.js';
 import adminQrTemplateRoutes from './routes/adminQrTemplateRoutes.js';
-import merchantQrTemplateRoutes from './routes/merchantQrTemplateRoutes.js'
+import merchantQrTemplateRoutes from './routes/merchantQrTemplateRoutes.js';
+import MerchantNotificationRoutes from './routes/merchantNotificationRoutes.js'
 
 dotenv.config();
 // console.log(process.env.MONGO_URI)
@@ -132,6 +133,7 @@ app.use('/api/user/best-request',bestPriceRoutes);
 app.use('/api/cart',cartRoutes);
 app.use('/api/bachatcircle',bachatCircleRoutes);
 app.use('/api/notify',NotificationsRoutes);
+app.use('/api/merchant/notify', MerchantNotificationRoutes)
 
 app.use('/api/draft/offers',draftRoutes)
 
