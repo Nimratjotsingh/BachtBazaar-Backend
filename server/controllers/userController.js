@@ -199,6 +199,23 @@ export const setPassword = async (req, res) => {
 };
 
 
+const attachFcmToken = async (userId, fcmToken) => {
+  if (!fcmToken || typeof fcmToken !== "string" || !fcmToken.trim()) return;
+  await User.findByIdAndUpdate(userId, {
+    $addToSet: { fcmTokens: fcmToken.trim() },
+  });
+};
+
+// 1. Create User / Registration
+// Helper function to update the single fcmToken
+const updateFcmToken1 = async (userId, fcmToken) => {
+  if (!fcmToken || typeof fcmToken !== "string" || !fcmToken.trim()) return;
+  await User.findByIdAndUpdate(userId, {
+    $set: { fcmToken: fcmToken.trim() },
+  });
+};
+
+// 1. Create User / Registration
 export const createUser = async (req, res) => {
   try {
     const {
@@ -211,14 +228,15 @@ export const createUser = async (req, res) => {
       latitude,
       longitude,
       address,
-      referralCode
+      referralCode,
+      fcmToken, // Single FCM Token string
     } = req.body;
 
     // Check if email or phone already exists
     const existingUser = await User.findOne({
       $or: [
-        ...(email ? [{ email }] : []),
-        ...(phone ? [{ phone }] : []),
+        ...(email ? [{ email: email.toLowerCase().trim() }] : []),
+        ...(phone ? [{ phone: phone.trim() }] : []),
       ],
     });
 
@@ -236,11 +254,11 @@ export const createUser = async (req, res) => {
     }
     const newReferralCode = await generateUniqueReferralCode();
 
-    // Create user
+    // Create user record
     const user = await User.create({
-      name,
-      email,
-      phone,
+      name: name?.trim(),
+      email: email ? email.toLowerCase().trim() : undefined,
+      phone: phone?.trim(),
       password: hashedPassword,
       referralCode: newReferralCode,
       gender,
@@ -248,18 +266,20 @@ export const createUser = async (req, res) => {
       latitude,
       longitude,
       address,
+      fcmToken: fcmToken ? String(fcmToken).trim() : null,
     });
 
-    // Remove password from response
+    // Remove password from response payload
     const userResponse = user.toObject();
     delete userResponse.password;
 
+    // Auto-join pending circles
     await autoJoinPendingCirclesOnRegistration(user);
 
+    // Process referral linkage
     if (referralCode) {
       processUserReferral(user._id, referralCode);
     }
-    autoJoinPendingCirclesOnRegistration(newUser);
 
     return res.status(201).json({
       success: true,
@@ -267,104 +287,127 @@ export const createUser = async (req, res) => {
       data: userResponse,
     });
   } catch (error) {
-    console.error(error);
-
+    console.error("Create User Error:", error);
     return res.status(500).json({
       success: false,
       message: "Internal server error.",
+      error: error.message,
     });
   }
 };
 
-
-
-// login with password
+// 2. Login with Password
 export const loginWithPassword = async (req, res) => {
-  
   try {
-    console.log(req.body)
-    const { phone, password } = req.body
+    const { phone, password, fcmToken } = req.body;
 
-    const formattedPhone = formatPhone(phone);
-    const user = await User.findOne({ phone: formattedPhone });
-    // const user = await User.findOne({ phone });
+    const formattedPhone = typeof formatPhone === "function" ? formatPhone(phone) : phone?.trim();
+    const user = await User.findOne({
+      $or: [{ phone: formattedPhone }, { phone: phone?.trim() }],
+    });
 
     if (!user) {
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json({ success: false, message: "User not found" });
     }
 
     if (!user.password) {
-      return res.status(400).json({ message: "Use OTP login instead" });
+      return res.status(400).json({
+        success: false,
+        message: "Password not set. Please use OTP login instead.",
+      });
     }
 
     const isMatch = await bcrypt.compare(password, user.password);
-
     if (!isMatch) {
-      return res.status(400).json({ message: "Invalid credentials" });
+      return res.status(400).json({ success: false, message: "Invalid credentials" });
+    }
+
+    // Update FCM token if provided
+    if (fcmToken) {
+      await updateFcmToken1(user._id, fcmToken);
+      user.fcmToken = String(fcmToken).trim();
     }
 
     const token = generateToken(user._id, {
       role: user.role || ROLES.USER,
-      accountType: ACCOUNT_TYPES.USER
+      accountType: ACCOUNT_TYPES.USER,
     });
 
-    res.json({
+    return res.status(200).json({
       success: true,
       token,
-      user: sanitizeUser(user)
+      user: sanitizeUser(user),
     });
-
   } catch (error) {
-    console.log("error login-password", error.message);
-    res.status(500).json({ message: "Login error" });
+    console.error("error login-password:", error.message);
+    return res.status(500).json({
+      success: false,
+      message: "Login error",
+      error: error.message,
+    });
   }
 };
 
-// login with otp
+// 3. Login / Register with OTP
 export const loginWithOtp = async (req, res) => {
   try {
-    const {phone} = req.body;
-    //await resolvePhoneFromTokenOrBypass(req.body);
+    const { phone, fcmToken } = req.body;
+    const cleanPhone = phone?.trim();
 
-    const user = await User.findOne({ phone });
+    let user = await User.findOne({ phone: cleanPhone });
 
     if (!user) {
+      const newReferralCode = await generateUniqueReferralCode();
+
       const newUser = await User.create({
-        phone,
-        isVerified: true
+        phone: cleanPhone,
+        referralCode: newReferralCode,
+        isVerified: true,
+        fcmToken: fcmToken ? String(fcmToken).trim() : null,
       });
+
+      // Background invite check
+      await autoJoinPendingCirclesOnRegistration(newUser);
 
       const jwtToken = generateToken(newUser._id, {
         role: newUser.role || ROLES.USER,
-        accountType: ACCOUNT_TYPES.USER
+        accountType: ACCOUNT_TYPES.USER,
       });
 
-      return res.json({
+      return res.status(201).json({
         success: true,
         token: jwtToken,
         user: sanitizeUser(newUser),
-        isNewUser: true
+        isNewUser: true,
       });
+    }
+
+    // Update existing user with device FCM token
+    if (fcmToken) {
+      await updateFcmToken1(user._id, fcmToken);
+      user.fcmToken = String(fcmToken).trim();
     }
 
     const jwtToken = generateToken(user._id, {
       role: user.role || ROLES.USER,
-      accountType: ACCOUNT_TYPES.USER
+      accountType: ACCOUNT_TYPES.USER,
     });
 
-    res.json({
+    return res.status(200).json({
       success: true,
       token: jwtToken,
       user: sanitizeUser(user),
-      isNewUser: false
+      isNewUser: false,
     });
-
   } catch (error) {
-    console.log("error login-otp", error.message);
-    res.status(401).json({ message: "OTP login failed" });
+    console.error("error login-otp:", error.message);
+    return res.status(401).json({
+      success: false,
+      message: "OTP login failed",
+      error: error.message,
+    });
   }
 };
-
 // update profile
 export const updateProfile = async (req, res) => {
   try {

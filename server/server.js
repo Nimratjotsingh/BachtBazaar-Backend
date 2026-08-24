@@ -60,8 +60,8 @@ import userMilestoneRoutes from './routes/userMilestoneRoutes.js';
 import userReferalRoutes from './routes/referralRoutes.js';
 import adminQrTemplateRoutes from './routes/adminQrTemplateRoutes.js';
 import merchantQrTemplateRoutes from './routes/merchantQrTemplateRoutes.js';
-import MerchantNotificationRoutes from './routes/merchantNotificationRoutes.js'
-
+import MerchantNotificationRoutes from './routes/merchantNotificationRoutes.js';
+import contactRoutes from "./routes/contactRoutes.js";
 dotenv.config();
 // console.log(process.env.MONGO_URI)
 import './utils/firebase.js';
@@ -163,6 +163,7 @@ app.use("/api/user/milestones", userMilestoneRoutes);
 app.use('/api/user/referrals',userReferalRoutes);
 app.use("/api/merchant/qr-templates", merchantQrTemplateRoutes);
 app.use("/api/admin/qr-templates", adminQrTemplateRoutes);
+app.use("/api/user/contacts", contactRoutes);
 
 app.get("/health", (req, res) => {
   res.json({ message: "Server is healthy!" });
