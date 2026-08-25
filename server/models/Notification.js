@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 
 const notificationSchema = new mongoose.Schema(
   {
-    // Polymorphic reference: Can belong to either a User or a Merchant
+    
     recipientType: {
       type: String,
       enum: ["User", "Merchant"],

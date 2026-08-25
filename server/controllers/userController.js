@@ -143,36 +143,62 @@ export const getProfileImage = async (req, res) => {
 // verify OTP (firebase)
 export const verifyOtp = async (req, res) => {
   try {
+    const { fcmToken } = req.body;
     const phone = await resolvePhoneFromTokenOrBypass(req.body);
 
     let user = await User.findOne({ phone });
+    let isNewUser = false;
 
     if (!user) {
+      isNewUser = true;
+      const newReferralCode = typeof generateUniqueReferralCode === "function"
+        ? await generateUniqueReferralCode()
+        : undefined;
+
       user = await User.create({
         phone,
-        isVerified: true
+        isVerified: true,
+        referralCode: newReferralCode,
+        fcmToken: fcmToken ? String(fcmToken).trim() : null,
       });
-    } else if (!user.isVerified) {
-      user.isVerified = true;
-      await user.save();
+
+      if (typeof autoJoinPendingCirclesOnRegistration === "function") {
+        await autoJoinPendingCirclesOnRegistration(user);
+      }
+    } else {
+      let isModified = false;
+
+      if (!user.isVerified) {
+        user.isVerified = true;
+        isModified = true;
+      }
+
+      if (fcmToken && user.fcmToken !== String(fcmToken).trim()) {
+        user.fcmToken = String(fcmToken).trim();
+        isModified = true;
+      }
+
+      if (isModified) {
+        await user.save();
+      }
     }
 
     const jwtToken = generateToken(user._id, {
       role: user.role || ROLES.USER,
-      accountType: ACCOUNT_TYPES.USER
+      accountType: ACCOUNT_TYPES.USER,
     });
 
-    res.json({
+    return res.status(200).json({
       success: true,
       message: "OTP verified. Please set your password.",
       nextStep: "Call POST /api/users/set-password with your password",
       token: jwtToken,
-      user: sanitizeUser(user)
+      user: sanitizeUser(user),
+      isNewUser,
     });
-
   } catch (error) {
-    console.log("error verify-otp", error.message);
-    res.status(401).json({ message: "Invalid OTP" });
+    console.error("error verify-otp:", error.message);
+    return res.status(401).json({ success: false, message: "Invalid OTP" });
   }
 };
 

@@ -164,7 +164,7 @@ app.use('/api/user/referrals',userReferalRoutes);
 app.use("/api/merchant/qr-templates", merchantQrTemplateRoutes);
 app.use("/api/admin/qr-templates", adminQrTemplateRoutes);
 app.use("/api/user/contacts", contactRoutes);
-
+2
 app.get("/health", (req, res) => {
   res.json({ message: "Server is healthy!" });
 });
