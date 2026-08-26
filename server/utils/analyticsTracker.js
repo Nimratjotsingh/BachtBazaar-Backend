@@ -1,5 +1,6 @@
 import MerchantDailyAnalytics from "../models/MerchantDailyAnalytics.js";
 import OfferAnalytics from "../models/offerDailyAnalytics.js";
+import mongoose from 'mongoose';
 
 /**
  * Tracks shop-specific daily metrics (Shop-level) with user logging & deduplication.
@@ -122,57 +123,51 @@ export const trackDailyMetric2 = async (
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const userId = typeof userData === "object" ? userData?.userId : userData;
-    const offerId = typeof userData === "object" ? userData?.offerId : null;
+    const rawUserId = typeof userData === "object" ? userData?.userId : userData;
+    const rawOfferId = typeof userData === "object" ? userData?.offerId : null;
     const redemptionCode = typeof userData === "object" ? userData?.redemptionCode || "" : "";
 
+    const userId = rawUserId ? new mongoose.Types.ObjectId(rawUserId.toString()) : null;
+    const offerId = rawOfferId ? new mongoose.Types.ObjectId(rawOfferId.toString()) : null;
     const baseFilter = { merchantId, shopId: null, date: today };
 
     if (userId) {
       if (metricField === "totalViewers" || metricField === "bannerViews") {
-        // Only increment if userId does not exist in viewerUsers for today
+        // Step 1: Ensure daily document exists
+        await MerchantDailyAnalytics.updateOne(
+          baseFilter,
+          { $setOnInsert: { date: today, merchantId, shopId: null, totalViewers: 0 } },
+          { upsert: true }
+        );
+
+        // Step 2: Atomically increment & push ONLY if userId is not in viewerUsers for today
         await MerchantDailyAnalytics.updateOne(
           { ...baseFilter, "viewerUsers.userId": { $ne: userId } },
           {
             $push: { viewerUsers: { userId, viewedAt: new Date() } },
             $inc: { totalViewers: count },
-          },
-          { upsert: false }
-        ).then(async (res) => {
-          if (res.matchedCount === 0) {
-            await MerchantDailyAnalytics.findOneAndUpdate(
-              baseFilter,
-              {
-                $setOnInsert: { date: today, merchantId, shopId: null },
-                $addToSet: { viewerUsers: { userId, viewedAt: new Date() } },
-                $inc: { totalViewers: count },
-              },
-              { upsert: true, new: true }
-            );
           }
-        });
+        );
       } else if (metricField === "offerClicks") {
-        // Only increment if userId does not exist in clickedUsers for today
+        // Step 1: Ensure daily document exists
         await MerchantDailyAnalytics.updateOne(
-          { ...baseFilter, "clickedUsers.userId": { $ne: userId } },
+          baseFilter,
+          { $setOnInsert: { date: today, merchantId, shopId: null, offerClicks: 0 } },
+          { upsert: true }
+        );
+
+        // Step 2: Deduplicate by matching the specific (userId + offerId) pair
+        const offerClickCondition = offerId
+          ? { clickedUsers: { $not: { $elemMatch: { userId, offerId } } } }
+          : { "clickedUsers.userId": { $ne: userId } };
+
+        await MerchantDailyAnalytics.updateOne(
+          { ...baseFilter, ...offerClickCondition },
           {
             $push: { clickedUsers: { userId, offerId, clickedAt: new Date() } },
             $inc: { offerClicks: count },
-          },
-          { upsert: false }
-        ).then(async (res) => {
-          if (res.matchedCount === 0) {
-            await MerchantDailyAnalytics.findOneAndUpdate(
-              baseFilter,
-              {
-                $setOnInsert: { date: today, merchantId, shopId: null },
-                $addToSet: { clickedUsers: { userId, offerId, clickedAt: new Date() } },
-                $inc: { offerClicks: count },
-              },
-              { upsert: true, new: true }
-            );
           }
-        });
+        );
       } else if (metricField === "redeems") {
         await MerchantDailyAnalytics.findOneAndUpdate(
           baseFilter,

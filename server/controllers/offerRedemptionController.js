@@ -412,6 +412,7 @@ export const userSelfClaimOffer = async (req, res) => {
     // 7. Track analytics and execute hooks
     if (wasDirectClaim) {
       if (typeof trackDailyMetric2 === "function") {
+        await trackOfferMetric(offerId,offer.merchant_id,"redeems",{userId:userId});
         await trackDailyMetric2(offer.merchant_id, "redeems", {
           userId,
           offerId,
