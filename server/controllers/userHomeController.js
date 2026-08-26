@@ -724,7 +724,7 @@ export const getOfferDetails = async (req, res) => {
     const offer = await Offer.findById(id)
       .populate({
         path: "merchant_id",
-        select: "name store_name email phone profileImage status isBlocked",
+        select: "name store_name email phone profileImage status isBlocked _id",
         model: "Merchant" // Points to your underlying user/merchant profile model
       })
       .populate("offer_type_id", "label value icon description")
@@ -750,9 +750,9 @@ export const getOfferDetails = async (req, res) => {
 
     
     
-    await onOfferClickedHook(offer.merchant_id, userId);
+    await onOfferClickedHook(offer.merchant_id._id, userId);
     await trackOfferMetric(offer._id, offer.merchant_id._id, "clicks", req.user._id);
-     await trackDailyMetric2(offer.merchant_id._id, "totalViewers",{ userId: req.user?._id});
+    await trackDailyMetric2(offer.merchant_id._id, "totalViewers",{ userId: req.user?._id});
 
     const rightNow = new Date();
     
