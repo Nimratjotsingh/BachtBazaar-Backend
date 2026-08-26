@@ -1,10 +1,10 @@
 import crypto from "crypto";
 import Offer from "../models/offerModel.js";
 import OfferRedemption from "../models/offerRedemptionModel.js";
-import { trackDailyMetric2, trackOfferMetric } from "../utils/analyticsTracker.js";
+import { trackDailyMetric, trackDailyMetric2, trackOfferMetric } from "../utils/analyticsTracker.js";
 import MerchantShop from '../models/merchantShopModel.js';
 import { onOfferClaimedHook, onOfferRedeemedHook,onFootfallVisitHook } from "../hooks/mileStoneProgressHooks.js";
-
+import { notifyOnOfferRedemption } from "../utils/redemptionNotificationHelper.js";
 // ==========================================
 //   USER SIDE CONTROLLERS
 // ==========================================
@@ -82,7 +82,7 @@ export const redeemOffer = async (req, res) => {
       status: "redeemed"
     });
 
-    await trackDailyMetric2( offer.merchant_id._id, "redeems", { userId: req.user._id, offerId, redemptionCode });
+    await trackDailyMetric2( offer.merchant_id, "redeems", { userId: req.user._id, offerId, redemptionCode });
     await onOfferRedeemedHook(offer.merchant_id, req.user._id);
 
     
@@ -92,6 +92,16 @@ export const redeemOffer = async (req, res) => {
 
     // 7. Atomically increment redeemedCount on the offer
     await Offer.findByIdAndUpdate(offerId, { $inc: { redeemedCount: 1 } });
+
+    notifyOnOfferRedemption({
+      userId,
+      merchantId: offer.merchant_id,
+      offerId: offer._id,
+      offerTitle: offer.title,
+      redemptionCode: redemption.redemptionCode,
+      expiresAt: redemption.expiresAt,
+      userName: req.user.name,
+    });
 
     return res.status(201).json({
       success: true,
@@ -295,10 +305,14 @@ export const getMerchantOfferAnalytics = async (req, res) => {
   }
 };
 
+const generateUniqueClaimCode = () => {
+  const randomHex = crypto.randomBytes(3).toString("hex").toUpperCase(); // e.g. '9A2F4B'
+  return `DIR-${Date.now().toString(36).toUpperCase()}-${randomHex}`;
+};
+
 export const userSelfClaimOffer = async (req, res) => {
   try {
     const { offerId } = req.params;
-    // const { shopPin } = req.body; // Optional shop PIN verification
     const userId = req.user._id;
 
     // 1. Fetch active offer
@@ -306,60 +320,51 @@ export const userSelfClaimOffer = async (req, res) => {
     if (!offer) {
       return res.status(404).json({
         success: false,
-        message: "The requested offer is no longer available."
+        message: "The requested offer is no longer available.",
       });
     }
 
     // 2. Validate offer expiration date
     const now = new Date();
-    if (offer.end_date && offer.end_date < now) {
+    if (offer.end_date && new Date(offer.end_date) < now) {
       return res.status(400).json({
         success: false,
-        message: "This offer campaign has expired."
+        message: "This offer campaign has expired.",
       });
     }
 
-    // 3. Optional: Verify Shop PIN if walk-in validation is required
-    // if (offer.only_for_walk_in_customers ) {
-    //   const shop = await MerchantShop.findOne({ merchantId: offer.merchant_id });
-    //   if (shop) {
-    //     return res.status(400).json({
-    //       success: false,
-    //       message: "Invalid Store PIN. Please ask the shop owner for the verification PIN."
-    //     });
-    //   }
-    // }
-
-    // 4. ENFORCE CLAIM LIMIT (Total limit across all users)
+    // 3. ENFORCE CLAIM LIMIT (Total limit across all users)
     if (offer.claim_limit !== undefined && offer.claim_limit !== null) {
       if (offer.claimedCount >= offer.claim_limit) {
         return res.status(400).json({
           success: false,
-          message: `Claim limit reached! All ${offer.claim_limit} claims for this offer have already been taken.`
+          message: `Claim limit reached! All ${offer.claim_limit} claims for this offer have already been taken.`,
         });
       }
     }
 
-    // 5. Enforce Per-User Claim Limit
+    // 4. Enforce Per-User Claim Limit
     const userClaimCount = await OfferRedemption.countDocuments({
       offerId,
       userId,
-      status: "claimed"
+      status: "claimed",
     });
 
     if (offer.per_user_limit && userClaimCount >= offer.per_user_limit) {
       return res.status(400).json({
         success: false,
-        message: `You have already claimed this offer ${offer.per_user_limit} time(s).`
+        message: `You have already claimed this offer ${offer.per_user_limit} time(s).`,
       });
     }
 
-    // 6. Check if user already redeemed it previously and upgrade it, or create a direct claimed record
+    // 5. Check if user already redeemed it previously or create a direct claimed record
     let redemption = await OfferRedemption.findOne({
       offerId,
       userId,
-      status: "redeemed"
+      status: "redeemed",
     });
+
+    let isDirectNewClaim = false;
 
     if (redemption) {
       // Upgrade existing redemption to claimed
@@ -367,51 +372,64 @@ export const userSelfClaimOffer = async (req, res) => {
       redemption.claimedAt = new Date();
       await redemption.save();
     } else {
-      // Create new direct claim record
+      // Generate a distinct unique redemption code
+      const uniqueRedemptionCode = generateUniqueClaimCode();
+      isDirectNewClaim = true;
+
       redemption = new OfferRedemption({
         offerId,
         userId,
         shopId: offer.merchant_id,
         merchantId: offer.merchant_id,
-        redemptionCode: "CLAIMED-DIRECT",
+        redemptionCode: uniqueRedemptionCode,
         expiresAt: offer.end_date || new Date(Date.now() + 24 * 60 * 60 * 1000),
         status: "claimed",
         redeemedAt: new Date(),
-        claimedAt: new Date()
+        claimedAt: new Date(),
       });
       await redemption.save();
     }
 
-    // 7. Atomically increment claimedCount (and redeemedCount if new)
+    // 6. Atomically increment claimedCount (and redeemedCount if new)
     await Offer.findByIdAndUpdate(offerId, {
-      $inc: { 
+      $inc: {
         claimedCount: 1,
-        ...(redemption.redemptionCode === "CLAIMED-DIRECT" ? { redeemedCount: 1 } : {})
-      }
+        ...(isDirectNewClaim ? { redeemedCount: 1 } : {}),
+      },
     });
+
     const redemptionCode = redemption._id;
 
-    await trackDailyMetric2(offer.merchant_id, "footfall", { userId: req.user._id, offerId, redemptionCode });
-    await trackOfferMetric(offerId, offer.merchant_id, "claims", { userId: req.user._id, redemptionCode });
-    await onOfferClaimedHook(offer.merchant_id, req.user._id);
+    // Metric tracking & action hooks
+    await trackDailyMetric2(offer.merchant_id, "footfall", {
+      userId: req.user._id,
+      offerId,
+      redemptionCode,
+    });
 
+    
+    await trackOfferMetric(offerId, offer.merchant_id, "claims", {
+      userId: req.user._id,
+      redemptionCode,
+    });
+    await onOfferClaimedHook(offer.merchant_id, req.user._id);
 
     return res.status(200).json({
       success: true,
       message: "Offer successfully claimed! Show this confirmation screen to the shopkeeper.",
       data: {
         offerTitle: offer.title,
+        redemptionCode: redemption.redemptionCode,
         claimedAt: redemption.claimedAt,
-        status: redemption.status
-      }
+        status: redemption.status,
+      },
     });
-
   } catch (error) {
     console.error("Direct User Claim Exception:", error);
     return res.status(500).json({
       success: false,
       message: "An internal server error occurred while processing your claim.",
-      error: error.message
+      error: error.message,
     });
   }
 };

@@ -24,7 +24,7 @@ export const notifyUserForNewBid = async ({
   try {
     if (!userId) return;
 
-    const title = "🏷️ New Offer Received!";
+    const title = "🏷️ New Bid Received On Your Item Request!";
     const body = `${shopName} offered ₹${offerPrice} for your request "${requestTitle}". Tap to view details!`;
     const notificationData = {
       requestId: requestId.toString(),

@@ -4,7 +4,7 @@ import CircleInvitation from "../models/CircleInvitationModel.js";
 import CircleSharedOffer from "../models/CircleSharedOffers.js";
 import User from "../models/userModel.js";
 import Offer from "../models/offerModel.js";
-import { notifyUserForCircleInvitation,notifyMembersForSharedOffer } from "../utils/circleNotificationHelper.js";
+import { notifyUserForCircleInvitation,notifyMembersForSharedOffer, notifyInviterOnResponse } from "../utils/circleNotificationHelper.js";
 
 // Helper: Normalize phone numbers (strips spaces, dashes)
 // Helper: Normalize phone numbers and ensure '+91' country code prefix
@@ -496,7 +496,9 @@ export const respondToInvitation = async (req, res) => {
     const { invitationId } = req.params;
     const { action } = req.body; // "ACCEPT" or "DECLINE"
     const userId = req.user._id;
-    const userPhone = normalizePhone(req.user.phone);
+    const userPhone = typeof normalizePhone === "function" 
+      ? normalizePhone(req.user.phone) 
+      : req.user.phone;
 
     if (!["ACCEPT", "DECLINE"].includes(action)) {
       return res.status(400).json({
@@ -519,7 +521,7 @@ export const respondToInvitation = async (req, res) => {
       return res.status(400).json({ success: false, message: "This invitation has expired." });
     }
 
-    // Verify phone match
+    // Verify phone or invited user ID match
     if (invitation.phone !== userPhone && invitation.invitedUserId?.toString() !== userId.toString()) {
       return res.status(403).json({
         success: false,
@@ -527,10 +529,25 @@ export const respondToInvitation = async (req, res) => {
       });
     }
 
+    const responderName = req.user.name || req.user.phone || "A friend";
+
+    // Handle DECLINE Action
     if (action === "DECLINE") {
       invitation.status = "DECLINED";
       invitation.respondedAt = new Date();
       await invitation.save();
+
+      // Fetch circle name for notification text
+      const circle = await BachatCircle.findById(invitation.circleId).select("name").lean();
+
+      // Notify the Inviter asynchronously
+      notifyInviterOnResponse({
+        inviterId: invitation.inviterId || invitation.createdBy,
+        responderName,
+        circleName: circle?.name || "Bachat Circle",
+        circleId: invitation.circleId,
+        action: "DECLINED",
+      });
 
       return res.status(200).json({
         success: true,
@@ -538,7 +555,7 @@ export const respondToInvitation = async (req, res) => {
       });
     }
 
-    // If ACCEPT: add user to circle
+    // Handle ACCEPT Action
     const circle = await BachatCircle.findById(invitation.circleId);
     if (!circle || !circle.isActive) {
       return res.status(404).json({ success: false, message: "Circle no longer exists." });
@@ -559,6 +576,15 @@ export const respondToInvitation = async (req, res) => {
     invitation.invitedUserId = userId;
     invitation.respondedAt = new Date();
     await invitation.save();
+
+    // Notify the Inviter asynchronously
+    notifyInviterOnResponse({
+      inviterId: invitation.inviterId || invitation.createdBy,
+      responderName,
+      circleName: circle.name,
+      circleId: circle._id,
+      action: "ACCEPTED",
+    });
 
     return res.status(200).json({
       success: true,

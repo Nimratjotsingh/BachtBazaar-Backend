@@ -2,22 +2,18 @@ import DeliveryOrder from "../models/deliveryModel.js";
 import Merchant from "../models/merchantModel.js";
 import User from "../models/userModel.js";
 import Product from "../models/productModel.js";
+import { sendDeliveryNotification } from "../utils/deliveryNotificationHelper.js";
 
 // ==========================================
 // 1. USER ENDPOINTS
 // ==========================================
 
-/**
- * POST /api/delivery-orders
- * User creates a new delivery request with single or multiple products/items
- */
 export const createDeliveryOrder = async (req, res) => {
   try {
     const userId = req.user._id;
     const {
       merchantId,
-      items, // Expecting array: [{ productId, productName, quantity, unitPrice, variantInfo }]
-      // Fallback single-item parameters
+      items,
       productId,
       customItemName,
       quantity = 1,
@@ -36,7 +32,6 @@ export const createDeliveryOrder = async (req, res) => {
       });
     }
 
-    // 1. Verify Merchant exists and has delivery enabled
     const merchant = await Merchant.findById(merchantId);
     if (!merchant || merchant.isBlocked) {
       return res.status(404).json({
@@ -52,7 +47,6 @@ export const createDeliveryOrder = async (req, res) => {
       });
     }
 
-    // 2. Standardize multi-item vs single-item request payload
     let rawItemsList = [];
     if (Array.isArray(items) && items.length > 0) {
       rawItemsList = items;
@@ -68,9 +62,7 @@ export const createDeliveryOrder = async (req, res) => {
       ];
     }
 
-    // 3. Resolve each item in the array
     const resolvedItems = [];
-
     for (const rawItem of rawItemsList) {
       let resolvedName = rawItem.productName || rawItem.customItemName || "Custom Item";
       let resolvedUnitPrice = Number(rawItem.unitPrice || rawItem.itemPrice) || 0;
@@ -89,7 +81,6 @@ export const createDeliveryOrder = async (req, res) => {
       }
 
       const itemQty = Math.max(1, Number(rawItem.quantity) || 1);
-
       resolvedItems.push({
         productId: finalProductId,
         productName: resolvedName,
@@ -108,7 +99,6 @@ export const createDeliveryOrder = async (req, res) => {
       });
     }
 
-    // 4. Resolve User Address and Contact Phone
     const user = await User.findById(userId);
     if (!user) {
       return res.status(404).json({ success: false, message: "User record not found." });
@@ -117,25 +107,9 @@ export const createDeliveryOrder = async (req, res) => {
     const finalAddress = deliveryAddress || user.address;
     const finalPhone = contactPhone || user.phone || user.mobile;
 
-    // if (!finalAddress || !finalAddress.street || !finalAddress.city) {
-    //   return res.status(400).json({
-    //     success: false,
-    //     message: "Complete delivery address (street and city) is required.",
-    //   });
-    // }
-
-    // if (!finalPhone) {
-    //   return res.status(400).json({
-    //     success: false,
-    //     message: "Contact phone number is required.",
-    //   });
-    // }
-
-    // 5. Calculate Fees from .env
     const deliveryFee = Number(process.env.DEFAULT_DELIVERY_FEE) || 30;
     const platformFee = Number(process.env.DEFAULT_PLATFORM_FEE) || 10;
 
-    // 6. Construct Order (pre-save hook will automatically update itemPrice & totalAmount)
     const newOrder = new DeliveryOrder({
       userId,
       merchantId,
@@ -154,6 +128,20 @@ export const createDeliveryOrder = async (req, res) => {
 
     await newOrder.save();
 
+    // Notify Merchant of new incoming delivery order
+    sendDeliveryNotification({
+      recipientType: "Merchant",
+      recipientId: merchantId,
+      title: "📦 New Delivery Order Received!",
+      body: `${user.name || "A customer"} placed an order with ${resolvedItems.length} item(s). Tap to review and accept.`,
+      type: "DELIVERY_ORDER_NEW",
+      orderId: newOrder._id,
+      extraData: {
+        totalItems: resolvedItems.length,
+        customerName: user.name || "Customer",
+      },
+    });
+
     return res.status(201).json({
       success: true,
       message: "Delivery request submitted successfully.",
@@ -169,10 +157,6 @@ export const createDeliveryOrder = async (req, res) => {
   }
 };
 
-/**
- * PATCH /api/delivery-orders/:orderId/cancel
- * User cancels their request BEFORE merchant accepts it
- */
 export const cancelDeliveryOrder = async (req, res) => {
   try {
     const userId = req.user._id;
@@ -180,7 +164,6 @@ export const cancelDeliveryOrder = async (req, res) => {
     const { cancelReason } = req.body;
 
     const order = await DeliveryOrder.findOne({ _id: orderId, userId });
-
     if (!order) {
       return res.status(404).json({ success: false, message: "Delivery order not found." });
     }
@@ -195,6 +178,17 @@ export const cancelDeliveryOrder = async (req, res) => {
     order.status = "canceled_by_user";
     order.cancelReason = cancelReason || "Canceled by user prior to merchant acceptance.";
     await order.save();
+
+    // Notify Merchant that customer canceled the pending request
+    sendDeliveryNotification({
+      recipientType: "Merchant",
+      recipientId: order.merchantId,
+      title: "❌ Delivery Order Canceled",
+      body: `Customer canceled Order #${order._id.toString().slice(-6)}.`,
+      type: "DELIVERY_ORDER_CANCELED",
+      orderId: order._id,
+      extraData: { cancelReason: order.cancelReason },
+    });
 
     return res.status(200).json({
       success: true,
@@ -215,10 +209,6 @@ export const cancelDeliveryOrder = async (req, res) => {
 // 2. MERCHANT ENDPOINTS
 // ==========================================
 
-/**
- * PATCH /api/merchant/delivery-orders/:orderId/respond
- * Merchant accepts or declines a pending delivery request
- */
 export const respondToDeliveryOrder = async (req, res) => {
   try {
     const merchantId = req.merchant._id;
@@ -233,7 +223,6 @@ export const respondToDeliveryOrder = async (req, res) => {
     }
 
     const order = await DeliveryOrder.findOne({ _id: orderId, merchantId });
-
     if (!order) {
       return res.status(404).json({ success: false, message: "Delivery order not found." });
     }
@@ -245,24 +234,48 @@ export const respondToDeliveryOrder = async (req, res) => {
       });
     }
 
+    const merchant = await Merchant.findById(merchantId).select("name shop_name");
+    const shopDisplayName = merchant?.shop_name || merchant?.name || "The store";
+
     if (action === "accept") {
       order.status = "accepted";
-
       const durationValue = Number(estimatedMinutes) || order.estimatedDeliveryTime?.value || 30;
-      order.estimatedDeliveryTime = {
-        value: durationValue,
-        unit: timeUnit,
-      };
+      order.estimatedDeliveryTime = { value: durationValue, unit: timeUnit };
 
       const now = new Date();
-      let multiplier = 60000; // minutes to ms
+      let multiplier = 60000;
       if (timeUnit === "hours") multiplier = 3600000;
       if (timeUnit === "days") multiplier = 86400000;
 
       order.expectedDeliveryAt = new Date(now.getTime() + durationValue * multiplier);
+
+      // Notify User: Order Accepted
+      sendDeliveryNotification({
+        recipientType: "User",
+        recipientId: order.userId,
+        title: "✅ Order Accepted!",
+        body: `${shopDisplayName} accepted your order! Estimated delivery in ~${durationValue} ${timeUnit}.`,
+        type: "DELIVERY_ORDER_ACCEPTED",
+        orderId: order._id,
+        extraData: {
+          estimatedTime: `${durationValue} ${timeUnit}`,
+          expectedDeliveryAt: order.expectedDeliveryAt.toISOString(),
+        },
+      });
     } else {
       order.status = "declined";
       order.declineReason = declineReason || "Declined by merchant.";
+
+      // Notify User: Order Declined
+      sendDeliveryNotification({
+        recipientType: "User",
+        recipientId: order.userId,
+        title: "⚠️ Order Declined",
+        body: `${shopDisplayName} could not accept your order: ${order.declineReason}`,
+        type: "DELIVERY_ORDER_DECLINED",
+        orderId: order._id,
+        extraData: { declineReason: order.declineReason },
+      });
     }
 
     await order.save();
@@ -282,10 +295,6 @@ export const respondToDeliveryOrder = async (req, res) => {
   }
 };
 
-/**
- * PATCH /api/merchant/delivery-orders/:orderId/status
- * Merchant updates delivery progress and payment status
- */
 export const updateDeliveryOrderStatus = async (req, res) => {
   try {
     const merchantId = req.merchant._id;
@@ -293,7 +302,6 @@ export const updateDeliveryOrderStatus = async (req, res) => {
     const { status, paymentStatus, estimatedMinutes, timeUnit = "minutes" } = req.body;
 
     const order = await DeliveryOrder.findOne({ _id: orderId, merchantId });
-
     if (!order) {
       return res.status(404).json({ success: false, message: "Delivery order not found." });
     }
@@ -315,10 +323,7 @@ export const updateDeliveryOrderStatus = async (req, res) => {
 
     if (estimatedMinutes) {
       const durationValue = Number(estimatedMinutes);
-      order.estimatedDeliveryTime = {
-        value: durationValue,
-        unit: timeUnit,
-      };
+      order.estimatedDeliveryTime = { value: durationValue, unit: timeUnit };
 
       const now = new Date();
       let multiplier = 60000;
@@ -329,6 +334,30 @@ export const updateDeliveryOrderStatus = async (req, res) => {
     }
 
     await order.save();
+
+    const merchant = await Merchant.findById(merchantId).select("name shop_name");
+    const shopDisplayName = merchant?.shop_name || merchant?.name || "The store";
+
+    // Notify User on status progression
+    if (status === "dispatched") {
+      sendDeliveryNotification({
+        recipientType: "User",
+        recipientId: order.userId,
+        title: "🛵 Order Dispatched!",
+        body: `Your order from ${shopDisplayName} is out for delivery!`,
+        type: "DELIVERY_ORDER_DISPATCHED",
+        orderId: order._id,
+      });
+    } else if (status === "delivered") {
+      sendDeliveryNotification({
+        recipientType: "User",
+        recipientId: order.userId,
+        title: "🎉 Order Delivered!",
+        body: `Your order from ${shopDisplayName} has been delivered. Enjoy your purchase!`,
+        type: "DELIVERY_ORDER_DELIVERED",
+        orderId: order._id,
+      });
+    }
 
     return res.status(200).json({
       success: true,
@@ -345,10 +374,6 @@ export const updateDeliveryOrderStatus = async (req, res) => {
   }
 };
 
-/**
- * GET /api/merchant/delivery-orders
- * Merchant fetches incoming delivery requests populated with product items
- */
 export const getMerchantDeliveryOrders = async (req, res) => {
   try {
     const merchantId = req.merchant._id;
@@ -378,26 +403,16 @@ export const getMerchantDeliveryOrders = async (req, res) => {
   }
 };
 
-/**
- * GET /api/delivery-orders/:orderId
- * Fetch full details and live status of a specific delivery order
- * Accessible by both the user who placed it or the merchant fulfilling it
- */
 export const getDeliveryOrderById = async (req, res) => {
   try {
     const { orderId } = req.params;
     const userId = req.user?._id;
     const merchantId = req.merchant?._id;
 
-    // 1. Build access query (must match either the user or the merchant)
     const accessQuery = { _id: orderId };
-    if (userId) {
-      accessQuery.userId = userId;
-    } else if (merchantId) {
-      accessQuery.merchantId = merchantId;
-    }
+    if (userId) accessQuery.userId = userId;
+    else if (merchantId) accessQuery.merchantId = merchantId;
 
-    // 2. Query order with populated references
     const order = await DeliveryOrder.findOne(accessQuery)
       .populate("userId", "name phone email")
       .populate("merchantId", "name shop_name phone logo address")
@@ -411,11 +426,9 @@ export const getDeliveryOrderById = async (req, res) => {
       });
     }
 
-    // 3. Compute live status metadata for dynamic UI tracking
     const isCompleted = order.status === "delivered";
     const isCanceledOrDeclined = ["declined", "canceled_by_user"].includes(order.status);
-    
-    // Calculate remaining estimated delivery time in minutes if active
+
     let minutesRemaining = null;
     if (order.expectedDeliveryAt && !isCompleted && !isCanceledOrDeclined) {
       const now = new Date();
@@ -451,9 +464,7 @@ export const getDeliveryOrders = async (req, res) => {
     const { status } = req.query;
 
     const query = { userId };
-    if (status) {
-      query.status = status;
-    }
+    if (status) query.status = status;
 
     const orders = await DeliveryOrder.find(query)
       .populate("merchantId", "name shop_name phone logo address")
@@ -461,7 +472,6 @@ export const getDeliveryOrders = async (req, res) => {
       .sort({ createdAt: -1 })
       .lean();
 
-    // Map tracking metadata across all retrieved orders
     const formattedOrders = orders.map((order) => {
       const isCompleted = order.status === "delivered";
       const isCanceledOrDeclined = ["declined", "canceled_by_user"].includes(order.status);

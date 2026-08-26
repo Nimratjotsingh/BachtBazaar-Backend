@@ -3,6 +3,7 @@ import UserMilestoneGoal from "../models/userMilestone.js";
 import OfferRedemption from "../models/offerRedemptionModel.js";
 import MerchantShop from "../models/merchantShopModel.js";
 import User from "../models/userModel.js";
+import { notifyUsersForNewMilestone } from "../utils/milestoneNotificationHelper.js";
 
 /**
  * GET /api/merchant/milestones/eligible-users
@@ -356,6 +357,16 @@ export const createMilestoneGoal = async (req, res) => {
     }));
 
     const result = await UserMilestoneGoal.insertMany(goalDocuments);
+
+    await notifyUsersForNewMilestone({
+      userIds: targetUserIdsArray,
+      shopName: shop?.shopName || req.merchant.name || "",
+      milestoneTitle: title.trim(),
+      targetCount: Number(targetCount),
+      rewardDescription: rewardDescription.trim(),
+      actionType,
+      merchantId,
+    });
 
     return res.status(201).json({
       success: true,

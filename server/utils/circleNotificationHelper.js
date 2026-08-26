@@ -137,3 +137,63 @@ export const notifyMembersForSharedOffer = async ({
     console.error("Circle shared offer notification error:", error.message);
   }
 };
+
+export const notifyInviterOnResponse = async ({
+  inviterId,
+  responderName,
+  circleName,
+  circleId,
+  action,
+}) => {
+  try {
+    if (!inviterId) return;
+
+    const isAccepted = action === "ACCEPTED";
+    const title = isAccepted ? "🎉 Circle Invite Accepted!" : "ℹ️ Circle Invite Update";
+    const body = isAccepted
+      ? `${responderName} accepted your invitation and joined "${circleName}"!`
+      : `${responderName} declined your invitation to join "${circleName}".`;
+
+    const notificationData = {
+      type: "CIRCLE_INVITE_RESPONSE",
+      action,
+      circleId: circleId.toString(),
+    };
+
+    // 1. Save In-App Notification in MongoDB
+    await Notification.create({
+      recipientId: inviterId,
+      recipientType: "User",
+      title,
+      body,
+      type: "GENERAL",
+      data: notificationData,
+      isRead: false,
+    });
+
+    // 2. Fetch inviter FCM Token
+    const inviter = await User.findById(inviterId).select("fcmToken").lean();
+    if (!inviter?.fcmToken) {
+      console.log("[Circle Invite Response] In-app record saved, no active FCM token found.");
+      return;
+    }
+
+    // 3. Dispatch System Push Notification
+    const messagePayload = {
+      notification: {
+        title,
+        body,
+      },
+      data: {
+        type: "CIRCLE_INVITE_RESPONSE",
+        ...notificationData,
+        click_action: "FLUTTER_NOTIFICATION_CLICK",
+      },
+      token: inviter.fcmToken,
+    };
+
+    await admin.messaging().send(messagePayload);
+  } catch (error) {
+    console.error("Failed to notify inviter of invite response:", error.message);
+  }
+};

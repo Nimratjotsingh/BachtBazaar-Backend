@@ -243,7 +243,7 @@ export const getShopDetails = async (req, res) => {
     }));
 
     // 5. Track metric
-    trackDailyMetric(shopDoc._id, merchantId, "totalViewers", req.user?._id);
+    //trackDailyMetric(shopDoc._id, merchantId, "totalViewers", req.user?._id);
 
     // 6. Construct the synchronized response payload
     return res.status(200).json({
@@ -1554,7 +1554,7 @@ export const getNearbyBannersForUser = async (req, res) => {
     // 3. Build Active Banner Query Framework
     const bannerQuery = {
       merchant_id: { $in: validMerchantIds },
-      display_type: { $in: ["banner", "all"] }, // Pull items specifically marked as banners
+      display_type: { $in: ["banner"] }, // Pull items specifically marked as banners
       is_active: true,
       is_deleted: false,
       start_date: { $lte: rightNow },

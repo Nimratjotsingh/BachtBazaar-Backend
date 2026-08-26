@@ -5,6 +5,7 @@ import Merchant from '../models/merchantModel.js';
 import MerchantShop from '../models/merchantShopModel.js'
 import Area from '../models/AreaModel.js';
 import mongoose from "mongoose";
+import { notifyNearbyUsersForNewOffer } from "../utils/offerNotificationHelper.js";
 
 // Helper to isolate date segments and force UTC Midnight matching your schemas
 const normalizeToMidnight = (dateString) => {
@@ -385,6 +386,22 @@ export const createOffer = async (req, res) => {
         } 
       );
     }
+    (async () => {
+      try {
+        await notifyNearbyUsersForNewOffer({
+          offerId: newOffer._id,
+          offerTitle: newOffer.title,
+          discountPercentage: newOffer.discount_percentage,
+          discountValue: newOffer.discount_value,
+          merchantId,
+          lat: resolvedLat,
+          lng: resolvedLng,
+          targetRadiusKm: 15,
+        });
+      } catch (notifyErr) {
+        console.error("Async Nearby Offer Notification Error:", notifyErr.message);
+      }
+    })();
 
     return res.status(201).json({
       success: true,

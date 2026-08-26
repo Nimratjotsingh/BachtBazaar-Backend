@@ -3,6 +3,7 @@ import Category from "../models/categoryModel.js"; // Optional validation target
 import MerchantBid from '../models/MerchantBidModel.js';
 import { notifyNearbyMerchantsForPriceRequest } from "../utils/bestPriceNotificationHelper.js";
 import MerchantShop from '../models/merchantShopModel.js';
+import Notification from "../models/Notification.js";
 
 export const createBestPriceRequest = async (req, res) => {
   try {

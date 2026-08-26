@@ -133,3 +133,95 @@ export const syncAndCheckContacts = async (req, res) => {
     });
   }
 };
+
+const escapeRegex = (string) => {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+};
+
+/**
+ * GET /api/user/contacts/search?q=query&limit=20&page=1
+ * Search users by name or phone number
+ */
+export const searchUsers = async (req, res) => {
+  try {
+    const currentUserId = req.user?._id;
+    const { q, limit = 20, page = 1 } = req.query;
+
+    if (!q || typeof q !== "string" || !q.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Search query 'q' parameter is required.",
+      });
+    }
+
+    const searchQuery = q.trim();
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(50, Math.max(1, parseInt(limit, 10) || 20));
+    const skip = (pageNum - 1) * limitNum;
+
+    // 1. Build Search Filters
+    const orConditions = [];
+
+    // Check if query contains numeric digits (potential phone search)
+    const digitsOnly = searchQuery.replace(/\D/g, "");
+    if (digitsOnly.length >= 3) {
+      orConditions.push({ phone: { $regex: escapeRegex(digitsOnly), $options: "i" } });
+    }
+
+    // Name text search (case-insensitive substring match)
+    const sanitizedName = escapeRegex(searchQuery);
+    orConditions.push({ name: { $regex: sanitizedName, $options: "i" } });
+
+    // 2. Compose Base Filter
+    const filter = {
+      $and: [
+        { _id: { $ne: currentUserId } },
+        { isDeleted: { $ne: true } },
+        { status: { $ne: "banned" } },
+        { $or: orConditions },
+      ],
+    };
+
+    // 3. Execute query with pagination
+    const [users, total] = await Promise.all([
+      User.find(filter)
+        .select("name phone profileImage city referralCode createdAt")
+        .sort({ name: 1 })
+        .skip(skip)
+        .limit(limitNum)
+        .lean(),
+      User.countDocuments(filter),
+    ]);
+
+    // 4. Format user results
+    const formattedUsers = users.map((user) => ({
+      userId: user._id,
+      name: user.name || "BachatBazarr User",
+      phone: user.phone,
+      profileImage: user.profileImage || null,
+      city: user.city || null,
+      referralCode: user.referralCode || null,
+    }));
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        users: formattedUsers,
+        pagination: {
+          total,
+          page: pageNum,
+          limit: limitNum,
+          totalPages: Math.ceil(total / limitNum),
+          hasMore: skip + users.length < total,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Search Users Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to search users.",
+      error: error.message,
+    });
+  }
+};
