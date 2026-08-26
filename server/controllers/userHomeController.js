@@ -243,7 +243,7 @@ export const getShopDetails = async (req, res) => {
     }));
 
     // 5. Track metric
-    //trackDailyMetric(shopDoc._id, merchantId, "totalViewers", req.user?._id);
+    
 
     // 6. Construct the synchronized response payload
     return res.status(200).json({
@@ -752,6 +752,7 @@ export const getOfferDetails = async (req, res) => {
     
     await onOfferClickedHook(offer.merchant_id, userId);
     await trackOfferMetric(offer._id, offer.merchant_id._id, "clicks", req.user._id);
+     await trackDailyMetric2(offer.merchant._id._id, "totalViewers", req.user?._id);
 
     const rightNow = new Date();
     
