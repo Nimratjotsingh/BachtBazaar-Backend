@@ -26,51 +26,89 @@ export const trackDailyMetric = async (
     const offerId = typeof userData === "object" ? userData?.offerId : null;
     const redemptionCode = typeof userData === "object" ? userData?.redemptionCode || "" : "";
 
-    const updateQuery = {};
+    const baseFilter = { merchantId, shopId, date: today };
 
     if (userId) {
       if (metricField === "totalViewers" || metricField === "bannerViews") {
-        updateQuery.$addToSet = {
-          viewerUsers: { userId, viewedAt: new Date() },
-        };
-        updateQuery.$inc = { totalViewers: count };
+        // Unique per user per day: Only increment and log if userId not already in viewerUsers
+        await MerchantDailyAnalytics.updateOne(
+          { ...baseFilter, "viewerUsers.userId": { $ne: userId } },
+          {
+            $push: { viewerUsers: { userId, viewedAt: new Date() } },
+            $inc: { totalViewers: count },
+          },
+          { upsert: false }
+        ).then(async (res) => {
+          // If document didn't exist yet for today, upsert it safely
+          if (res.matchedCount === 0) {
+            await MerchantDailyAnalytics.findOneAndUpdate(
+              baseFilter,
+              {
+                $setOnInsert: { date: today, merchantId, shopId },
+                $addToSet: { viewerUsers: { userId, viewedAt: new Date() } },
+                $inc: { totalViewers: count },
+              },
+              { upsert: true, new: true }
+            );
+          }
+        });
       } else if (metricField === "offerClicks") {
-        updateQuery.$addToSet = {
-          clickedUsers: { userId, offerId, clickedAt: new Date() },
-        };
-        updateQuery.$inc = { offerClicks: count };
+        // Unique per user per day for this merchant/shop
+        await MerchantDailyAnalytics.updateOne(
+          { ...baseFilter, "clickedUsers.userId": { $ne: userId } },
+          {
+            $push: { clickedUsers: { userId, offerId, clickedAt: new Date() } },
+            $inc: { offerClicks: count },
+          },
+          { upsert: false }
+        ).then(async (res) => {
+          if (res.matchedCount === 0) {
+            await MerchantDailyAnalytics.findOneAndUpdate(
+              baseFilter,
+              {
+                $setOnInsert: { date: today, merchantId, shopId },
+                $addToSet: { clickedUsers: { userId, offerId, clickedAt: new Date() } },
+                $inc: { offerClicks: count },
+              },
+              { upsert: true, new: true }
+            );
+          }
+        });
       } else if (metricField === "redeems") {
-        updateQuery.$push = {
-          redeemedUsers: { userId, offerId, redemptionCode, redeemedAt: new Date() },
-        };
-        updateQuery.$inc = { redeems: count };
+        await MerchantDailyAnalytics.findOneAndUpdate(
+          baseFilter,
+          {
+            $push: { redeemedUsers: { userId, offerId, redemptionCode, redeemedAt: new Date() } },
+            $inc: { redeems: count },
+          },
+          { upsert: true, new: true }
+        );
       } else if (metricField === "footfall") {
-        updateQuery.$push = {
-          footfallUsers: { userId, offerId, redemptionCode, visitedAt: new Date() },
-        };
-        updateQuery.$inc = { footfall: count };
+        await MerchantDailyAnalytics.findOneAndUpdate(
+          baseFilter,
+          {
+            $push: { footfallUsers: { userId, offerId, redemptionCode, visitedAt: new Date() } },
+            $inc: { footfall: count },
+          },
+          { upsert: true, new: true }
+        );
       }
     } else {
+      // Anonymous / non-user-specific increments
       const dbField = metricField === "bannerViews" ? "totalViewers" : metricField;
-      updateQuery.$inc = { [dbField]: count };
+      await MerchantDailyAnalytics.findOneAndUpdate(
+        baseFilter,
+        { $inc: { [dbField]: count } },
+        { upsert: true, new: true }
+      );
     }
-
-    await MerchantDailyAnalytics.findOneAndUpdate(
-      { merchantId, shopId, date: today },
-      updateQuery,
-      { upsert: true, new: true }
-    );
   } catch (error) {
     console.error(`Failed to track shop daily metric [${metricField}]:`, error.message);
   }
 };
 
 /**
- * Tracks merchant-level daily metrics (where shopId is null) with user logging & deduplication.
- * @param {String|ObjectId} merchantId 
- * @param {String} metricField - "totalViewers" | "offerClicks" | "redeems" | "footfall" | "bannerViews"
- * @param {Object|String|null} [userData=null] - { userId, offerId, redemptionCode } or userId string
- * @param {Number} [count=1] - Amount to increment
+ * Tracks merchant-level daily metrics (shopId: null) with strict user-level deduplication for totalViewers & offerClicks.
  */
 export const trackDailyMetric2 = async (
   merchantId,
@@ -88,52 +126,87 @@ export const trackDailyMetric2 = async (
     const offerId = typeof userData === "object" ? userData?.offerId : null;
     const redemptionCode = typeof userData === "object" ? userData?.redemptionCode || "" : "";
 
-    const updateQuery = {};
+    const baseFilter = { merchantId, shopId: null, date: today };
 
     if (userId) {
       if (metricField === "totalViewers" || metricField === "bannerViews") {
-        updateQuery.$addToSet = {
-          viewerUsers: { userId, viewedAt: new Date() },
-        };
-        updateQuery.$inc = { totalViewers: count };
+        // Only increment if userId does not exist in viewerUsers for today
+        await MerchantDailyAnalytics.updateOne(
+          { ...baseFilter, "viewerUsers.userId": { $ne: userId } },
+          {
+            $push: { viewerUsers: { userId, viewedAt: new Date() } },
+            $inc: { totalViewers: count },
+          },
+          { upsert: false }
+        ).then(async (res) => {
+          if (res.matchedCount === 0) {
+            await MerchantDailyAnalytics.findOneAndUpdate(
+              baseFilter,
+              {
+                $setOnInsert: { date: today, merchantId, shopId: null },
+                $addToSet: { viewerUsers: { userId, viewedAt: new Date() } },
+                $inc: { totalViewers: count },
+              },
+              { upsert: true, new: true }
+            );
+          }
+        });
       } else if (metricField === "offerClicks") {
-        updateQuery.$addToSet = {
-          clickedUsers: { userId, offerId, clickedAt: new Date() },
-        };
-        updateQuery.$inc = { offerClicks: count };
+        // Only increment if userId does not exist in clickedUsers for today
+        await MerchantDailyAnalytics.updateOne(
+          { ...baseFilter, "clickedUsers.userId": { $ne: userId } },
+          {
+            $push: { clickedUsers: { userId, offerId, clickedAt: new Date() } },
+            $inc: { offerClicks: count },
+          },
+          { upsert: false }
+        ).then(async (res) => {
+          if (res.matchedCount === 0) {
+            await MerchantDailyAnalytics.findOneAndUpdate(
+              baseFilter,
+              {
+                $setOnInsert: { date: today, merchantId, shopId: null },
+                $addToSet: { clickedUsers: { userId, offerId, clickedAt: new Date() } },
+                $inc: { offerClicks: count },
+              },
+              { upsert: true, new: true }
+            );
+          }
+        });
       } else if (metricField === "redeems") {
-        updateQuery.$push = {
-          redeemedUsers: { userId, offerId, redemptionCode, redeemedAt: new Date() },
-        };
-        updateQuery.$inc = { redeems: count };
+        await MerchantDailyAnalytics.findOneAndUpdate(
+          baseFilter,
+          {
+            $push: { redeemedUsers: { userId, offerId, redemptionCode, redeemedAt: new Date() } },
+            $inc: { redeems: count },
+          },
+          { upsert: true, new: true }
+        );
       } else if (metricField === "footfall") {
-        updateQuery.$push = {
-          footfallUsers: { userId, offerId, redemptionCode, visitedAt: new Date() },
-        };
-        updateQuery.$inc = { footfall: count };
+        await MerchantDailyAnalytics.findOneAndUpdate(
+          baseFilter,
+          {
+            $push: { footfallUsers: { userId, offerId, redemptionCode, visitedAt: new Date() } },
+            $inc: { footfall: count },
+          },
+          { upsert: true, new: true }
+        );
       }
     } else {
       const dbField = metricField === "bannerViews" ? "totalViewers" : metricField;
-      updateQuery.$inc = { [dbField]: count };
+      await MerchantDailyAnalytics.findOneAndUpdate(
+        baseFilter,
+        { $inc: { [dbField]: count } },
+        { upsert: true, new: true }
+      );
     }
-
-    await MerchantDailyAnalytics.findOneAndUpdate(
-      { merchantId, shopId: null, date: today },
-      updateQuery,
-      { upsert: true, new: true }
-    );
   } catch (error) {
     console.error(`Failed to track merchant daily metric [${metricField}]:`, error.message);
   }
 };
 
 /**
- * Updates general offer metrics and logs user arrays (clicks, redeems, claims, footfall).
- * @param {String|ObjectId} offerId 
- * @param {String|ObjectId} merchantId 
- * @param {String} metricField - "clicks" | "redeems" | "claims" | "footfall"
- * @param {Object|String|null} [userData=null] - { userId, redemptionCode } or userId string
- * @param {Number} [count=1] - Amount to increment
+ * Tracks offer-level metrics with strict user-level deduplication for clicks.
  */
 export const trackOfferMetric = async (
   offerId,
@@ -148,39 +221,66 @@ export const trackOfferMetric = async (
     const userId = typeof userData === "object" ? userData?.userId : userData;
     const redemptionCode = typeof userData === "object" ? userData?.redemptionCode || "" : "";
 
-    const updateQuery = {};
+    const baseFilter = { offerId, merchantId };
 
     if (userId) {
       if (metricField === "clicks") {
-        updateQuery.$addToSet = {
-          clickedUsers: { userId, clickedAt: new Date() },
-        };
-        updateQuery.$inc = { clicks: count };
+        // Only increment and record if this user has never clicked this offer before
+        await OfferAnalytics.updateOne(
+          { ...baseFilter, "clickedUsers.userId": { $ne: userId } },
+          {
+            $push: { clickedUsers: { userId, clickedAt: new Date() } },
+            $inc: { clicks: count },
+          },
+          { upsert: false }
+        ).then(async (res) => {
+          if (res.matchedCount === 0) {
+            await OfferAnalytics.findOneAndUpdate(
+              baseFilter,
+              {
+                $setOnInsert: { offerId, merchantId },
+                $addToSet: { clickedUsers: { userId, clickedAt: new Date() } },
+                $inc: { clicks: count },
+              },
+              { upsert: true, new: true }
+            );
+          }
+        });
       } else if (metricField === "redeems") {
-        updateQuery.$push = {
-          redeemedUsers: { userId, redemptionCode, redeemedAt: new Date() },
-        };
-        updateQuery.$inc = { redeems: count };
+        await OfferAnalytics.findOneAndUpdate(
+          baseFilter,
+          {
+            $push: { redeemedUsers: { userId, redemptionCode, redeemedAt: new Date() } },
+            $inc: { redeems: count },
+          },
+          { upsert: true, new: true }
+        );
       } else if (metricField === "claims") {
-        updateQuery.$push = {
-          claimedUsers: { userId, redemptionCode, claimedAt: new Date() },
-        };
-        updateQuery.$inc = { claims: count };
+        await OfferAnalytics.findOneAndUpdate(
+          baseFilter,
+          {
+            $push: { claimedUsers: { userId, redemptionCode, claimedAt: new Date() } },
+            $inc: { claims: count },
+          },
+          { upsert: true, new: true }
+        );
       } else if (metricField === "footfall") {
-        updateQuery.$push = {
-          footfallUsers: { userId, redemptionCode, visitedAt: new Date() },
-        };
-        updateQuery.$inc = { footfall: count };
+        await OfferAnalytics.findOneAndUpdate(
+          baseFilter,
+          {
+            $push: { footfallUsers: { userId, redemptionCode, visitedAt: new Date() } },
+            $inc: { footfall: count },
+          },
+          { upsert: true, new: true }
+        );
       }
     } else {
-      updateQuery.$inc = { [metricField]: count };
+      await OfferAnalytics.findOneAndUpdate(
+        baseFilter,
+        { $inc: { [metricField]: count } },
+        { upsert: true, new: true }
+      );
     }
-
-    await OfferAnalytics.findOneAndUpdate(
-      { offerId, merchantId },
-      updateQuery,
-      { upsert: true, new: true }
-    );
   } catch (error) {
     console.error(`Failed to track offer metric [${metricField}]:`, error.message);
   }
