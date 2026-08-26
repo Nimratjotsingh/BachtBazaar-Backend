@@ -1,7 +1,7 @@
 import User from "../models/userModel.js";
 import Merchant from "../models/merchantModel.js";
 import { sendMulticastPushNotification } from "../utils/notificationHelper.js";
-
+import Notification from "../models/Notification.js";
 // ==========================================
 // 1. USER TOKEN & PREFERENCES CONTROLLERS
 // ==========================================
@@ -200,7 +200,7 @@ export const toggleMerchantNotificationSettings = async (req, res) => {
  */
 export const sendNotification = async (req, res) => {
   try {
-    const { targetType, recipientId, title, body, data } = req.body;
+    const { targetType, recipientId, title, body, data = {} } = req.body;
 
     if (!targetType || !title || !body) {
       return res.status(400).json({
@@ -225,6 +225,24 @@ export const sendNotification = async (req, res) => {
     }
 
     let tokensToNotify = [];
+    const inAppDocs = [];
+
+    // Helper to extract FCM tokens from string, array of strings, or array of objects
+    const extractTokens = (account) => {
+      const tokens = [];
+      if (account.fcmToken && typeof account.fcmToken === "string") {
+        tokens.push(account.fcmToken.trim());
+      }
+      if (Array.isArray(account.fcmTokens)) {
+        account.fcmTokens.forEach((t) => {
+          const tokenStr = typeof t === "string" ? t : t?.token;
+          if (tokenStr && typeof tokenStr === "string") {
+            tokens.push(tokenStr.trim());
+          }
+        });
+      }
+      return tokens;
+    };
 
     // --- TARGET RESOLUTION LOGIC ---
     switch (targetType) {
@@ -239,7 +257,7 @@ export const sendNotification = async (req, res) => {
           _id: recipientId,
           isNotificationEnabled: true,
           status: "active",
-        }).select("fcmToken fcmTokens");
+        }).select("_id fcmToken fcmTokens");
 
         if (!user) {
           return res.status(404).json({
@@ -248,10 +266,17 @@ export const sendNotification = async (req, res) => {
           });
         }
 
-        if (user.fcmToken) tokensToNotify.push(user.fcmToken);
-        if (user.fcmTokens?.length) {
-          user.fcmTokens.forEach((t) => tokensToNotify.push(t.token));
-        }
+        tokensToNotify.push(...extractTokens(user));
+
+        inAppDocs.push({
+          recipientId: user._id,
+          recipientType: "User",
+          title,
+          body,
+          type: "GENERAL",
+          data: { ...data, targetType },
+          isRead: false,
+        });
         break;
       }
 
@@ -266,7 +291,7 @@ export const sendNotification = async (req, res) => {
           _id: recipientId,
           isNotificationEnabled: true,
           isBlocked: false,
-        }).select("fcmToken fcmTokens");
+        }).select("_id fcmToken fcmTokens");
 
         if (!merchant) {
           return res.status(404).json({
@@ -275,10 +300,17 @@ export const sendNotification = async (req, res) => {
           });
         }
 
-        if (merchant.fcmToken) tokensToNotify.push(merchant.fcmToken);
-        if (merchant.fcmTokens?.length) {
-          merchant.fcmTokens.forEach((t) => tokensToNotify.push(t.token));
-        }
+        tokensToNotify.push(...extractTokens(merchant));
+
+        inAppDocs.push({
+          recipientId: merchant._id,
+          recipientType: "Merchant",
+          title,
+          body,
+          type: "GENERAL",
+          data: { ...data, targetType },
+          isRead: false,
+        });
         break;
       }
 
@@ -286,13 +318,19 @@ export const sendNotification = async (req, res) => {
         const users = await User.find({
           isNotificationEnabled: true,
           status: "active",
-        }).select("fcmToken fcmTokens");
+        }).select("_id fcmToken fcmTokens");
 
         users.forEach((u) => {
-          if (u.fcmToken) tokensToNotify.push(u.fcmToken);
-          if (u.fcmTokens?.length) {
-            u.fcmTokens.forEach((t) => tokensToNotify.push(t.token));
-          }
+          tokensToNotify.push(...extractTokens(u));
+          inAppDocs.push({
+            recipientId: u._id,
+            recipientType: "User",
+            title,
+            body,
+            type: "GENERAL",
+            data: { ...data, targetType },
+            isRead: false,
+          });
         });
         break;
       }
@@ -301,13 +339,19 @@ export const sendNotification = async (req, res) => {
         const merchants = await Merchant.find({
           isNotificationEnabled: true,
           isBlocked: false,
-        }).select("fcmToken fcmTokens");
+        }).select("_id fcmToken fcmTokens");
 
         merchants.forEach((m) => {
-          if (m.fcmToken) tokensToNotify.push(m.fcmToken);
-          if (m.fcmTokens?.length) {
-            m.fcmTokens.forEach((t) => tokensToNotify.push(t.token));
-          }
+          tokensToNotify.push(...extractTokens(m));
+          inAppDocs.push({
+            recipientId: m._id,
+            recipientType: "Merchant",
+            title,
+            body,
+            type: "GENERAL",
+            data: { ...data, targetType },
+            isRead: false,
+          });
         });
         break;
       }
@@ -315,25 +359,37 @@ export const sendNotification = async (req, res) => {
       case "both": {
         const [users, merchants] = await Promise.all([
           User.find({ isNotificationEnabled: true, status: "active" }).select(
-            "fcmToken fcmTokens"
+            "_id fcmToken fcmTokens"
           ),
           Merchant.find({ isNotificationEnabled: true, isBlocked: false }).select(
-            "fcmToken fcmTokens"
+            "_id fcmToken fcmTokens"
           ),
         ]);
 
         users.forEach((u) => {
-          if (u.fcmToken) tokensToNotify.push(u.fcmToken);
-          if (u.fcmTokens?.length) {
-            u.fcmTokens.forEach((t) => tokensToNotify.push(t.token));
-          }
+          tokensToNotify.push(...extractTokens(u));
+          inAppDocs.push({
+            recipientId: u._id,
+            recipientType: "User",
+            title,
+            body,
+            type: "GENERAL",
+            data: { ...data, targetType },
+            isRead: false,
+          });
         });
 
         merchants.forEach((m) => {
-          if (m.fcmToken) tokensToNotify.push(m.fcmToken);
-          if (m.fcmTokens?.length) {
-            m.fcmTokens.forEach((t) => tokensToNotify.push(t.token));
-          }
+          tokensToNotify.push(...extractTokens(m));
+          inAppDocs.push({
+            recipientId: m._id,
+            recipientType: "Merchant",
+            title,
+            body,
+            type: "GENERAL",
+            data: { ...data, targetType },
+            isRead: false,
+          });
         });
         break;
       }
@@ -342,28 +398,48 @@ export const sendNotification = async (req, res) => {
         break;
     }
 
-    // Deduplicate tokens
-    tokensToNotify = [...new Set(tokensToNotify)];
+    // 1. Bulk insert In-App Notification records into MongoDB (batches of 1,000)
+    let totalInAppSaved = 0;
+    if (inAppDocs.length > 0) {
+      const DB_BATCH_SIZE = 1000;
+      for (let i = 0; i < inAppDocs.length; i += DB_BATCH_SIZE) {
+        const batch = inAppDocs.slice(i, i + DB_BATCH_SIZE);
+        const insertResult = await Notification.insertMany(batch, { ordered: false });
+        totalInAppSaved += insertResult.length;
+      }
+    }
+
+    // 2. Deduplicate device FCM tokens
+    tokensToNotify = [...new Set(tokensToNotify.filter(Boolean))];
 
     if (tokensToNotify.length === 0) {
       return res.status(200).json({
         success: true,
-        message: "No active FCM tokens found matching the selection.",
+        message: "In-app notifications saved, but no active device FCM tokens found.",
+        targetType,
+        totalInAppSaved,
         totalTokensTargeted: 0,
+        successCount: 0,
+        failureCount: 0,
       });
     }
 
-    // --- TRANSMIT VIA FIREBASE MULTICAST HELPER ---
+    // 3. Dispatch multicast push notifications via Firebase
     const result = await sendMulticastPushNotification(tokensToNotify, {
       title,
       body,
-      data: data || {},
+      data: {
+        type: "GENERAL",
+        click_action: "FLUTTER_NOTIFICATION_CLICK",
+        ...data,
+      },
     });
 
     return res.status(200).json({
       success: true,
-      message: `Push notification successfully dispatched to ${tokensToNotify.length} devices.`,
+      message: `Notification processed: ${totalInAppSaved} in-app record(s) saved and pushed to ${tokensToNotify.length} device(s).`,
       targetType,
+      totalInAppSaved,
       totalTokensTargeted: tokensToNotify.length,
       successCount: result.successCount,
       failureCount: result.failureCount,
@@ -372,7 +448,7 @@ export const sendNotification = async (req, res) => {
     console.error("Send Notification Exception:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to dispatch push notifications.",
+      message: "Failed to dispatch notifications.",
       error: error.message,
     });
   }
