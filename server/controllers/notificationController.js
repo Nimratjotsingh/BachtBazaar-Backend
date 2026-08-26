@@ -315,7 +315,7 @@ export const sendNotification = async (req, res) => {
 
       case "all_users": {
         const users = await User.find({
-          isNotificationEnabled: true,
+        
           status: "active",
         }).select("_id fcmToken fcmTokens");
 
