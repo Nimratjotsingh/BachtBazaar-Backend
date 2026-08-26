@@ -732,6 +732,8 @@ export const getOfferDetails = async (req, res) => {
       .populate("product_id", "name price discounted_price thumbnail stock is_active description")
       .lean();
 
+
+      console.log(offer)
     // Guard: Return 404 if the offer does not exist or has been soft-deleted
     if (!offer || offer.is_deleted === true) {
       return res.status(404).json({
@@ -753,6 +755,8 @@ export const getOfferDetails = async (req, res) => {
     await onOfferClickedHook(offer.merchant_id._id, req.user._id);
     await trackOfferMetric(offer._id, offer.merchant_id._id, "clicks", req.user._id);
     await trackDailyMetric2(offer.merchant_id._id, "totalViewers",{ userId: req.user?._id});
+    await trackDailyMetric2(offer.merchant_id._id, "offerClicks",{ userId: req.user?._id});
+
 
     const rightNow = new Date();
     
