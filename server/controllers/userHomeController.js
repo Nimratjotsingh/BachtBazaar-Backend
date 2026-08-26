@@ -752,7 +752,7 @@ export const getOfferDetails = async (req, res) => {
     
     await onOfferClickedHook(offer.merchant_id, userId);
     await trackOfferMetric(offer._id, offer.merchant_id._id, "clicks", req.user._id);
-     await trackDailyMetric2(offer.merchant_id._id, "totalViewers", req.user?._id);
+     await trackDailyMetric2(offer.merchant_id._id, "totalViewers",{ userId: req.user?._id});
 
     const rightNow = new Date();
     
