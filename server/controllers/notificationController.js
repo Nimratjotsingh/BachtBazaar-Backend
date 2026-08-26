@@ -255,7 +255,6 @@ export const sendNotification = async (req, res) => {
         }
         const user = await User.findOne({
           _id: recipientId,
-          isNotificationEnabled: true,
           status: "active",
         }).select("_id fcmToken fcmTokens");
 
