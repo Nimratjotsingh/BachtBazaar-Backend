@@ -607,99 +607,119 @@ export const respondToInvitation = async (req, res) => {
  * POST /api/circles/:circleId/offers
  * Share an offer inside a circle (All members OR selected members).
  */
-export const shareOfferInCircle = async (req, res) => {
+export const shareOfferInCircles = async (req, res) => {
   try {
-    const { circleId } = req.params;
-    const { offerId, note, visibilityType = "ALL_MEMBERS", visibleToMembers = [] } = req.body;
+    const {
+      circleIds,
+      circleId,
+      offerId,
+      note,
+    } = req.body;
     const userId = req.user._id;
 
-    if (!offerId) {
-      return res.status(400).json({ success: false, message: "Offer ID is required." });
-    }
+    // 1. Resolve and validate target circle IDs
+    const resolvedCircleIds = Array.isArray(circleIds) && circleIds.length > 0
+      ? circleIds
+      : circleId || req.params.circleId
+      ? [circleId || req.params.circleId]
+      : [];
 
-    const circle = await BachatCircle.findOne({ _id: circleId, isActive: true });
-    if (!circle) {
-      return res.status(404).json({ success: false, message: "Circle not found." });
-    }
-
-    const isMember = circle.members.some((m) => m.userId.toString() === userId.toString());
-    if (!isMember) {
-      return res.status(403).json({
+    if (resolvedCircleIds.length === 0) {
+      return res.status(400).json({
         success: false,
-        message: "You must be a circle member to share offers.",
+        message: "At least one target circle ID is required.",
       });
     }
 
+    if (!offerId) {
+      return res.status(400).json({
+        success: false,
+        message: "Offer ID is required.",
+      });
+    }
+
+    // 2. Fetch and validate offer
     const offer = await Offer.findOne({ _id: offerId, is_deleted: false, is_active: true });
     if (!offer) {
-      return res.status(404).json({ success: false, message: "Offer not found or inactive." });
+      return res.status(404).json({
+        success: false,
+        message: "Offer not found or no longer active.",
+      });
     }
 
-    let targetMemberIds = [];
-    if (visibilityType === "SELECTED_MEMBERS") {
-      if (!Array.isArray(visibleToMembers) || visibleToMembers.length === 0) {
-        return res.status(400).json({
-          success: false,
-          message: "Please select at least one circle member to share with.",
-        });
-      }
-
-      const circleMemberIdsSet = new Set(circle.members.map((m) => m.userId.toString()));
-      const allValid = visibleToMembers.every((id) => circleMemberIdsSet.has(id.toString()));
-
-      if (!allValid) {
-        return res.status(400).json({
-          success: false,
-          message: "One or more selected members are not in this circle.",
-        });
-      }
-
-      // Exclude sender from recipients
-      targetMemberIds = visibleToMembers.filter((id) => id.toString() !== userId.toString());
-    } else {
-      // ALL_MEMBERS: all members except the sender
-      targetMemberIds = circle.members
-        .map((m) => m.userId.toString())
-        .filter((id) => id !== userId.toString());
-    }
-
-    const sharedOffer = new CircleSharedOffer({
-      circleId,
-      offerId,
-      sharedBy: userId,
-      note: note ? note.trim() : "",
-      visibilityType,
-      visibleToMembers: visibilityType === "SELECTED_MEMBERS" ? visibleToMembers : [],
+    // 3. Fetch active circles where user is a verified member
+    const activeCircles = await BachatCircle.find({
+      _id: { $in: resolvedCircleIds },
+      isActive: true,
+      "members.userId": userId,
     });
 
-    await sharedOffer.save();
-
-    // Trigger Push Notifications to recipient members
-    if (targetMemberIds.length > 0) {
-      notifyMembersForSharedOffer({
-        memberUserIds: targetMemberIds,
-        senderName: req.user.name || "A member",
-        circleName: circle.name,
-        offerTitle: offer.title,
-        circleId: circle._id,
-        sharedOfferId: sharedOffer._id,
-      }).catch((err) => console.error("Shared offer notification error:", err.message));
+    if (activeCircles.length === 0) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not an active member of any of the specified circles.",
+      });
     }
 
-    const populated = await CircleSharedOffer.findById(sharedOffer._id)
+    const senderName = req.user.name || "A member";
+    const cleanNote = typeof note === "string" ? note.trim() : "";
+
+    // 4. Build Shared Offer Documents (Defaulting visibilityType to ALL_MEMBERS)
+    const sharedOfferDocs = activeCircles.map((circle) => ({
+      circleId: circle._id,
+      offerId,
+      sharedBy: userId,
+      note: cleanNote,
+      visibilityType: "ALL_MEMBERS",
+      visibleToMembers: [],
+    }));
+
+    const insertedSharedOffers = await CircleSharedOffer.insertMany(sharedOfferDocs);
+
+    // 5. Trigger notifications for each circle's members (excluding sender)
+    activeCircles.forEach((circle) => {
+      const targetMemberIds = circle.members
+        .map((m) => m.userId.toString())
+        .filter((id) => id !== userId.toString());
+
+      const matchingSharedDoc = insertedSharedOffers.find(
+        (doc) => doc.circleId.toString() === circle._id.toString()
+      );
+
+      if (targetMemberIds.length > 0 && matchingSharedDoc) {
+        notifyMembersForSharedOffer({
+          memberUserIds: targetMemberIds,
+          senderName,
+          circleName: circle.name,
+          offerTitle: offer.title,
+          circleId: circle._id,
+          sharedOfferId: matchingSharedDoc._id,
+        }).catch((err) =>
+          console.error(`[Circle Share Notification Error - ${circle.name}]:`, err.message)
+        );
+      }
+    });
+
+    // 6. Populate results for response
+    const insertedIds = insertedSharedOffers.map((doc) => doc._id);
+    const populatedShares = await CircleSharedOffer.find({ _id: { $in: insertedIds } })
       .populate("sharedBy", "name profileImage")
+      .populate("circleId", "name")
       .populate("offerId", "title description thumbnail discount_percentage discount_value end_date")
-      .populate("visibleToMembers", "name profileImage")
       .lean();
 
     return res.status(201).json({
       success: true,
-      message: "Offer shared to circle successfully.",
-      data: populated,
+      message: `Offer successfully shared to ${populatedShares.length} circle(s).`,
+      totalShared: populatedShares.length,
+      data: populatedShares,
     });
   } catch (error) {
-    console.error("Share Offer Error:", error);
-    return res.status(500).json({ success: false, message: error.message });
+    console.error("Share Offer In Circles Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to share offer to circles.",
+    });
   }
 };
 

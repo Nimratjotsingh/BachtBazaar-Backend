@@ -8,7 +8,7 @@ import {
   inviteToCircle,
   getMyPendingInvitations,
   respondToInvitation,
-  shareOfferInCircle,
+  shareOfferInCircles,
   getCircleSharedOffers,
   deleteSharedOffer,
 } from "../controllers/bachatCircleController.js";
@@ -32,7 +32,7 @@ router.get("/invitations/my-invitations", getMyPendingInvitations);
 router.post("/invitations/:invitationId/respond", respondToInvitation);
 
 // Shared Offers
-router.post("/:circleId/offers", shareOfferInCircle);
+router.post("/share/offers", shareOfferInCircles);
 router.get("/:circleId/offers", getCircleSharedOffers);
 router.delete("/offers/:sharedOfferId", deleteSharedOffer);
 
