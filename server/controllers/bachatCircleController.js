@@ -924,7 +924,7 @@ export const getCircleSharedOffers = async (req, res) => {
     const { limit = 20, page = 1 } = req.query;
     const userId = req.user._id;
 
-    // Verify circle membership
+    // 1. Verify circle membership
     const circle = await BachatCircle.findOne({ _id: circleId, isActive: true });
     if (!circle) {
       return res.status(404).json({ success: false, message: "Circle not found." });
@@ -935,10 +935,7 @@ export const getCircleSharedOffers = async (req, res) => {
       return res.status(403).json({ success: false, message: "Access denied. Not a circle member." });
     }
 
-    // Strict Visibility Query:
-    // 1. Visible to ALL_MEMBERS
-    // 2. OR Shared by the current user
-    // 3. OR Current user is in the visibleToMembers list
+    // 2. Strict Visibility Query
     const visibilityQuery = {
       circleId,
       isDeleted: false,
@@ -951,6 +948,7 @@ export const getCircleSharedOffers = async (req, res) => {
 
     const skip = (Math.max(1, Number(page)) - 1) * Number(limit);
 
+    // 3. Query documents and populate relational references including reactions
     const [offers, total] = await Promise.all([
       CircleSharedOffer.find(visibilityQuery)
         .populate("sharedBy", "name phone profileImage")
@@ -961,6 +959,7 @@ export const getCircleSharedOffers = async (req, res) => {
           populate: { path: "merchant_id", select: "name store_name profileImage" },
         })
         .populate("visibleToMembers", "name profileImage")
+        .populate("reactions.userId", "name phone profileImage")
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(Number(limit))
@@ -968,12 +967,36 @@ export const getCircleSharedOffers = async (req, res) => {
       CircleSharedOffer.countDocuments(visibilityQuery),
     ]);
 
+    const currentUserIdStr = userId.toString();
+
+    // 4. Format items: attach myReaction & fallback default reaction counts
+    const formattedOffers = offers.map((offer) => {
+      const activeUserReaction = offer.reactions?.find(
+        (r) => (r.userId?._id || r.userId)?.toString() === currentUserIdStr
+      );
+
+      return {
+        ...offer,
+        myReaction: activeUserReaction ? activeUserReaction.reactionType : null,
+        reactionCounts: offer.reactionCounts || {
+          LIKE: 0,
+          LOVE: 0,
+          FIRE: 0,
+          HUNDRED: 0,
+          WOW: 0,
+          STAR_STRUCK: 0,
+          total: (offer.reactions || []).length,
+        },
+        reactions: offer.reactions || [],
+      };
+    });
+
     return res.status(200).json({
       success: true,
       total,
       page: Number(page),
       totalPages: Math.ceil(total / Number(limit)) || 1,
-      data: offers,
+      data: formattedOffers,
     });
   } catch (error) {
     console.error("Get Circle Shared Offers Error:", error);
