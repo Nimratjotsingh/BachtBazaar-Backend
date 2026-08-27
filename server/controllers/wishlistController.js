@@ -1,13 +1,14 @@
 import Wishlist from "../models/wishlistModel.js";
 import Offer from "../models/offerModel.js";
 import MerchantShop from "../models/merchantShopModel.js";
-import Product from "../models/productModel.js"; // Import your Product/Service model here
+import Product from "../models/productModel.js";
+import Service from "../models/serviceModel.js";
 
 /**
  * POST /api/wishlist/toggle/:type/:itemId
  * Params:
- *  - type: "offers" | "products" | "shops"
- *  - itemId: The target ID of the item to add or remove
+ *  - type: "offers" | "products" | "services" | "shops"
+ *  - itemId: Target ID to add or remove
  */
 export const toggleWishlistItem = async (req, res) => {
   try {
@@ -15,15 +16,15 @@ export const toggleWishlistItem = async (req, res) => {
     const userId = req.user._id;
 
     // 1. Validate entity type
-    const validTypes = ["offers", "products", "shops"];
+    const validTypes = ["offers", "products", "services", "shops"];
     if (!validTypes.includes(type)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid wishlist target type. Must be 'offers', 'products', or 'shops'.",
+        message: "Invalid wishlist target type. Must be 'offers', 'products', 'services', or 'shops'.",
       });
     }
 
-    // 2. Target Item Model Verification
+    // 2. Target item existence verification
     if (type === "offers") {
       const offerExists = await Offer.findOne({ _id: itemId, is_deleted: false });
       if (!offerExists) {
@@ -34,8 +35,17 @@ export const toggleWishlistItem = async (req, res) => {
       if (!shopExists) {
         return res.status(404).json({ success: false, message: "Shop not found." });
       }
+    } else if (type === "products") {
+      const productExists = await Product.findById(itemId);
+      if (!productExists) {
+        return res.status(404).json({ success: false, message: "Product not found." });
+      }
+    } else if (type === "services") {
+      const serviceExists = await Service.findById(itemId);
+      if (!serviceExists) {
+        return res.status(404).json({ success: false, message: "Service not found." });
+      }
     }
-    // Add product/service checks here if applicable
 
     // 3. Find or initialize user's wishlist
     let wishlist = await Wishlist.findOne({ userId });
@@ -55,9 +65,9 @@ export const toggleWishlistItem = async (req, res) => {
       });
     }
 
-    // 4. Check if item already exists in the target array
+    // 4. Check if item already exists in target array
     const itemArray = wishlist[type] || [];
-    const isSaved = itemArray.some((id) => id.toString() === itemId);
+    const isSaved = itemArray.some((id) => id.toString() === itemId.toString());
 
     if (isSaved) {
       // Remove item using $pull
@@ -100,7 +110,7 @@ export const toggleWishlistItem = async (req, res) => {
 
 /**
  * GET /api/wishlist
- * Query parameter: ?type=offers (Optional filter: "offers", "products", "shops", or "all")
+ * Query parameter: ?type=all (Optional: "offers", "products", "services", "shops", or "all")
  */
 export const getUserWishlist = async (req, res) => {
   try {
@@ -113,21 +123,26 @@ export const getUserWishlist = async (req, res) => {
       query = query.populate({
         path: "offers",
         match: { is_deleted: false, is_active: true },
-        populate: { path: "merchant_id", select: "shopName address city logo phone" },
+        populate: { path: "merchant_id", select: "name store_name address city logo profileImage phone" },
       });
     }
 
     if (type === "all" || type === "shops") {
       query = query.populate({
         path: "shops",
-        select: "shopName address city phone logo banner ratings",
+        select: "shopName store_name address city phone logo banner ratings",
       });
     }
 
     if (type === "all" || type === "products") {
       query = query.populate({
         path: "products",
-        // match: { is_deleted: false }
+      });
+    }
+
+    if (type === "all" || type === "services") {
+      query = query.populate({
+        path: "services",
       });
     }
 
@@ -136,20 +151,21 @@ export const getUserWishlist = async (req, res) => {
     if (!wishlist) {
       return res.status(200).json({
         success: true,
-        data: { offers: [], products: [], shops: [] },
+        data: { offers: [], products: [], services: [], shops: [] },
       });
     }
 
-    // Clean null references (in case items were deleted from main DB)
+    // Clean null references (in case items were deleted from the database)
     const formattedData = {
       offers: (wishlist.offers || []).filter(Boolean),
       products: (wishlist.products || []).filter(Boolean),
+      services: (wishlist.services || []).filter(Boolean),
       shops: (wishlist.shops || []).filter(Boolean),
     };
 
     return res.status(200).json({
       success: true,
-      data: type !== "all" ? formattedData[type] : formattedData,
+      data: type !== "all" ? (formattedData[type] || []) : formattedData,
     });
   } catch (error) {
     console.error("Get User Wishlist Error:", error);
@@ -162,58 +178,22 @@ export const getUserWishlist = async (req, res) => {
 };
 
 /**
- * DELETE /api/wishlist/clear/:type
- * Clears an entire array or whole wishlist ("offers", "products", "shops", or "all")
+ * DELETE /api/wishlist/item/:type/:itemId
+ * Removes a single item from a specific section
  */
-export const clearWishlistSection = async (req, res) => {
-  try {
-    const { type } = req.params;
-    const userId = req.user._id;
-
-    let updateQuery = {};
-
-    if (type === "all") {
-      updateQuery = { $set: { offers: [], products: [], shops: [] } };
-    } else if (["offers", "products", "shops"].includes(type)) {
-      updateQuery = { $set: { [type]: [] } };
-    } else {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid type. Provide 'offers', 'products', 'shops', or 'all'.",
-      });
-    }
-
-    await Wishlist.findOneAndUpdate({ userId }, updateQuery);
-
-    return res.status(200).json({
-      success: true,
-      message: `Wishlist section '${type}' cleared successfully.`,
-    });
-  } catch (error) {
-    console.error("Clear Wishlist Section Error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to clear wishlist section.",
-      error: error.message,
-    });
-  }
-};
-
 export const removeItemFromWishlist = async (req, res) => {
   try {
     const { type, itemId } = req.params;
     const userId = req.user._id;
 
-    // 1. Validate entity type
-    const validTypes = ["offers", "products", "shops"];
+    const validTypes = ["offers", "products", "services", "shops"];
     if (!validTypes.includes(type)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid wishlist target type. Must be 'offers', 'products', or 'shops'.",
+        message: "Invalid wishlist target type. Must be 'offers', 'products', 'services', or 'shops'.",
       });
     }
 
-    // 2. Remove the single item using $pull
     const updatedWishlist = await Wishlist.findOneAndUpdate(
       { userId },
       { $pull: { [type]: itemId } },
@@ -235,12 +215,49 @@ export const removeItemFromWishlist = async (req, res) => {
         remainingCount: (updatedWishlist[type] || []).length,
       },
     });
-
   } catch (error) {
     console.error("Remove Single Wishlist Item Error:", error);
     return res.status(500).json({
       success: false,
       message: "An error occurred while removing the item from your wishlist.",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * DELETE /api/wishlist/clear/:type
+ * Clears an entire array or whole wishlist ("offers", "products", "services", "shops", or "all")
+ */
+export const clearWishlistSection = async (req, res) => {
+  try {
+    const { type } = req.params;
+    const userId = req.user._id;
+
+    let updateQuery = {};
+
+    if (type === "all") {
+      updateQuery = { $set: { offers: [], products: [], services: [], shops: [] } };
+    } else if (["offers", "products", "services", "shops"].includes(type)) {
+      updateQuery = { $set: { [type]: [] } };
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid type. Provide 'offers', 'products', 'services', 'shops', or 'all'.",
+      });
+    }
+
+    await Wishlist.findOneAndUpdate({ userId }, updateQuery);
+
+    return res.status(200).json({
+      success: true,
+      message: `Wishlist section '${type}' cleared successfully.`,
+    });
+  } catch (error) {
+    console.error("Clear Wishlist Section Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to clear wishlist section.",
       error: error.message,
     });
   }

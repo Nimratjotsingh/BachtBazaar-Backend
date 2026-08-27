@@ -2,6 +2,7 @@ import Product from "../models/productModel.js";
 import { validate } from "../validators/validate.js"; 
 import { productSchema } from "../validators/productValidator.js";
 import Wishlist from "../models/wishlistModel.js";
+import { notifyWishlistUsersOnPriceDrop } from "../utils/priceDropNotificationHelper.js";
 
 // ==========================================
 // MERCHANT ACTIONS
@@ -262,39 +263,36 @@ export const getProduct = async (req, res) => {
 export const updateProduct = async (req, res) => {
   try {
     const { id } = req.params;
-    const { price, ...otherUpdates } = req.body;
+    const { price, discounted_price, ...otherUpdates } = req.body;
 
     const existingProduct = await Product.findById(id);
     if (!existingProduct) {
       return res.status(404).json({ success: false, message: "Product not found." });
     }
 
-    const oldPrice = Number(existingProduct.price);
-    const newPrice = price !== undefined ? Number(price) : oldPrice;
+    // Determine old and new effective prices (discounted price takes priority if present)
+    const oldEffectivePrice = Number(existingProduct.discounted_price || existingProduct.price);
 
-    // Detect if price was reduced
-    const isPriceReduced = newPrice < oldPrice;
-
-    // Save update in DB
-    existingProduct.price = newPrice;
+    if (price !== undefined) existingProduct.price = Number(price);
+    if (discounted_price !== undefined) existingProduct.discounted_price = Number(discounted_price);
     Object.assign(existingProduct, otherUpdates);
+
     await existingProduct.save();
 
-    // Trigger device push notification if price dropped
-    if (isPriceReduced) {
-      const wishlistEntries = await Wishlist.find({ productId: id }).select("userId").lean();
-      const userIds = wishlistEntries.map((entry) => entry.userId);
+    const newEffectivePrice = Number(existingProduct.discounted_price || existingProduct.price);
+    const isPriceReduced = newEffectivePrice < oldEffectivePrice;
 
-      if (userIds.length > 0) {
-        // Send notification asynchronously in the background
-        sendPriceDropPushNotification({
-          productId: existingProduct._id,
-          productTitle: existingProduct.title,
-          oldPrice,
-          newPrice,
-          wishlistedUserIds: userIds,
-        }).catch((err) => console.error("Push Notification Background Error:", err));
-      }
+    // Trigger price drop push + in-app notification pipeline
+    if (isPriceReduced) {
+      notifyWishlistUsersOnPriceDrop({
+        itemId: existingProduct._id,
+        itemType: "products",
+        itemTitle: existingProduct.name || existingProduct.title,
+        oldPrice: oldEffectivePrice,
+        newPrice: newEffectivePrice,
+        thumbnail: existingProduct.thumbnail || "",
+        merchantId: existingProduct.merchant_id || existingProduct.merchantId,
+      }).catch((err) => console.error("Price Drop Notification Error:", err.message));
     }
 
     return res.status(200).json({

@@ -18,7 +18,13 @@ const wishlistSchema = new mongoose.Schema(
     products: [
       {
         type: mongoose.Schema.Types.ObjectId,
-        ref: "Product", // Adjust model name if your service model is separate (e.g. "Service")
+        ref: "Product",
+      },
+    ],
+    services: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Service",
       },
     ],
     shops: [

@@ -1,9 +1,6 @@
 import CustomerJournal from "../models/CustomerJournalModel.js";
 import User from "../models/userModel.js";
-import Product from "../models/productModel.js";
-import Service from "../models/serviceModel.js";
 
-// Helper: Normalize phone numbers to standard format (+91 prefix)
 const normalizePhone = (phone) => {
   if (!phone) return "";
   let cleaned = phone.toString().trim().replace(/[\s\-()]/g, "");
@@ -16,7 +13,6 @@ const normalizePhone = (phone) => {
 
 /**
  * POST /api/merchant/customer-journal
- * Create a new customer journal entry (supports Product, Service, or Custom items)
  */
 export const createJournalEntry = async (req, res) => {
   try {
@@ -24,7 +20,7 @@ export const createJournalEntry = async (req, res) => {
     const {
       customerName,
       phoneNumber,
-      items, // JSON string (from FormData) or parsed array
+      service,
       amountCharged,
       paymentStatus = "PAID",
       notes,
@@ -32,10 +28,10 @@ export const createJournalEntry = async (req, res) => {
       shopId,
     } = req.body;
 
-    if (!customerName || !phoneNumber || amountCharged === undefined) {
+    if (!customerName || !phoneNumber || !service || amountCharged === undefined) {
       return res.status(400).json({
         success: false,
-        message: "Customer name, phone number, and amount charged are required.",
+        message: "Customer name, phone number, service description, and amount charged are required.",
       });
     }
 
@@ -50,70 +46,7 @@ export const createJournalEntry = async (req, res) => {
       });
     }
 
-    // 1. Parse items list (handles JSON array or stringified JSON from FormData)
-    let parsedItems = [];
-    if (typeof items === "string") {
-      try {
-        parsedItems = JSON.parse(items);
-      } catch {
-        parsedItems = [{ title: items.trim(), quantity: 1, totalPrice: Number(amountCharged) }];
-      }
-    } else if (Array.isArray(items)) {
-      parsedItems = items;
-    }
-
-    // 2. Resolve items across Product, Service, and Custom
-    const resolvedItems = [];
-    for (const item of parsedItems) {
-      let title = item.title || item.name || "Custom Item";
-      let unitPrice = Number(item.unitPrice) || 0;
-      let qty = Math.max(1, Number(item.quantity) || 1);
-      let totalPrice = Number(item.totalPrice) || unitPrice * qty;
-      let itemType = item.itemType ? item.itemType.toUpperCase() : "CUSTOM";
-      let referenceId = item.referenceId || null;
-      let itemModel = item.itemModel || null;
-
-      // Check if item is linked to a Product catalog ID
-      if (item.productId) {
-        const dbProduct = await Product.findById(item.productId)
-          .select("title name price discount_price")
-          .lean();
-        if (dbProduct) {
-          title = dbProduct.title || dbProduct.name || title;
-          unitPrice = Number(item.unitPrice || dbProduct.discount_price || dbProduct.price) || 0;
-          totalPrice = unitPrice * qty;
-          itemType = "PRODUCT";
-          referenceId = dbProduct._id;
-          itemModel = "Product";
-        }
-      }
-      // Check if item is linked to a Service catalog ID
-      else if (item.serviceId) {
-        const dbService = await Service.findById(item.serviceId)
-          .select("name title price discountedPrice")
-          .lean();
-        if (dbService) {
-          title = dbService.name || dbService.title || title;
-          unitPrice = Number(item.unitPrice || dbService.discountedPrice || dbService.price) || 0;
-          totalPrice = unitPrice * qty;
-          itemType = "SERVICE";
-          referenceId = dbService._id;
-          itemModel = "Service";
-        }
-      }
-
-      resolvedItems.push({
-        itemType,
-        referenceId,
-        itemModel,
-        title,
-        quantity: qty,
-        unitPrice,
-        totalPrice,
-      });
-    }
-
-    // 3. Resolve uploaded media files
+    // Resolve uploaded files
     const uploadedImages = [];
     let uploadedVoiceNote = null;
 
@@ -128,7 +61,7 @@ export const createJournalEntry = async (req, res) => {
       }
     }
 
-    // 4. Auto-link registered user profile if matching phone number exists
+    // Auto-link registered user if phone matches
     const existingUser = await User.findOne({
       $or: [{ phone: cleanPhone }, { phone: cleanPhone.slice(-10) }],
     }).select("_id");
@@ -139,7 +72,7 @@ export const createJournalEntry = async (req, res) => {
       customerId: existingUser?._id || null,
       customerName: customerName.trim(),
       phoneNumber: cleanPhone,
-      items: resolvedItems,
+      service: service.trim(),
       amountCharged: Number(amountCharged),
       paymentStatus: formattedPaymentStatus,
       notes: notes ? notes.trim() : "",
@@ -166,7 +99,6 @@ export const createJournalEntry = async (req, res) => {
 
 /**
  * GET /api/merchant/customer-journal
- * Fetch journal entries with search, date filters, and financial summary
  */
 export const getJournalEntries = async (req, res) => {
   try {
@@ -210,7 +142,7 @@ export const getJournalEntries = async (req, res) => {
 
       const orConditions = [
         { customerName: { $regex: sanitized, $options: "i" } },
-        { "items.title": { $regex: sanitized, $options: "i" } },
+        { service: { $regex: sanitized, $options: "i" } },
       ];
 
       if (digitsOnly.length >= 3) {
@@ -223,7 +155,6 @@ export const getJournalEntries = async (req, res) => {
     const [entries, total, summary] = await Promise.all([
       CustomerJournal.find(query)
         .populate("customerId", "name profileImage email")
-        .populate("items.referenceId")
         .sort({ visitDate: -1, createdAt: -1 })
         .skip(skip)
         .limit(limitNum)
@@ -293,7 +224,6 @@ export const getJournalEntryById = async (req, res) => {
       isDeleted: false,
     })
       .populate("customerId", "name phone profileImage email")
-      .populate("items.referenceId")
       .lean();
 
     if (!entry) {
@@ -320,7 +250,15 @@ export const updateJournalEntry = async (req, res) => {
   try {
     const { id } = req.params;
     const merchantId = req.merchant._id;
-    const { paymentStatus, notes, amountCharged, customerName, phoneNumber, visitDate } = req.body;
+    const {
+      paymentStatus,
+      notes,
+      amountCharged,
+      customerName,
+      phoneNumber,
+      service,
+      visitDate,
+    } = req.body;
 
     const entry = await CustomerJournal.findOne({ _id: id, merchantId, isDeleted: false });
 
@@ -339,6 +277,7 @@ export const updateJournalEntry = async (req, res) => {
       entry.paymentStatus = formatted;
     }
 
+    if (service) entry.service = service.trim();
     if (notes !== undefined) entry.notes = notes.trim();
     if (amountCharged !== undefined) entry.amountCharged = Number(amountCharged);
     if (customerName) entry.customerName = customerName.trim();

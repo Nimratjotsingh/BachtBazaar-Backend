@@ -63,6 +63,8 @@ import merchantQrTemplateRoutes from './routes/merchantQrTemplateRoutes.js';
 import MerchantNotificationRoutes from './routes/merchantNotificationRoutes.js';
 import contactRoutes from "./routes/contactRoutes.js";
 import customerJournalRoutes from './routes/customerJournalRoutes.js';
+
+
 dotenv.config();
 // console.log(process.env.MONGO_URI)
 import './utils/firebase.js';

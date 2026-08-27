@@ -32,48 +32,12 @@ const customerJournalSchema = new mongoose.Schema(
       trim: true,
       index: true,
     },
-    // Unified Product / Service Item Line
-    items: [
-      {
-        itemType: {
-          type: String,
-          enum: ["PRODUCT", "SERVICE", "CUSTOM"],
-          default: "CUSTOM",
-        },
-        // Mapped reference if selecting from merchant's existing catalog
-        referenceId: {
-          type: mongoose.Schema.Types.ObjectId,
-          refPath: "items.itemModel",
-          default: null,
-        },
-        itemModel: {
-          type: String,
-          enum: ["Product", "Service"],
-          default: null,
-        },
-        // Custom or catalog item name
-        title: {
-          type: String,
-          required: true,
-          trim: true,
-        },
-        quantity: {
-          type: Number,
-          default: 1,
-          min: 1,
-        },
-        unitPrice: {
-          type: Number,
-          default: 0,
-          min: 0,
-        },
-        totalPrice: {
-          type: Number,
-          default: 0,
-          min: 0,
-        },
-      },
-    ],
+    // Plain string for service / product description
+    service: {
+      type: String,
+      required: true,
+      trim: true,
+    },
     amountCharged: {
       type: Number,
       required: true,
@@ -103,7 +67,7 @@ const customerJournalSchema = new mongoose.Schema(
       },
     ],
     voiceNote: {
-      type: String, // Cloudinary/S3/local audio URL (mp3/m4a/wav)
+      type: String,
       trim: true,
       default: null,
     },
