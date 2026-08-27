@@ -1,5 +1,25 @@
 import mongoose from "mongoose";
 
+const reactionSchema = new mongoose.Schema(
+  {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+    reactionType: {
+      type: String,
+      enum: ["LIKE", "LOVE", "FIRE", "HUNDRED", "WOW", "STAR_STRUCK"],
+      required: true,
+    },
+    reactedAt: {
+      type: Date,
+      default: Date.now,
+    },
+  },
+  { _id: false }
+);
+
 const circleSharedOfferSchema = new mongoose.Schema(
   {
     circleId: {
@@ -26,7 +46,6 @@ const circleSharedOfferSchema = new mongoose.Schema(
       maxlength: 300,
       default: "",
     },
-    // Visibility Scope: Either entire circle or selected members only
     visibilityType: {
       type: String,
       enum: ["ALL_MEMBERS", "SELECTED_MEMBERS"],
@@ -34,7 +53,6 @@ const circleSharedOfferSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
-    // Populated ONLY when visibilityType === "SELECTED_MEMBERS"
     visibleToMembers: [
       {
         type: mongoose.Schema.Types.ObjectId,
@@ -42,6 +60,16 @@ const circleSharedOfferSchema = new mongoose.Schema(
         index: true,
       },
     ],
+    reactions: [reactionSchema],
+    reactionCounts: {
+      LIKE: { type: Number, default: 0 },
+      LOVE: { type: Number, default: 0 },
+      FIRE: { type: Number, default: 0 },
+      HUNDRED: { type: Number, default: 0 },
+      WOW: { type: Number, default: 0 },
+      STAR_STRUCK: { type: Number, default: 0 },
+      total: { type: Number, default: 0 },
+    },
     isDeleted: {
       type: Boolean,
       default: false,
@@ -53,7 +81,6 @@ const circleSharedOfferSchema = new mongoose.Schema(
   }
 );
 
-// Fast compound indexing for feed queries
 circleSharedOfferSchema.index({ circleId: 1, isDeleted: 1, createdAt: -1 });
 
 const CircleSharedOffer =

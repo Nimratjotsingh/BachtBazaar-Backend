@@ -4,7 +4,7 @@ import CircleInvitation from "../models/CircleInvitationModel.js";
 import CircleSharedOffer from "../models/CircleSharedOffers.js";
 import User from "../models/userModel.js";
 import Offer from "../models/offerModel.js";
-import { notifyUserForCircleInvitation,notifyMembersForSharedOffer, notifyInviterOnResponse } from "../utils/circleNotificationHelper.js";
+import { notifyUserForCircleInvitation,notifyMembersForSharedOffer, notifyInviterOnResponse,notifyUserOnOfferReaction } from "../utils/circleNotificationHelper.js";
 
 // Helper: Normalize phone numbers (strips spaces, dashes)
 // Helper: Normalize phone numbers and ensure '+91' country code prefix
@@ -32,6 +32,197 @@ const normalizePhone = (phone) => {
   return cleaned.startsWith("+") ? cleaned : `+91${cleaned}`;
 };
 
+
+const VALID_REACTIONS = ["LIKE", "LOVE", "FIRE", "HUNDRED", "WOW", "STAR_STRUCK"];
+
+/**
+ * Recalculates cached counts for all 6 reaction types.
+ */
+const recalculateCounts = (reactions = []) => {
+  const counts = {
+    LIKE: 0,
+    LOVE: 0,
+    FIRE: 0,
+    HUNDRED: 0,
+    WOW: 0,
+    STAR_STRUCK: 0,
+    total: reactions.length,
+  };
+
+  reactions.forEach((r) => {
+    if (counts[r.reactionType] !== undefined) {
+      counts[r.reactionType] += 1;
+    }
+  });
+
+  return counts;
+};
+
+/**
+ * POST /api/circles/offers/:sharedOfferId/react
+ * Body: { "reactionType": "HUNDRED" } | "LIKE" | "LOVE" | "FIRE" | "WOW" | "STAR_STRUCK"
+ */
+export const reactToSharedOffer = async (req, res) => {
+  try {
+    const { sharedOfferId } = req.params;
+    const { reactionType } = req.body;
+    const userId = req.user._id;
+
+    if (!reactionType || !VALID_REACTIONS.includes(reactionType.toUpperCase())) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid reactionType. Allowed values: ${VALID_REACTIONS.join(", ")}`,
+      });
+    }
+
+    const cleanReaction = reactionType.toUpperCase();
+
+    const sharedOffer = await CircleSharedOffer.findOne({
+      _id: sharedOfferId,
+      isDeleted: false,
+    });
+
+    if (!sharedOffer) {
+      return res.status(404).json({
+        success: false,
+        message: "Shared offer not found.",
+      });
+    }
+
+    // Verify requesting user is an active circle member
+    const circle = await BachatCircle.findOne({
+      _id: sharedOffer.circleId,
+      isActive: true,
+      "members.userId": userId,
+    });
+
+    if (!circle) {
+      return res.status(403).json({
+        success: false,
+        message: "Forbidden: You are not an active member of this circle.",
+      });
+    }
+
+    const existingIndex = sharedOffer.reactions.findIndex(
+      (r) => r.userId.toString() === userId.toString()
+    );
+
+    let actionTaken = "ADDED";
+    let currentReaction = cleanReaction;
+
+    if (existingIndex > -1) {
+      if (sharedOffer.reactions[existingIndex].reactionType === cleanReaction) {
+        // Toggle OFF
+        sharedOffer.reactions.splice(existingIndex, 1);
+        actionTaken = "REMOVED";
+        currentReaction = null;
+      } else {
+        // Switch reaction type
+        sharedOffer.reactions[existingIndex].reactionType = cleanReaction;
+        sharedOffer.reactions[existingIndex].reactedAt = new Date();
+        actionTaken = "UPDATED";
+      }
+    } else {
+      // Add reaction
+      sharedOffer.reactions.push({
+        userId,
+        reactionType: cleanReaction,
+        reactedAt: new Date(),
+      });
+      actionTaken = "ADDED";
+    }
+
+    sharedOffer.reactionCounts = recalculateCounts(sharedOffer.reactions);
+    await sharedOffer.save();
+
+    // Notify poster if not a self-reaction
+    const isSelfReaction = sharedOffer.sharedBy.toString() === userId.toString();
+    if (actionTaken === "ADDED" && !isSelfReaction) {
+      const offer = await Offer.findById(sharedOffer.offerId).select("title").lean();
+      notifyUserOnOfferReaction({
+        recipientId: sharedOffer.sharedBy,
+        actorName: req.user.name || "A circle member",
+        reactionType: cleanReaction,
+        circleName: circle.name,
+        circleId: circle._id,
+        sharedOfferId: sharedOffer._id,
+        offerTitle: offer?.title || "Offer",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Reaction ${actionTaken.toLowerCase()} successfully.`,
+      data: {
+        sharedOfferId: sharedOffer._id,
+        action: actionTaken,
+        userReaction: currentReaction,
+        reactionCounts: sharedOffer.reactionCounts,
+      },
+    });
+  } catch (error) {
+    console.error("React to Shared Offer Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to process reaction.",
+    });
+  }
+};
+
+/**
+ * GET /api/circles/offers/:sharedOfferId/reactions
+ */
+export const getSharedOfferReactions = async (req, res) => {
+  try {
+    const { sharedOfferId } = req.params;
+    const userId = req.user._id;
+
+    const sharedOffer = await CircleSharedOffer.findOne({
+      _id: sharedOfferId,
+      isDeleted: false,
+    }).populate("reactions.userId", "name phone profileImage");
+
+    if (!sharedOffer) {
+      return res.status(404).json({
+        success: false,
+        message: "Shared offer not found.",
+      });
+    }
+
+    const isMember = await BachatCircle.exists({
+      _id: sharedOffer.circleId,
+      isActive: true,
+      "members.userId": userId,
+    });
+
+    if (!isMember) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied. You are not a member of this circle.",
+      });
+    }
+
+    const currentUserIdStr = userId.toString();
+    const myReaction =
+      sharedOffer.reactions.find((r) => r.userId?._id?.toString() === currentUserIdStr)
+        ?.reactionType || null;
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        myReaction,
+        reactionCounts: sharedOffer.reactionCounts,
+        reactions: sharedOffer.reactions,
+      },
+    });
+  } catch (error) {
+    console.error("Get Shared Offer Reactions Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch reactions.",
+    });
+  }
+};
 /**
  * =========================================================================
  * 1. CIRCLE MANAGEMENT (Create, Update, Details, Leave)

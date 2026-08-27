@@ -7,6 +7,69 @@ import Notification from "../models/Notification.js";
  * - Creates an In-App Notification in DB
  * - Dispatches a Push Notification via FCM
  */
+
+const EMOJI_MAP = {
+  LIKE: "👍",
+  LOVE: "❤️",
+  FIRE: "🔥",
+  HUNDRED: "💯",
+  WOW: "😮",
+  STAR_STRUCK: "🤩",
+};
+
+/**
+ * Sends in-app + push notification to the creator when a member reacts.
+ */
+export const notifyUserOnOfferReaction = async ({
+  recipientId,
+  actorName,
+  reactionType,
+  circleName,
+  circleId,
+  sharedOfferId,
+  offerTitle,
+}) => {
+  try {
+    if (!recipientId) return;
+
+    const emoji = EMOJI_MAP[reactionType] || "👍";
+    const title = `${emoji} New Reaction on your Shared Offer!`;
+    const body = `${actorName} reacted with ${emoji} to "${offerTitle}" in "${circleName}".`;
+
+    const dataPayload = {
+      type: "CIRCLE_SHARED_OFFER_REACTION",
+      reactionType,
+      circleId: circleId.toString(),
+      sharedOfferId: sharedOfferId.toString(),
+    };
+
+    // 1. In-App Notification
+    await Notification.create({
+      recipientId,
+      recipientType: "User",
+      title,
+      body,
+      type: "GENERAL",
+      data: dataPayload,
+      isRead: false,
+    });
+
+    // 2. FCM Push Notification
+    const recipient = await User.findById(recipientId).select("fcmToken").lean();
+    if (recipient?.fcmToken) {
+      await admin.messaging().send({
+        notification: { title, body },
+        data: {
+          ...dataPayload,
+          click_action: "FLUTTER_NOTIFICATION_CLICK",
+        },
+        token: recipient.fcmToken,
+      });
+    }
+  } catch (error) {
+    console.error("[Shared Offer Reaction Notification Error]:", error.message);
+  }
+};
 export const notifyUserForCircleInvitation = async ({
   invitedUserId,
   inviterName,

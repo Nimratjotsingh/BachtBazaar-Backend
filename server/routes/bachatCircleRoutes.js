@@ -11,6 +11,8 @@ import {
   shareOfferInCircles,
   getCircleSharedOffers,
   deleteSharedOffer,
+  getSharedOfferReactions,
+  reactToSharedOffer,
 } from "../controllers/bachatCircleController.js";
 import { protectUser } from "../middleware/authMiddleware.js";
 
@@ -35,5 +37,8 @@ router.post("/invitations/:invitationId/respond", respondToInvitation);
 router.post("/share/offers", shareOfferInCircles);
 router.get("/:circleId/offers", getCircleSharedOffers);
 router.delete("/offers/:sharedOfferId", deleteSharedOffer);
+
+router.get('/:sharedOfferId/reactions',getSharedOfferReactions);
+router.post('/:sharedOfferId/react',reactToSharedOffer);
 
 export default router;
