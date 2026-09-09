@@ -64,7 +64,7 @@ import MerchantNotificationRoutes from './routes/merchantNotificationRoutes.js';
 import contactRoutes from "./routes/contactRoutes.js";
 import customerJournalRoutes from './routes/customerJournalRoutes.js';
 import reviewRoutes from './routes/reviewRoutes.js';
-
+import offerReviewRoutes from './routes/offerReviewRoutes.js';
 dotenv.config();
 // console.log(process.env.MONGO_URI)
 import './utils/firebase.js';
@@ -142,6 +142,7 @@ app.use('/api/draft/offers',draftRoutes)
 app.use('/api/reviews',reviewRoutes)
 
 
+app.use('/api/offer-reviews',offerReviewRoutes);
 app.use('/api/user/offer-wishlist',offerWishlistRoutes);
 
 app.use("/api/merchant-bids",MerchantBidRoutes);

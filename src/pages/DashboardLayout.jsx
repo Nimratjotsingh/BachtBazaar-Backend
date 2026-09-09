@@ -19,7 +19,8 @@ import {
   FileQuestion,
   FlagTriangleLeft,
   FlagTriangleRight,
-  Coins
+  Coins,
+  MessageSquareCheck
 } from "lucide-react";
 
 const navItems = [
@@ -47,6 +48,7 @@ const navItems = [
     { label: "Quest", to: "/dashboard/quest", icon: Coins },
     { label: "Help & Support", to: "/dashboard/help-support", icon: Coins },
     { label: "QR Template Management", to: "/dashboard/qr-template", icon: Coins },
+    { label: "Offer Reviews from Merchants", to: "/dashboard/offer-reviews", icon: MessageSquareCheck },
   
 ];
 

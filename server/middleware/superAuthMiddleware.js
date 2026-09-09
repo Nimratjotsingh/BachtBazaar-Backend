@@ -3,6 +3,7 @@ import SuperAdmin from "../models/adminModel.js";
 
 export const protectSuperAdmin = async (req, res, next) => {
   try {
+   
     const token = req.headers.authorization?.split(" ")[1];
     
 

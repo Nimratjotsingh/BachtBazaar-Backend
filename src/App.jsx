@@ -29,6 +29,7 @@ import AdminNotificationCenter from "./pages/Notification/Notification";
 import AdminQuestManagement from "./pages/Quests/Quest";
 import HelpSupportPage from "./pages/HelpSupportPage/HelpSupportPage";
 import AdminQrTemplateManagement from "./pages/AdminQrTemplate/AdminQrTemplateManagement";
+import OfferReviewsManager from "./pages/OfferReviewManager/OfferReviewManager";
 
 const TOKEN_STORAGE_KEY = "bb_admin_token";
 const gmaps_key = import.meta.env.VITE_API_GMAPS_KEY;
@@ -109,6 +110,7 @@ function App() {
         <Route path="quest" element={<AdminQuestManagement token={token}/>}/>
         <Route path="help-support" element={<HelpSupportPage token={token}/>}/>
         <Route path="qr-template" element={<AdminQrTemplateManagement token={token}/>}/>
+        <Route path="offer-reviews" element={<OfferReviewsManager token={token}/>}/>
       </Route>
 
       {/* 🔁 Fallback Catch-All for unknown URLs */}
