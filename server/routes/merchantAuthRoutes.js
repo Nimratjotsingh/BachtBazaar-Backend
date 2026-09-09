@@ -14,7 +14,11 @@ import {
   logoutMerchant,
   updateMerchantDeliveryStatus,
   checkMerchantDeliveryStatus,
-  updateMerchantFcmToken
+  updateMerchantFcmToken,
+  
+  deleteMerchantAccount,
+  hardDeleteMerchantAccount,
+  recoverMerchantAccount
 } from "../controllers/merchantAuthController.js";
 
 import {getNearbyCustomerRequestsForMerchant} from '../controllers/MerchantBidController.js'
@@ -39,5 +43,11 @@ router.get("/user-requests",protectMerchant,getNearbyCustomerRequestsForMerchant
 router.patch('/delivery-status',protectMerchant,updateMerchantDeliveryStatus);
 router.get('/:id/delivery-status',checkMerchantDeliveryStatus);
 router.patch('/fcm-token',protectMerchant,updateMerchantFcmToken);
+router.delete("/account", protectMerchant,deleteMerchantAccount);
 
+
+
+// Hard delete own account
+router.delete("/account/permanent", protectMerchant,hardDeleteMerchantAccount);
+router.post('/account/recover',protectMerchant,recoverMerchantAccount)
 export default router;

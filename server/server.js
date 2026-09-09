@@ -63,7 +63,7 @@ import merchantQrTemplateRoutes from './routes/merchantQrTemplateRoutes.js';
 import MerchantNotificationRoutes from './routes/merchantNotificationRoutes.js';
 import contactRoutes from "./routes/contactRoutes.js";
 import customerJournalRoutes from './routes/customerJournalRoutes.js';
-
+import reviewRoutes from './routes/reviewRoutes.js';
 
 dotenv.config();
 // console.log(process.env.MONGO_URI)
@@ -139,6 +139,7 @@ app.use('/api/notify',NotificationsRoutes);
 app.use('/api/merchant/notify', MerchantNotificationRoutes)
 app.use('/api/customerjournal',customerJournalRoutes)
 app.use('/api/draft/offers',draftRoutes)
+app.use('/api/reviews',reviewRoutes)
 
 
 app.use('/api/user/offer-wishlist',offerWishlistRoutes);

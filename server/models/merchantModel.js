@@ -92,7 +92,17 @@ const merchantSchema = new mongoose.Schema(
       lowercase: true,
       trim: true,
     },
+    isDeleted: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    deletedAt: {
+      type: Date,
+      default: null,
+    },
   },
+  
   { timestamps: true }
 );
 

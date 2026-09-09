@@ -932,6 +932,152 @@ export const revivePastOffer = async (req, res) => {
 };
 
 
+export const revivePastOffersBatch = async (req, res) => {
+  try {
+    const merchantId = req.merchant._id;
+    const { offerIds, offers, start_date, end_date } = req.body;
+
+    // 1. Normalize input payload into uniform items
+    let targets = [];
+
+    if (Array.isArray(offers) && offers.length > 0) {
+      targets = offers.map((item) => ({
+        id: item.id || item._id || item.offerId,
+        startDate: item.start_date || start_date,
+        endDate: item.end_date || end_date,
+      }));
+    } else if (Array.isArray(offerIds) && offerIds.length > 0) {
+      targets = offerIds.map((id) => ({
+        id,
+        startDate: start_date,
+        endDate: end_date,
+      }));
+    } else if (req.params.id) {
+      targets = [{ id: req.params.id, startDate: start_date, endDate: end_date }];
+    }
+
+    if (targets.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "No offer IDs provided for revival.",
+      });
+    }
+
+    const uniqueIds = [...new Set(targets.map((t) => t.id).filter(Boolean))];
+
+    // 2. Fetch existing records owned by this merchant
+    const existingOffers = await Offer.find({
+      _id: { $in: uniqueIds },
+      merchant_id: merchantId,
+    });
+
+    const offerMap = new Map(existingOffers.map((o) => [o._id.toString(), o]));
+
+    const revivedOffers = [];
+    const failedOffers = [];
+    const calendarSlotReservations = new Map(); // key: UTC timestamp -> count to increment
+
+    const globalDefaultLimit = 5;
+
+    // 3. Validate each target item
+    for (const target of targets) {
+      const { id, startDate, endDate } = target;
+      const offer = offerMap.get(id?.toString());
+
+      if (!offer) {
+        failedOffers.push({ id, reason: "Offer not found or unauthorized." });
+        continue;
+      }
+
+      if (!startDate || !endDate) {
+        failedOffers.push({ id, reason: "Both start_date and end_date are required." });
+        continue;
+      }
+
+      const finalStartDate = new Date(startDate);
+      finalStartDate.setUTCHours(0, 0, 0, 0);
+
+      const finalEndDate = new Date(endDate);
+      finalEndDate.setUTCHours(23, 59, 59, 999);
+
+      if (finalEndDate < finalStartDate) {
+        failedOffers.push({ id, reason: "End date cannot be prior to start date." });
+        continue;
+      }
+
+      // 4. Calendar slot validation (if display_type === "calendar")
+      if (offer.display_type === "calendar") {
+        const dateKey = finalStartDate.getTime();
+        const pendingCount = calendarSlotReservations.get(dateKey) || 0;
+
+        const dateRule = await CalendarConfig.findOne({ date: finalStartDate });
+
+        if (dateRule) {
+          if (dateRule.is_locked) {
+            failedOffers.push({ id, reason: `Target date ${finalStartDate.toISOString().split("T")[0]} is locked.` });
+            continue;
+          }
+          if (dateRule.current_booked_count + pendingCount >= dateRule.max_allowed_offers) {
+            failedOffers.push({
+              id,
+              reason: `Calendar limit reached for ${finalStartDate.toISOString().split("T")[0]} (Max: ${dateRule.max_allowed_offers}).`,
+            });
+            continue;
+          }
+        } else {
+          const activeLiveBookings = await Offer.countDocuments({
+            display_type: "calendar",
+            start_date: finalStartDate,
+            is_active: true,
+            is_deleted: false,
+          });
+
+          if (activeLiveBookings + pendingCount >= globalDefaultLimit) {
+            failedOffers.push({
+              id,
+              reason: `Standard slots full for ${finalStartDate.toISOString().split("T")[0]} (Max: ${globalDefaultLimit}).`,
+            });
+            continue;
+          }
+        }
+
+        // Track in-flight reservation
+        calendarSlotReservations.set(dateKey, pendingCount + 1);
+      }
+
+      // 5. Apply state changes
+      offer.start_date = finalStartDate;
+      offer.end_date = finalEndDate;
+      offer.is_active = true;
+      offer.is_deleted = false;
+
+      await offer.save();
+      revivedOffers.push(offer);
+    }
+
+    // 6. Bulk increment booked calendar slots for successfully revived offers
+    for (const [dateTimestamp, count] of calendarSlotReservations.entries()) {
+      await CalendarConfig.findOneAndUpdate(
+        { date: new Date(dateTimestamp) },
+        { $inc: { current_booked_count: count } },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Processed ${targets.length} item(s). Revived: ${revivedOffers.length}, Failed: ${failedOffers.length}.`,
+      revivedCount: revivedOffers.length,
+      failedCount: failedOffers.length,
+      data: revivedOffers,
+      failed: failedOffers,
+    });
+  } catch (error) {
+    console.error("Batch Offer Revival Error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 
 export const getOffersStatsSummary = async (req, res) => {
   try {

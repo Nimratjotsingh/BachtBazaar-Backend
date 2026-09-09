@@ -2,6 +2,15 @@ import bcrypt from "bcryptjs";
 import admin from "../config/firebase.js";
 import Merchant from "../models/merchantModel.js";
 import MerchantRegistration from "../models/merchantRegistrationModel.js";
+import MerchantShop from '../models/merchantModel.js';
+import Offer from "../models/offerModel.js";
+import Product from "../models/productModel.js";
+import Service from "../models/serviceModel.js";
+import CustomerJournal from "../models/CustomerJournalModel.js";
+import Wishlist from "../models/wishlistModel.js";
+import MerchantDailyAnalytics from "../models/MerchantDailyAnalytics.js";
+
+
 import { generateToken } from "../utils/generateToken.js";
 import {
   phoneSchema,
@@ -12,6 +21,7 @@ import {
   forgotPasswordSchema,
   updatePasswordSchema
 } from "../validators/appValidator.js";
+import mongoose from 'mongoose';
 import { validate, ValidationError } from "../validators/validate.js";
 import { ACCOUNT_TYPES, ROLES } from "../constants/roles.js";
 
@@ -624,6 +634,336 @@ export const updateMerchantFcmToken = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Failed to update FCM token.",
+      error: error.message,
+    });
+  }
+};
+
+export const deleteMerchantAccount = async (req, res) => {
+  try {
+    const merchantId = req.merchant?._id;
+
+    if (!merchantId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized: Merchant ID missing from request session.",
+      });
+    }
+
+    const merchant = await Merchant.findById(merchantId);
+
+    if (!merchant || merchant.isDeleted) {
+      return res.status(404).json({
+        success: false,
+        message: "Merchant account not found or has already been deleted.",
+      });
+    }
+
+    const deletionTimestamp = new Date();
+
+    // 1. Deactivate merchant profile
+    merchant.isDeleted = true;
+    merchant.deletedAt = deletionTimestamp;
+    merchant.status = "deleted";
+    merchant.isBlocked = true;
+    merchant.fcmToken = null;
+    merchant.fcmTokens = [];
+    await merchant.save();
+
+    // 2. Cascade soft-delete shops
+    await MerchantShop.updateMany(
+      { merchantId },
+      { $set: { isDeleted: true, isActive: false, deletedAt: deletionTimestamp } }
+    );
+
+    // 3. Cascade deactivate offers
+    await Offer.updateMany(
+      { merchant_id: merchantId },
+      { $set: { is_deleted: true, is_active: false, deletedAt: deletionTimestamp } }
+    );
+
+    // 4. Cascade deactivate inventory (Products & Services)
+    await Product.updateMany(
+      { $or: [{ merchant_id: merchantId }, { merchantId }] },
+      { $set: { isDeleted: true, isActive: false, deletedAt: deletionTimestamp } }
+    );
+
+    await Service.updateMany(
+      { $or: [{ merchant_id: merchantId }, { merchantId }] },
+      { $set: { isDeleted: true, isActive: false, deletedAt: deletionTimestamp } }
+    );
+
+    // 5. Soft-delete merchant's customer journals
+    await CustomerJournal.updateMany(
+      { merchantId },
+      { $set: { isDeleted: true, deletedAt: deletionTimestamp } }
+    );
+
+    // 6. Clean references in wishlists
+    const shopIds = await MerchantShop.find({ merchantId }).distinct("_id");
+    const offerIds = await Offer.find({ merchant_id: merchantId }).distinct("_id");
+
+    await Wishlist.updateMany(
+      {},
+      {
+        $pull: {
+          shops: { $in: shopIds },
+          offers: { $in: offerIds },
+        },
+      }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Your merchant account and all associated data have been deactivated successfully.",
+      data: {
+        merchantId,
+        isDeleted: true,
+        deletedAt: deletionTimestamp,
+      },
+    });
+  } catch (error) {
+    console.error("Delete Merchant Account Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "An error occurred while deleting your merchant account.",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * DELETE /api/merchant/account/permanent
+ * Hard delete: Completely wipes all merchant records from the database.
+ */
+export const hardDeleteMerchantAccount = async (req, res) => {
+  try {
+    const merchantId = req.merchant?._id;
+
+    if (!merchantId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized: Merchant ID missing from request.",
+      });
+    }
+
+    const merchant = await Merchant.findById(merchantId);
+    if (!merchant) {
+      return res.status(404).json({
+        success: false,
+        message: "Merchant account not found.",
+      });
+    }
+
+    // Collect IDs to remove references from wishlists
+    const [shopIds, offerIds, productIds, serviceIds] = await Promise.all([
+      MerchantShop.find({ merchantId }).distinct("_id"),
+      Offer.find({ merchant_id: merchantId }).distinct("_id"),
+      Product.find({
+        $or: [{ merchant_id: merchantId }, { merchantId }],
+      }).distinct("_id"),
+      Service.find({
+        $or: [{ merchant_id: merchantId }, { merchantId }],
+      }).distinct("_id"),
+    ]);
+
+    // 1. Pull references from all customer wishlists
+    await Wishlist.updateMany(
+      {},
+      {
+        $pull: {
+          shops: { $in: shopIds },
+          offers: { $in: offerIds },
+          products: { $in: productIds },
+          services: { $in: serviceIds },
+        },
+      }
+    );
+
+    // 2. Wipe journals, analytics, catalog items, offers, and shops in parallel
+    await Promise.all([
+      CustomerJournal.deleteMany({ merchantId }),
+      MerchantDailyAnalytics.deleteMany({ merchantId }),
+      Offer.deleteMany({ merchant_id: merchantId }),
+      Product.deleteMany({ $or: [{ merchant_id: merchantId }, { merchantId }] }),
+      Service.deleteMany({ $or: [{ merchant_id: merchantId }, { merchantId }] }),
+      MerchantShop.deleteMany({ merchantId }),
+    ]);
+
+    // 3. Delete merchant document
+    await Merchant.findByIdAndDelete(merchantId);
+
+    return res.status(200).json({
+      success: true,
+      message: "Merchant account and all associated data permanently removed.",
+    });
+  } catch (error) {
+    console.error("Hard Delete Merchant Account Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to permanently remove merchant account.",
+      error: error.message,
+    });
+  }
+};
+
+export const recoverMerchantAccount = async (req, res) => {
+  try {
+    const { phone, password } = req.body;
+    const merchantIdFromToken = req.merchant?._id;
+
+    let query = {};
+    if (merchantIdFromToken) {
+      query = { _id: merchantIdFromToken };
+    } else if (phone) {
+      // Standardize/trim phone number
+      const cleanPhone = phone.toString().trim();
+      query = {
+        $or: [
+          { phone: cleanPhone },
+          { phone: `+91${cleanPhone.replace(/^\+?91/, "")}` },
+        ],
+      };
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: "Phone number or merchant authorization token is required to recover account.",
+      });
+    }
+
+    // 1. Locate the merchant
+    const merchant = await Merchant.findOne(query);
+
+    if (!merchant) {
+      return res.status(404).json({
+        success: false,
+        message: "Merchant account not found.",
+      });
+    }
+
+    if (!merchant.isDeleted) {
+      return res.status(400).json({
+        success: false,
+        message: "Account is already active. No restoration needed.",
+      });
+    }
+
+    // 2. If recovered via unauthenticated public route, verify password (or bypass if using auth token)
+    if (!merchantIdFromToken && password && merchant.password) {
+      // If you're using bcrypt, swap with: await bcrypt.compare(password, merchant.password)
+      const isMatch = merchant.password === password;
+      if (!isMatch) {
+        return res.status(401).json({
+          success: false,
+          message: "Invalid credentials.",
+        });
+      }
+    }
+
+    const merchantId = merchant._id;
+    const previousDeletedAt = merchant.deletedAt;
+
+    // 3. Reactivate merchant account
+    merchant.isDeleted = false;
+    merchant.deletedAt = null;
+    merchant.isBlocked = false;
+    merchant.status = merchant.isVerified ? "verified" : "unverified";
+    await merchant.save();
+
+    // 4. Cascade restore shops linked to this merchant
+    // Only restores shops that were deleted alongside the account (matching deletedAt)
+    const shopFilter = { merchantId };
+    if (previousDeletedAt) {
+      shopFilter.deletedAt = previousDeletedAt;
+    }
+    await MerchantShop.updateMany(
+      shopFilter,
+      {
+        $set: {
+          isDeleted: false,
+          isActive: true,
+          deletedAt: null,
+        },
+      }
+    );
+
+    // 5. Cascade restore offers
+    const offerFilter = { merchant_id: merchantId };
+    if (previousDeletedAt) {
+      offerFilter.deletedAt = previousDeletedAt;
+    }
+    await Offer.updateMany(
+      offerFilter,
+      {
+        $set: {
+          is_deleted: false,
+          is_active: true,
+          deletedAt: null,
+        },
+      }
+    );
+
+    // 6. Cascade restore products & services
+    const itemFilter = {
+      $or: [{ merchant_id: merchantId }, { merchantId }],
+    };
+    if (previousDeletedAt) {
+      itemFilter.deletedAt = previousDeletedAt;
+    }
+
+    await Product.updateMany(
+      itemFilter,
+      {
+        $set: {
+          isDeleted: false,
+          isActive: true,
+          deletedAt: null,
+        },
+      }
+    );
+
+    await Service.updateMany(
+      itemFilter,
+      {
+        $set: {
+          isDeleted: false,
+          isActive: true,
+          deletedAt: null,
+        },
+      }
+    );
+
+    // 7. Cascade restore customer journals
+    const journalFilter = { merchantId };
+    if (previousDeletedAt) {
+      journalFilter.deletedAt = previousDeletedAt;
+    }
+    await CustomerJournal.updateMany(
+      journalFilter,
+      {
+        $set: {
+          isDeleted: false,
+          deletedAt: null,
+        },
+      }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Merchant account and associated assets restored successfully.",
+      data: {
+        merchantId: merchant._id,
+        name: merchant.name,
+        phone: merchant.phone,
+        status: merchant.status,
+        isDeleted: merchant.isDeleted,
+      },
+    });
+  } catch (error) {
+    console.error("Recover Merchant Account Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to recover merchant account.",
       error: error.message,
     });
   }

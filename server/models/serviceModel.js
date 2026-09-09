@@ -88,6 +88,18 @@ const serviceSchema = new mongoose.Schema(
       default: false,
       index: true,
     },
+    ratings: {
+  average: {
+    type: Number,
+    default: 0,
+    min: 0,
+    max: 5,
+  },
+  count: {
+    type: Number,
+    default: 0,
+  },
+},
   },
   {
     timestamps: true,

@@ -6,6 +6,7 @@ import Merchant from '../models/merchantModel.js';
 import Category from '../models/categoryModel.js';
 import mongoose from "mongoose";
 import Area from "../models/AreaModel.js";
+import Review from '../models/ReviewModel.js'
 import Wishlist from "../models/wishlistModel.js";
 import {trackDailyMetric,trackDailyMetric2, trackOfferMetric} from '../utils/analyticsTracker.js';
 import { onOfferClickedHook } from "../hooks/mileStoneProgressHooks.js";
@@ -164,7 +165,7 @@ export const getShopDetails = async (req, res) => {
 
     // 1. Fetch Shop Details
     const shopDoc = await MerchantShop.findById(id)
-      .populate("merchantId", "name email phone profileImage status")
+      .populate("merchantId", "name email phone profileImage status isBlocked")
       .populate("categoryId", "label")
       .populate("subCategoryId", "label")
       .lean();
@@ -173,79 +174,120 @@ export const getShopDetails = async (req, res) => {
       return res.status(404).json({ success: false, message: "Shop not found." });
     }
 
-    // Safety fallback check: If the merchant account has been restricted by an admin, block access
-    if (shopDoc.merchantId?.status === "banned" || shopDoc.merchantId?.isBlocked === true) {
-      return res.status(403).json({ success: false, message: "This merchant profile has been restricted." });
+    // Safety fallback check: verify merchant account standing
+    if (
+      shopDoc.merchantId?.status === "banned" ||
+      shopDoc.merchantId?.status === "deleted" ||
+      shopDoc.merchantId?.isBlocked === true
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: "This merchant profile has been restricted.",
+      });
     }
 
     const merchantId = shopDoc.merchantId._id;
 
-    // 2. Fetch Products, Services, Active Offers, and User Wishlist in parallel
-    const [products, services, offers, userWishlist] = await Promise.all([
-      Product.find({ 
-        merchant_id: merchantId, 
-        is_deleted: false, 
-        is_active: true 
+    // 2. Fetch Products, Services, Active Offers, User Wishlist, and Review Metrics in parallel
+    const [products, services, offers, userWishlist, reviewStats] = await Promise.all([
+      Product.find({
+        merchant_id: merchantId,
+        is_deleted: false,
+        is_active: true,
       })
-      .select("name price discounted_price thumbnail stock is_featured")
-      .sort({ createdAt: -1 })
-      .lean(),
+        .select("name price discounted_price thumbnail stock is_featured ratings")
+        .sort({ createdAt: -1 })
+        .lean(),
 
-      Service.find({ 
-        merchant_id: merchantId, 
-        is_deleted: false, 
-        is_active: true 
+      Service.find({
+        merchant_id: merchantId,
+        is_deleted: false,
+        is_active: true,
       })
-      .select("name price discounted_price thumbnail pricing_type is_featured")
-      .sort({ createdAt: -1 })
-      .lean(),
+        .select("name price discountedPrice thumbnail pricing_type is_featured ratings")
+        .sort({ createdAt: -1 })
+        .lean(),
 
-      // Dynamic Active Offers Lookup
       Offer.find({
         merchant_id: merchantId,
         is_active: true,
         is_deleted: false,
         start_date: { $lte: rightNow },
-        end_date: { $gte: rightNow }
+        end_date: { $gte: rightNow },
       })
-      .select("title description thumbnail display_type discount_percentage discount_value minimum_purchase_amount end_date code")
-      .populate("offer_type_id", "label value")
-      .sort({ createdAt: -1 })
-      .lean(),
+        .select(
+          "title description thumbnail display_type discount_percentage discount_value minimum_purchase_amount end_date code"
+        )
+        .populate("offer_type_id", "label value")
+        .sort({ createdAt: -1 })
+        .lean(),
 
-      // User Wishlist Lookup
-      req.user ? Wishlist.findOne({ userId: req.user._id }).lean() : null
+      req.user ? Wishlist.findOne({ userId: req.user._id }).lean() : null,
+
+      Review.aggregate([
+        {
+          $match: {
+            merchantId,
+            status: "published",
+            isDeleted: false,
+          },
+        },
+        {
+          $group: {
+            _id: "$merchantId",
+            avgRating: { $avg: "$rating" },
+            totalReviews: { $sum: 1 },
+          },
+        },
+      ]),
     ]);
 
     // 3. Create Wishlist Lookup Sets for O(1) performance
     const wishlistedShopsSet = new Set((userWishlist?.shops || []).map((sId) => sId.toString()));
     const wishlistedProductsSet = new Set((userWishlist?.products || []).map((pId) => pId.toString()));
+    const wishlistedServicesSet = new Set((userWishlist?.services || []).map((sId) => sId.toString()));
     const wishlistedOffersSet = new Set((userWishlist?.offers || []).map((oId) => oId.toString()));
 
-    // 4. Attach isWishlisted flags
+    // 4. Attach isWishlisted flags and normalized ratings
+    const shopRating = reviewStats.length > 0
+      ? {
+          average: Math.round(reviewStats[0].avgRating * 10) / 10,
+          count: reviewStats[0].totalReviews,
+        }
+      : shopDoc.ratings || { average: 0, count: 0 };
+
     const shop = {
       ...shopDoc,
-      isWishlisted: wishlistedShopsSet.has(shopDoc._id.toString())
+      ratings: shopRating,
+      isWishlisted: wishlistedShopsSet.has(shopDoc._id.toString()),
     };
 
     const formattedProducts = products.map((product) => ({
       ...product,
-      isWishlisted: wishlistedProductsSet.has(product._id.toString())
+      isWishlisted: wishlistedProductsSet.has(product._id.toString()),
     }));
 
     const formattedServices = services.map((service) => ({
       ...service,
+      isWishlisted: wishlistedServicesSet.has(service._id.toString()),
     }));
 
     const formattedOffers = offers.map((offer) => ({
       ...offer,
-      isWishlisted: wishlistedOffersSet.has(offer._id.toString())
+      isWishlisted: wishlistedOffersSet.has(offer._id.toString()),
     }));
 
-    // 5. Track metric
-    
+    // 5. Track Daily Analytics metric (non-blocking)
+    const todayUTC = new Date();
+    todayUTC.setUTCHours(0, 0, 0, 0);
 
-    // 6. Construct the synchronized response payload
+    MerchantDailyAnalytics.findOneAndUpdate(
+      { merchantId, shopId: shopDoc._id, date: todayUTC },
+      { $inc: { shopViews: 1, totalImpressions: 1 } },
+      { upsert: true, setDefaultsOnInsert: true }
+    ).catch((err) => console.error("Merchant Daily Analytics tracking error:", err.message));
+
+    // 6. Return structured response payload
     return res.status(200).json({
       success: true,
       data: {
@@ -256,17 +298,16 @@ export const getShopDetails = async (req, res) => {
           offerCount: formattedOffers.length,
           products: formattedProducts,
           services: formattedServices,
-          offers: formattedOffers
-        }
-      }
+          offers: formattedOffers,
+        },
+      },
     });
-
   } catch (error) {
     console.error("Shop Details Matrix Aggregation Error:", error);
-    return res.status(500).json({ 
-      success: false, 
+    return res.status(500).json({
+      success: false,
       message: "Error retrieving shop inventory parameters package.",
-      error: error.message
+      error: error.message,
     });
   }
 };
@@ -1289,44 +1330,121 @@ export const getUserCategories = async (req, res) => {
   }
 };
 
+const checkShopOpenStatus = (shop, targetDate = new Date()) => {
+  const manual = shop.manualOverride;
+
+  // 1. Check if temporary force-close window has expired
+  if (
+    manual?.status === "FORCE_CLOSED" &&
+    manual?.closedUntil &&
+    targetDate >= new Date(manual.closedUntil)
+  ) {
+    manual.status = "AUTO";
+  }
+
+  // 2. High-priority manual overrides
+  if (manual?.status === "FORCE_CLOSED") {
+    return {
+      isOpen: false,
+      reason: manual.reason || "Temporarily closed by merchant",
+      isManualOverride: true,
+    };
+  }
+
+  if (manual?.status === "FORCE_OPEN") {
+    return {
+      isOpen: true,
+      reason: "Open by merchant override",
+      isManualOverride: true,
+    };
+  }
+
+  // 3. Fallback to weekly schedule (AUTO)
+  if (!shop.openingHours) {
+    return { isOpen: true, reason: "Open", isManualOverride: false };
+  }
+
+  const daysOfWeek = [
+    "sunday",
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+  ];
+  const currentDay = daysOfWeek[targetDate.getDay()];
+
+  const todaySchedule =
+    shop.openingHours instanceof Map
+      ? shop.openingHours.get(currentDay)
+      : shop.openingHours[currentDay];
+
+  if (!todaySchedule || todaySchedule.isClosed) {
+    return { isOpen: false, reason: "Closed for the day", isManualOverride: false };
+  }
+
+  const [openHour, openMin] = (todaySchedule.open || "00:00").split(":").map(Number);
+  const [closeHour, closeMin] = (todaySchedule.close || "23:59").split(":").map(Number);
+
+  const currentMinutes = targetDate.getHours() * 60 + targetDate.getMinutes();
+  const openMinutes = openHour * 60 + openMin;
+  const closeMinutes = closeHour * 60 + closeMin;
+
+  const isWithinHours = currentMinutes >= openMinutes && currentMinutes <= closeMinutes;
+
+  return {
+    isOpen: isWithinHours,
+    reason: isWithinHours ? "Open" : "Outside business hours",
+    isManualOverride: false,
+  };
+};
+
 export const getNearbyShops15KmForUser = async (req, res) => {
   try {
     const { page = 1, limit = 10, search, category } = req.query;
 
-    // 1. Context Check: Guard against unauthenticated executions
+    // 1. Guard against unauthenticated executions
     if (!req.user) {
       return res.status(401).json({
         success: false,
-        message: "Access Denied: Missing user authentication profile signature contextual keys."
+        message: "Access Denied: Missing user authentication credentials.",
       });
     }
 
-    // 2. Extract and Validate coordinates saved directly on the user model object
+    // 2. Extract and validate user coordinates
     const centerLat = req.user.latitude;
     const centerLng = req.user.longitude;
 
-    if (centerLat === undefined || centerLng === undefined || centerLat === null || centerLng === null) {
+    if (
+      centerLat === undefined ||
+      centerLng === undefined ||
+      centerLat === null ||
+      centerLng === null
+    ) {
       return res.status(400).json({
         success: false,
-        message: "Geographic missing block: Please update your user profile location parameters or toggle your device's GPS channels to look up nearby shops."
+        message:
+          "Please update your profile location or enable device GPS to discover nearby shops.",
       });
     }
 
-    // --- GEOSPATIAL BOUNDING BOX CALCULATION MATRIX (15KM THRESHOLD) ---
-    const targetRadiusKm = 15;
+    // --- GEOSPATIAL BOUNDING BOX CALCULATION ---
+    // Max ceiling to fetch candidate shops whose custom radius might reach the user
+    const MAX_SEARCH_RADIUS_KM = 50;
+    const DEFAULT_SHOP_RADIUS_KM = 15;
+
     const kmPerDegreeLat = 111.1;
     const kmPerDegreeLng = 111.1 * Math.cos(centerLat * (Math.PI / 180));
 
-    const latDelta = targetRadiusKm / kmPerDegreeLat;
-    const lngDelta = targetRadiusKm / kmPerDegreeLng;
+    const latDelta = MAX_SEARCH_RADIUS_KM / kmPerDegreeLat;
+    const lngDelta = MAX_SEARCH_RADIUS_KM / kmPerDegreeLng;
 
-    // Fast numeric index lookup constraint block
     const query = {
       latitude: { $gte: centerLat - latDelta, $lte: centerLat + latDelta },
-      longitude: { $gte: centerLng - lngDelta, $lte: centerLng + lngDelta }
+      longitude: { $gte: centerLng - lngDelta, $lte: centerLng + lngDelta },
     };
 
-    // Integrate optional search descriptors or category tags seamlessly
     if (search) {
       query.shopName = { $regex: search, $options: "i" };
     }
@@ -1335,13 +1453,12 @@ export const getNearbyShops15KmForUser = async (req, res) => {
       query.categoryId = category;
     }
 
-    // Pagination configuration
     const currentLimit = Number(limit);
     const skip = (Math.max(1, Number(page)) - 1) * currentLimit;
 
-    // Fetch candidate list within the bounding box range frame
+    // Fetch candidate list within the bounding box
     const rawShops = await MerchantShop.find(query)
-      .populate("merchantId", "name email profileImage")
+      .populate("merchantId", "name email profileImage status isBlocked")
       .populate("categoryId", "label")
       .populate("subCategoryId", "label")
       .select("-logo.data -banner.data")
@@ -1354,84 +1471,109 @@ export const getNearbyShops15KmForUser = async (req, res) => {
         total: 0,
         pages: 1,
         currentPage: Number(page),
-        data: []
+        data: [],
       });
     }
 
-    // 3. Exact In-Memory Haversine Calculation (Filters out bounding box corner leaks)
+    // 3. Haversine Calculation Checked Against Each Shop's visibilityRadiusKm
     const validShopsInRadius = [];
 
     rawShops.forEach((shop) => {
+      // Filter out restricted / blocked merchants
+      if (
+        shop.merchantId?.status === "banned" ||
+        shop.merchantId?.status === "deleted" ||
+        shop.merchantId?.isBlocked === true
+      ) {
+        return;
+      }
+
       if (shop.latitude && shop.longitude) {
-        const R = 6371; // Earth's mean radius constants in kilometers
+        const R = 6371; // Earth radius in km
         const dLat = (shop.latitude - centerLat) * (Math.PI / 180);
         const dLng = (shop.longitude - centerLng) * (Math.PI / 180);
-        
-        const a = 
+
+        const a =
           Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-          Math.cos(centerLat * (Math.PI / 180)) * Math.cos(shop.latitude * (Math.PI / 180)) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
-          
+          Math.cos(centerLat * (Math.PI / 180)) *
+            Math.cos(shop.latitude * (Math.PI / 180)) *
+            Math.sin(dLng / 2) *
+            Math.sin(dLng / 2);
+
         const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
         const distanceKm = R * c;
 
-        if (distanceKm <= targetRadiusKm) {
+        // Compare against merchant's custom radius (fallback to 15km)
+        const allowedRadius = Number(shop.visibilityRadiusKm) || DEFAULT_SHOP_RADIUS_KM;
+
+        if (distanceKm <= allowedRadius) {
           shop.distanceKm = Number(distanceKm.toFixed(2));
+          shop.effectiveRadiusKm = allowedRadius;
           validShopsInRadius.push(shop);
         }
       }
     });
 
-    // Sort array closest proximity first
+    // Sort closest proximity first
     validShopsInRadius.sort((a, b) => a.distanceKm - b.distanceKm);
 
-    // 4. Complete custom page segments slice
+    // 4. Pagination slice
     const totalWithinRadius = validShopsInRadius.length;
     const paginatedShops = validShopsInRadius.slice(skip, skip + currentLimit);
 
-    // 5. Bulk Wishlist & Live Offers Lookup Pipeline
+    // 5. Wishlist, Offers & Live Status Stitching
     if (paginatedShops.length > 0) {
-      // --- WISHLIST LOOKUP BLOCK ---
-      const userWishlist = await Wishlist.findOne({ userId: req.user._id }).lean();
+      const now = new Date();
+
+      const merchantIds = paginatedShops
+        .map((shop) => shop.merchantId?._id || shop.merchantId)
+        .filter(Boolean);
+
+      const [userWishlist, liveOffers] = await Promise.all([
+        Wishlist.findOne({ userId: req.user._id }).lean(),
+        Offer.find({
+          merchant_id: { $in: merchantIds },
+          is_active: true,
+          is_deleted: false,
+          start_date: { $lte: now },
+          $or: [
+            { end_date: { $exists: false } },
+            { end_date: null },
+            { end_date: { $gte: now } },
+          ],
+        })
+          .select(
+            "title description thumbnail display_type discount_percentage discount_value merchant_id start_date end_date"
+          )
+          .sort({ createdAt: -1 })
+          .lean(),
+      ]);
+
       const wishlistedShopIdsSet = new Set(
         (userWishlist?.shops || []).map((id) => id.toString())
       );
 
-      // --- LIVE OFFERS LOOKUP BLOCK ---
-      const merchantIds = paginatedShops
-        .map(shop => shop.merchantId?._id || shop.merchantId)
-        .filter(Boolean);
-
-      const liveOffers = await Offer.find({
-        merchant_id: { $in: merchantIds },
-        is_active: true,
-        is_deleted: false,
-        start_date: { $lte: new Date() },
-        $or: [
-          { end_date: { $exists: false } },
-          { end_date: null },
-          { end_date: { $gte: new Date() } }
-        ]
-      })
-      .select("title description thumbnail display_type discount_percentage discount_value merchant_id start_date end_date")
-      .sort({ createdAt: -1 })
-      .lean();
-
-      // Build safe lookup mapping index
       const offersMap = {};
-      liveOffers.forEach(offer => {
+      liveOffers.forEach((offer) => {
         if (!offer.merchant_id) return;
         const mId = offer.merchant_id.toString();
         if (!offersMap[mId]) offersMap[mId] = [];
         offersMap[mId].push(offer);
       });
 
-      // Stitch wishlist flag & offers back onto shop profiles
-      paginatedShops.forEach(shop => {
+      paginatedShops.forEach((shop) => {
         const shopIdStr = shop._id.toString();
         shop.isWishlisted = wishlistedShopIdsSet.has(shopIdStr);
 
-        const lookupKey = shop.merchantId?._id?.toString() || shop.merchantId?.toString();
-        shop.offers = lookupKey ? (offersMap[lookupKey] || []) : [];
+        const lookupKey =
+          shop.merchantId?._id?.toString() || shop.merchantId?.toString();
+        shop.offers = lookupKey ? offersMap[lookupKey] || [] : [];
+
+        // Dynamic Open/Closed Status
+        const statusDetails = checkShopOpenStatus(shop, now);
+        shop.isOpen = statusDetails.isOpen;
+        shop.statusReason = statusDetails.reason;
+        shop.isManualOverride = statusDetails.isManualOverride;
       });
     }
 
@@ -1440,21 +1582,19 @@ export const getNearbyShops15KmForUser = async (req, res) => {
       userLocation: {
         city: req.user.city || "unknown",
         lat: centerLat,
-        lng: centerLng
+        lng: centerLng,
       },
       total: totalWithinRadius,
       pages: Math.ceil(totalWithinRadius / currentLimit) || 1,
       currentPage: Number(page),
-      searchRadius: `${targetRadiusKm}km`,
-      data: paginatedShops
+      data: paginatedShops,
     });
-
   } catch (error) {
-    console.error("Authenticated 15Km Shop Discovery Exception:", error);
+    console.error("Shop Discovery By Custom Radius Exception:", error);
     return res.status(500).json({
       success: false,
-      message: "An internal server error occurred while analyzing tracking sectors for your account profile layout.",
-      error: error.message
+      message: "An error occurred while finding nearby shops.",
+      error: error.message,
     });
   }
 };

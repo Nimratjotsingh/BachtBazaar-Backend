@@ -266,12 +266,12 @@ export const createUser = async (req, res) => {
       ],
     });
 
-    if (existingUser) {
-      return res.status(400).json({
-        success: false,
-        message: "User with this email or phone already exists.",
-      });
-    }
+    // if (existingUser) {
+    //   return res.status(400).json({
+    //     success: false,
+    //     message: "User with this email or phone already exists.",
+    //   });
+    // }
 
     // Hash password (if provided)
     let hashedPassword = undefined;

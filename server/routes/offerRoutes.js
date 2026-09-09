@@ -14,7 +14,8 @@ import {
   getOfferDetailWithMerchantAdmin,
   revivePastOffer,
   getOffersStatsSummary,
-  getMerchantSlotStatus
+  getMerchantSlotStatus,
+  revivePastOffersBatch
 } from "../controllers/offerController.js";
 
 import { protectSuperAdmin } from "../middleware/superAuthMiddleware.js";
@@ -32,6 +33,7 @@ router.get("/", protectMerchant, getMerchantOffers);
 router.get("/search/:display_type", protectMerchant, searchOffersByDisplayType);
 router.patch("/merchant/revive/:id", protectMerchant, revivePastOffer);
 router.get("/stats-summary", protectSuperAdmin, getOffersStatsSummary);
+router.post('/revive-batch',protectMerchant,revivePastOffersBatch)
 
 
 // Parametized reference routes

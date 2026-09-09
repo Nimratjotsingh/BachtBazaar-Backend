@@ -20,13 +20,75 @@ export const createProduct = async (req, res) => {
 
     // 2. Handle Image Array
     if (req.files && req.files.images) {
-      data.images = req.files.images.map(file => `/uploads/${file.filename}`);
+      data.images = req.files.images.map((file) => `/uploads/${file.filename}`);
     }
-    
-    if (typeof data.category_id === 'string') data.category_id = [data.category_id];
-    if (typeof data.subcategory_id === 'string') data.subcategory_id = [data.subcategory_id];
 
-    // Force default state for any fresh additions
+    // 3. Normalize Array References (IDs & Tags)
+    if (typeof data.category_id === "string") {
+      try {
+        data.category_id = JSON.parse(data.category_id);
+      } catch {
+        data.category_id = [data.category_id];
+      }
+    }
+
+    if (typeof data.subcategory_id === "string") {
+      try {
+        data.subcategory_id = JSON.parse(data.subcategory_id);
+      } catch {
+        data.subcategory_id = [data.subcategory_id];
+      }
+    }
+
+    if (typeof data.tags === "string") {
+      try {
+        data.tags = JSON.parse(data.tags);
+      } catch {
+        data.tags = data.tags.split(",").map((t) => t.trim()).filter(Boolean);
+      }
+    }
+
+    // 4. Parse Optional Weight & Volume
+    if (data.weight) {
+      if (typeof data.weight === "string") {
+        try {
+          data.weight = JSON.parse(data.weight);
+        } catch {
+          data.weight = null;
+        }
+      }
+      if (data.weight && (!data.weight.value || !data.weight.unit)) {
+        data.weight = null;
+      }
+    }
+
+    if (data.volume) {
+      if (typeof data.volume === "string") {
+        try {
+          data.volume = JSON.parse(data.volume);
+        } catch {
+          data.volume = null;
+        }
+      }
+      if (data.volume && (!data.volume.value || !data.volume.unit)) {
+        data.volume = null;
+      }
+    }
+
+    // 5. Parse Optional Dates
+    if (data.manufacturing_date) {
+      data.manufacturing_date = new Date(data.manufacturing_date);
+    } else {
+      delete data.manufacturing_date;
+    }
+
+    if (data.expiry_date) {
+      data.expiry_date = new Date(data.expiry_date);
+    } else {
+      delete data.expiry_date;
+    }
+
+    // 6. Force default administrative state
     data.approval_status = "pending";
     data.approved_by = null;
     data.approval_date = null;
@@ -34,18 +96,18 @@ export const createProduct = async (req, res) => {
 
     const newProduct = new Product({
       ...data,
-      merchant_id: req.merchant._id 
+      merchant_id: req.merchant._id,
     });
 
     await newProduct.save();
-    
-    res.status(201).json({ 
-      success: true, 
-      message: "Product submitted for admin review successfully", 
-      product: newProduct 
+
+    return res.status(201).json({
+      success: true,
+      message: "Product submitted for admin review successfully",
+      product: newProduct,
     });
   } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
+    return res.status(400).json({ success: false, message: error.message });
   }
 };
 

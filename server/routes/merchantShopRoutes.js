@@ -1,7 +1,7 @@
 import express from "express";
 import upload from "../middleware/upload.js";
 import { protectMerchant } from "../middleware/authMiddleware.js";
-import { upsertShopProfile, getOpeningHours, updateOpeningHours, updateDayHours } from "../controllers/merchantShopController.js";
+import { upsertShopProfile, getOpeningHours, updateOpeningHours, updateDayHours, getShopOperatingStatus, updateShopOperatingStatus, getShopVisibilityRadius, updateShopVisibilityRadius } from "../controllers/merchantShopController.js";
 
 const router = express.Router();
 
@@ -29,5 +29,10 @@ router.post(
 router.get("/hours", protectMerchant, getOpeningHours);
 router.put("/hours", protectMerchant, updateOpeningHours);
 router.patch("/hours/:day", protectMerchant, updateDayHours);
+router.patch("/operating-status", protectMerchant, updateShopOperatingStatus);
+router.get("/operating-status", protectMerchant, getShopOperatingStatus);
 
+
+router.patch("/visibility-radius", protectMerchant, updateShopVisibilityRadius);
+router.get("/visibility-radius", protectMerchant, getShopVisibilityRadius);
 export default router;

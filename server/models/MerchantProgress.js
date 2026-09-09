@@ -43,7 +43,7 @@ const merchantProgressSchema = new mongoose.Schema(
     currentLeagueId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "League",
-      required: true,
+      
       index: true,
     },
     totalPoints: {

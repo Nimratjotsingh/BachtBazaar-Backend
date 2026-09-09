@@ -32,7 +32,11 @@ export const createDeliveryOrder = async (req, res) => {
       });
     }
 
-    const merchant = await Merchant.findById(merchantId);
+    const [merchant, user] = await Promise.all([
+      Merchant.findById(merchantId),
+      User.findById(userId),
+    ]);
+
     if (!merchant || merchant.isBlocked) {
       return res.status(404).json({
         success: false,
@@ -47,50 +51,44 @@ export const createDeliveryOrder = async (req, res) => {
       });
     }
 
-    let rawItemsList = [];
-    if (Array.isArray(items) && items.length > 0) {
-      rawItemsList = items;
-    } else {
-      rawItemsList = [
-        {
-          productId,
-          productName: customItemName,
-          quantity,
-          unitPrice: itemPrice,
-          variantInfo,
-        },
-      ];
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User record not found." });
     }
 
-    const resolvedItems = [];
-    for (const rawItem of rawItemsList) {
-      let resolvedName = rawItem.productName || rawItem.customItemName || "Custom Item";
-      let resolvedUnitPrice = Number(rawItem.unitPrice || rawItem.itemPrice) || 0;
-      let thumbnail = rawItem.productThumbnail || "";
-      let finalProductId = null;
+    // Normalize raw items input
+    const rawItemsList = Array.isArray(items) && items.length > 0
+      ? items
+      : [{ productId, productName: customItemName, quantity, unitPrice: itemPrice, variantInfo }];
 
-      if (rawItem.productId) {
-        const dbProduct = await Product.findById(rawItem.productId);
-        if (dbProduct && !dbProduct.is_deleted) {
-          finalProductId = dbProduct._id;
-          resolvedName = dbProduct.title || dbProduct.name || resolvedName;
-          resolvedUnitPrice =
-            dbProduct.discount_price || dbProduct.price || resolvedUnitPrice;
-          thumbnail = dbProduct.thumbnail || dbProduct.image || thumbnail;
-        }
-      }
+    // Batch-fetch all catalog products in one query
+    const productIds = rawItemsList.map((i) => i.productId).filter(Boolean);
+    const dbProducts = await Product.find({
+      _id: { $in: productIds },
+      is_deleted: false,
+    }).lean();
 
+    const productMap = new Map(dbProducts.map((p) => [p._id.toString(), p]));
+
+    const resolvedItems = rawItemsList.map((rawItem) => {
+      const dbProduct = rawItem.productId ? productMap.get(rawItem.productId.toString()) : null;
+
+      const resolvedName = dbProduct?.name || rawItem.productName || rawItem.customItemName || "Custom Item";
+      const resolvedUnitPrice = dbProduct
+        ? (dbProduct.discounted_price ?? dbProduct.price)
+        : (Number(rawItem.unitPrice || rawItem.itemPrice) || 0);
+      const thumbnail = dbProduct?.thumbnail || rawItem.productThumbnail || "";
       const itemQty = Math.max(1, Number(rawItem.quantity) || 1);
-      resolvedItems.push({
-        productId: finalProductId,
+
+      return {
+        productId: dbProduct?._id || null,
         productName: resolvedName,
         quantity: itemQty,
         unitPrice: resolvedUnitPrice,
         productThumbnail: thumbnail,
         variantInfo: rawItem.variantInfo || "",
         itemTotal: resolvedUnitPrice * itemQty,
-      });
-    }
+      };
+    });
 
     if (resolvedItems.length === 0) {
       return res.status(400).json({
@@ -99,17 +97,12 @@ export const createDeliveryOrder = async (req, res) => {
       });
     }
 
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({ success: false, message: "User record not found." });
-    }
-
     const finalAddress = deliveryAddress || user.address;
     const finalPhone = contactPhone || user.phone || user.mobile;
-
     const deliveryFee = Number(process.env.DEFAULT_DELIVERY_FEE) || 30;
     const platformFee = Number(process.env.DEFAULT_PLATFORM_FEE) || 10;
 
+    // Creates exactly ONE DeliveryOrder document
     const newOrder = new DeliveryOrder({
       userId,
       merchantId,
@@ -128,8 +121,8 @@ export const createDeliveryOrder = async (req, res) => {
 
     await newOrder.save();
 
-    // Notify Merchant of new incoming delivery order
-    sendDeliveryNotification({
+    // Async push notification
+    await sendDeliveryNotification({
       recipientType: "Merchant",
       recipientId: merchantId,
       title: "📦 New Delivery Order Received!",
@@ -137,7 +130,7 @@ export const createDeliveryOrder = async (req, res) => {
       type: "DELIVERY_ORDER_NEW",
       orderId: newOrder._id,
       extraData: {
-        totalItems: resolvedItems.length,
+        totalItems: String(resolvedItems.length),
         customerName: user.name || "Customer",
       },
     });
