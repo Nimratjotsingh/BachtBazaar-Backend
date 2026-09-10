@@ -2,7 +2,7 @@ import { OpenAI } from "openai";
 
 // Initialize OpenAI with your project key
 const openai = new OpenAI({
-  apiKey: "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",
+  apiKey: process.env.OPENAI_KEY,
 });
 
 export const autofillListingDetails = async (req, res) => {

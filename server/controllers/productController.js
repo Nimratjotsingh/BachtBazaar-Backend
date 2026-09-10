@@ -12,6 +12,31 @@ import { notifyWishlistUsersOnPriceDrop } from "../utils/priceDropNotificationHe
 export const createProduct = async (req, res) => {
   try {
     const data = { ...req.body };
+    const merchantId = req.merchant._id;
+
+    if (!data.name || !data.name.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Product name is required.",
+      });
+    }
+
+    const trimmedName = data.name.trim();
+
+    // 0. Check for existing product with the same name by this merchant
+    const escapedName = trimmedName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const duplicateProduct = await Product.findOne({
+      merchant_id: merchantId,
+      name: { $regex: new RegExp(`^${escapedName}$`, "i") },
+      
+    });
+
+    if (duplicateProduct) {
+      return res.status(409).json({
+        success: false,
+        message: `A product with the name "${trimmedName}" already exists in your inventory.`,
+      });
+    }
 
     // 1. Handle Thumbnail
     if (req.files && req.files.thumbnail) {
@@ -89,6 +114,7 @@ export const createProduct = async (req, res) => {
     }
 
     // 6. Force default administrative state
+    data.name = trimmedName;
     data.approval_status = "pending";
     data.approved_by = null;
     data.approval_date = null;
@@ -96,7 +122,7 @@ export const createProduct = async (req, res) => {
 
     const newProduct = new Product({
       ...data,
-      merchant_id: req.merchant._id,
+      merchant_id: merchantId,
     });
 
     await newProduct.save();
@@ -107,6 +133,12 @@ export const createProduct = async (req, res) => {
       product: newProduct,
     });
   } catch (error) {
+    if (error.code === 11000 && error.keyPattern?.sku) {
+      return res.status(400).json({
+        success: false,
+        message: "A product with this SKU already exists.",
+      });
+    }
     return res.status(400).json({ success: false, message: error.message });
   }
 };
