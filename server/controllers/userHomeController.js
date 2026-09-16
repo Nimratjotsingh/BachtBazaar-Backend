@@ -10,7 +10,7 @@ import Review from '../models/ReviewModel.js'
 import Wishlist from "../models/wishlistModel.js";
 import {trackDailyMetric,trackDailyMetric2, trackOfferMetric} from '../utils/analyticsTracker.js';
 import { onOfferClickedHook } from "../hooks/mileStoneProgressHooks.js";
-
+import MerchantDailyAnalytics from "../models/MerchantDailyAnalytics.js";
 
 
 
@@ -158,14 +158,145 @@ export const getAllShops = async (req, res) => {
 };
 // --- Get Single Shop Details ---
 
+
+const isTimeInWindow = (startTime, endTime, targetDate = new Date()) => {
+  if (!startTime || !endTime) return false;
+
+  const [startHour, startMin] = startTime.split(":").map(Number);
+  const [endHour, endMin] = endTime.split(":").map(Number);
+
+  const currentMinutes = targetDate.getHours() * 60 + targetDate.getMinutes();
+  const windowStart = startHour * 60 + startMin;
+  const windowEnd = endHour * 60 + endMin;
+
+  if (windowStart <= windowEnd) {
+    return currentMinutes >= windowStart && currentMinutes <= windowEnd;
+  }
+  return currentMinutes >= windowStart || currentMinutes <= windowEnd;
+};
+
+const calculateDistanceKm = (lat1, lon1, lat2, lon2) => {
+  const R = 6371; // Earth's radius in km
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLon = (lon2 - lon1) * (Math.PI / 180);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * (Math.PI / 180)) *
+      Math.cos(lat2 * (Math.PI / 180)) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return Math.max(0.5, Number((R * c).toFixed(2)));
+};
+
+const computeDeliveryFeeEstimate = (merchantDoc, shopDoc, userLat, userLng, orderDate = new Date()) => {
+  // If merchant has disabled delivery entirely
+  if (!merchantDoc?.isDeliveryEnabled) {
+    return {
+      isAvailable: false,
+      reason: "This merchant currently does not offer delivery.",
+      deliveryFee: null,
+      platformFee: null,
+      totalDeliveryCharge: null,
+      distanceKm: null,
+      tierApplied: null,
+    };
+  }
+
+  // Check coordinates availability
+  if (
+    userLat === undefined ||
+    userLat === null ||
+    userLng === undefined ||
+    userLng === null ||
+    !shopDoc?.latitude ||
+    !shopDoc?.longitude
+  ) {
+    return {
+      isAvailable: false,
+      reason: "User or shop location coordinates not available to evaluate delivery charges.",
+      deliveryFee: null,
+      platformFee: null,
+      totalDeliveryCharge: null,
+      distanceKm: null,
+      tierApplied: null,
+    };
+  }
+
+  const distanceKm = calculateDistanceKm(shopDoc.latitude, shopDoc.longitude, userLat, userLng);
+  const maxRadiusKm = Number(shopDoc.visibilityRadiusKm) || 15;
+
+  if (distanceKm > maxRadiusKm) {
+    return {
+      isAvailable: false,
+      reason: `Outside delivery range (${distanceKm} km away. Maximum allowed: ${maxRadiusKm} km).`,
+      distanceKm,
+      maxAllowedRadiusKm: maxRadiusKm,
+      deliveryFee: null,
+      platformFee: null,
+      totalDeliveryCharge: null,
+      tierApplied: null,
+    };
+  }
+
+  // Dynamic pricing evaluation based on merchant tier settings
+  const pricing = merchantDoc.deliveryPricing || {};
+  const baseFee = pricing.baseFee ?? 20;
+  const standardRate = pricing.ratePerKm ?? 10;
+  const minimumFee = pricing.minimumDeliveryFee ?? 20;
+
+  const night = pricing.nightConfig || {};
+  const peak = pricing.peakConfig || {};
+
+  let appliedRate = standardRate;
+  let flatSurcharge = 0;
+  let tierApplied = "STANDARD";
+
+  if (night.isEnabled && isTimeInWindow(night.startTime, night.endTime, orderDate)) {
+    appliedRate = night.ratePerKm ?? standardRate;
+    flatSurcharge = night.flatSurcharge ?? 0;
+    tierApplied = "NIGHT";
+  } else if (peak.isEnabled && isTimeInWindow(peak.startTime, peak.endTime, orderDate)) {
+    appliedRate = peak.ratePerKm ?? standardRate;
+    flatSurcharge = peak.flatSurcharge ?? 0;
+    tierApplied = "PEAK";
+  }
+
+  const rawFee = (distanceKm * appliedRate) + baseFee + flatSurcharge;
+  const deliveryFee = Math.max(minimumFee, Math.round(rawFee));
+  const platformFee = Number(process.env.DEFAULT_PLATFORM_FEE) || 10;
+
+  return {
+    isAvailable: true,
+    distanceKm,
+    deliveryFee,
+    platformFee,
+    totalDeliveryCharge: deliveryFee + platformFee,
+    tierApplied,
+    breakdown: {
+      baseFee,
+      ratePerKm: appliedRate,
+      surcharge: flatSurcharge,
+      minimumDeliveryFee: minimumFee,
+    },
+  };
+};
+
+// ==========================================
+// MAIN CONTROLLER
+// ==========================================
+
 export const getShopDetails = async (req, res) => {
   try {
     const { id } = req.params;
     const rightNow = new Date();
 
-    // 1. Fetch Shop Details
+    // 1. Fetch Shop Details with Merchant delivery parameters
     const shopDoc = await MerchantShop.findById(id)
-      .populate("merchantId", "name email phone profileImage status isBlocked")
+      .populate(
+        "merchantId",
+        "name email phone profileImage status isBlocked isDeliveryEnabled deliveryPricing"
+      )
       .populate("categoryId", "label")
       .populate("subCategoryId", "label")
       .lean();
@@ -194,6 +325,7 @@ export const getShopDetails = async (req, res) => {
         merchant_id: merchantId,
         is_deleted: false,
         is_active: true,
+        approval_status: "approved",
       })
         .select("name price discounted_price thumbnail stock is_featured ratings")
         .sort({ createdAt: -1 })
@@ -212,6 +344,7 @@ export const getShopDetails = async (req, res) => {
         merchant_id: merchantId,
         is_active: true,
         is_deleted: false,
+        is_paused:false,
         start_date: { $lte: rightNow },
         end_date: { $gte: rightNow },
       })
@@ -248,7 +381,19 @@ export const getShopDetails = async (req, res) => {
     const wishlistedServicesSet = new Set((userWishlist?.services || []).map((sId) => sId.toString()));
     const wishlistedOffersSet = new Set((userWishlist?.offers || []).map((oId) => oId.toString()));
 
-    // 4. Attach isWishlisted flags and normalized ratings
+    // 4. Calculate dynamic delivery charges using req.user.latitude and req.user.longitude
+    const userLat = req.user?.latitude;
+    const userLng = req.user?.longitude;
+
+    const deliveryEstimate = computeDeliveryFeeEstimate(
+      shopDoc.merchantId,
+      shopDoc,
+      userLat,
+      userLng,
+      rightNow
+    );
+
+    // 5. Attach isWishlisted flags, normalized ratings, and delivery details
     const shopRating = reviewStats.length > 0
       ? {
           average: Math.round(reviewStats[0].avgRating * 10) / 10,
@@ -260,6 +405,7 @@ export const getShopDetails = async (req, res) => {
       ...shopDoc,
       ratings: shopRating,
       isWishlisted: wishlistedShopsSet.has(shopDoc._id.toString()),
+      delivery: deliveryEstimate,
     };
 
     const formattedProducts = products.map((product) => ({
@@ -277,7 +423,7 @@ export const getShopDetails = async (req, res) => {
       isWishlisted: wishlistedOffersSet.has(offer._id.toString()),
     }));
 
-    // 5. Track Daily Analytics metric (non-blocking)
+    // 6. Track Daily Analytics metric (non-blocking)
     const todayUTC = new Date();
     todayUTC.setUTCHours(0, 0, 0, 0);
 
@@ -287,7 +433,7 @@ export const getShopDetails = async (req, res) => {
       { upsert: true, setDefaultsOnInsert: true }
     ).catch((err) => console.error("Merchant Daily Analytics tracking error:", err.message));
 
-    // 6. Return structured response payload
+    // 7. Return synchronized response payload
     return res.status(200).json({
       success: true,
       data: {
@@ -618,6 +764,7 @@ export const getActiveUserOffers = async (req, res) => {
 
     // 1. Establish strict live availability baseline rules using exact schema keys
     const campaignQuery = {
+      is_paused:false,
       is_active: true,
       is_deleted: false,
       start_date: { $lte: rightNow },
@@ -1402,7 +1549,7 @@ const checkShopOpenStatus = (shop, targetDate = new Date()) => {
 
 export const getNearbyShops15KmForUser = async (req, res) => {
   try {
-    const { page = 1, limit = 10, search, category } = req.query;
+    const { page = 1, limit = 10, search, category, radius, distance } = req.query;
 
     // 1. Guard against unauthenticated executions
     if (!req.user) {
@@ -1429,16 +1576,25 @@ export const getNearbyShops15KmForUser = async (req, res) => {
       });
     }
 
-    // --- GEOSPATIAL BOUNDING BOX CALCULATION ---
-    // Max ceiling to fetch candidate shops whose custom radius might reach the user
-    const MAX_SEARCH_RADIUS_KM = 50;
-    const DEFAULT_SHOP_RADIUS_KM = 15;
+    // --- DYNAMIC SEARCH RADIUS CONFIGURATION ---
+    const DEFAULT_SEARCH_RADIUS_KM = 15;
+    const MAX_SEARCH_CEILING_KM = 50;
+
+    // User can supply ?radius=20 or ?distance=20; fallback to 15km
+    const parsedUserRadius = Number(radius ?? distance);
+    const targetUserRadiusKm =
+      !isNaN(parsedUserRadius) && parsedUserRadius > 0
+        ? Math.min(parsedUserRadius, MAX_SEARCH_CEILING_KM)
+        : DEFAULT_SEARCH_RADIUS_KM;
+
+    // Expand bounding box up to the search radius (or 50km ceiling if shops have larger reach)
+    const boundingRadiusKm = Math.max(targetUserRadiusKm, DEFAULT_SEARCH_RADIUS_KM);
 
     const kmPerDegreeLat = 111.1;
     const kmPerDegreeLng = 111.1 * Math.cos(centerLat * (Math.PI / 180));
 
-    const latDelta = MAX_SEARCH_RADIUS_KM / kmPerDegreeLat;
-    const lngDelta = MAX_SEARCH_RADIUS_KM / kmPerDegreeLng;
+    const latDelta = boundingRadiusKm / kmPerDegreeLat;
+    const lngDelta = boundingRadiusKm / kmPerDegreeLng;
 
     const query = {
       latitude: { $gte: centerLat - latDelta, $lte: centerLat + latDelta },
@@ -1471,11 +1627,12 @@ export const getNearbyShops15KmForUser = async (req, res) => {
         total: 0,
         pages: 1,
         currentPage: Number(page),
+        requestedRadiusKm: targetUserRadiusKm,
         data: [],
       });
     }
 
-    // 3. Haversine Calculation Checked Against Each Shop's visibilityRadiusKm
+    // 3. Haversine Calculation (User Radius vs Merchant Visibility Radius)
     const validShopsInRadius = [];
 
     rawShops.forEach((shop) => {
@@ -1503,12 +1660,16 @@ export const getNearbyShops15KmForUser = async (req, res) => {
         const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
         const distanceKm = R * c;
 
-        // Compare against merchant's custom radius (fallback to 15km)
-        const allowedRadius = Number(shop.visibilityRadiusKm) || DEFAULT_SHOP_RADIUS_KM;
+        // Respect the merchant's configured visibility limit
+        const merchantConfiguredRadius =
+          Number(shop.visibilityRadiusKm) || DEFAULT_SEARCH_RADIUS_KM;
 
-        if (distanceKm <= allowedRadius) {
+        // Effective reach is the intersection of both the user's search and the merchant's radius
+        const effectiveMaxRadius = Math.min(targetUserRadiusKm, merchantConfiguredRadius);
+
+        if (distanceKm <= effectiveMaxRadius) {
           shop.distanceKm = Number(distanceKm.toFixed(2));
-          shop.effectiveRadiusKm = allowedRadius;
+          shop.effectiveRadiusKm = merchantConfiguredRadius;
           validShopsInRadius.push(shop);
         }
       }
@@ -1584,6 +1745,7 @@ export const getNearbyShops15KmForUser = async (req, res) => {
         lat: centerLat,
         lng: centerLng,
       },
+      requestedRadiusKm: targetUserRadiusKm,
       total: totalWithinRadius,
       pages: Math.ceil(totalWithinRadius / currentLimit) || 1,
       currentPage: Number(page),
@@ -1633,6 +1795,7 @@ export const getNearbyBannersForUser = async (req, res) => {
 
     // Fast numerical index query constraint box for nearby shops
     const shopQuery = {
+
       latitude: { $gte: centerLat - latDelta, $lte: centerLat + latDelta },
       longitude: { $gte: centerLng - lngDelta, $lte: centerLng + lngDelta }
     };
@@ -1700,6 +1863,7 @@ export const getNearbyBannersForUser = async (req, res) => {
       merchant_id: { $in: validMerchantIds },
       display_type: { $in: ["banner"] }, // Pull items specifically marked as banners
       is_active: true,
+      is_paused:false,
       is_deleted: false,
       start_date: { $lte: rightNow },
       $or: [
@@ -1940,6 +2104,7 @@ export const getNearbyCalendarOffersForUser = async (req, res) => {
       merchant_id: { $in: validMerchantIds },
       display_type: { $in: ["calendar"] },
       is_deleted: false,
+      is_paused:false,
       start_date: { $lte: targetDateEnd },
       $or: [
         { end_date: { $exists: false } },

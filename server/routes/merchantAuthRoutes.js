@@ -18,12 +18,15 @@ import {
   
   deleteMerchantAccount,
   hardDeleteMerchantAccount,
-  recoverMerchantAccount
+  recoverMerchantAccount,
+  getDeliveryPricing,
+  updateDeliveryPricing
 } from "../controllers/merchantAuthController.js";
 
 import {getNearbyCustomerRequestsForMerchant} from '../controllers/MerchantBidController.js'
 import { protectMerchant } from "../middleware/authMiddleware.js";
 import { updateFcmToken } from "../controllers/userController.js";
+import { getDeliveryOrderById } from "../controllers/deliveryController.js";
 
 const router = express.Router();
 
@@ -44,7 +47,8 @@ router.patch('/delivery-status',protectMerchant,updateMerchantDeliveryStatus);
 router.get('/:id/delivery-status',checkMerchantDeliveryStatus);
 router.patch('/fcm-token',protectMerchant,updateMerchantFcmToken);
 router.delete("/account", protectMerchant,deleteMerchantAccount);
-
+router.get('/delivery-pricing',protectMerchant,getDeliveryPricing);
+router.patch('/delivery-pricing',protectMerchant,updateDeliveryPricing)
 
 
 // Hard delete own account

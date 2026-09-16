@@ -37,14 +37,16 @@ const merchantShopSchema = new mongoose.Schema(
     // --- MERCHANT CONFIGURED VISIBILITY RADIUS ---
     visibilityRadiusKm: {
       type: Number,
-      default: 15, // Default baseline radius (e.g. 15 km)
+      default: 15,
       min: [1, "Visibility radius must be at least 1 km"],
       max: [100, "Visibility radius cannot exceed 100 km"],
       index: true,
     },
 
+    // --- SHOP MEDIA ASSETS ---
     logo: imageSchema,
     banner: imageSchema,
+    storeFront: imageSchema, // Added store front / facade photo
     phone: String,
     description: String,
     openingHours: {

@@ -49,6 +49,7 @@ const navItems = [
     { label: "Help & Support", to: "/dashboard/help-support", icon: Coins },
     { label: "QR Template Management", to: "/dashboard/qr-template", icon: Coins },
     { label: "Offer Reviews from Merchants", to: "/dashboard/offer-reviews", icon: MessageSquareCheck },
+    { label: "Product Suggestions", to: "/dashboard/product-suggestions", icon: MessageSquareCheck },
   
 ];
 

@@ -463,6 +463,239 @@ export const userSelfClaimOffer = async (req, res) => {
   }
 };
 
+
+const getDistanceInMeters = (lat1, lon1, lat2, lon2) => {
+  const R = 6371000; // Earth's radius in meters
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLon = (lon2 - lon1) * (Math.PI / 180);
+
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * (Math.PI / 180)) *
+      Math.cos(lat2 * (Math.PI / 180)) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return Math.round(R * c);
+};
+
+export const userSelfClaimOffer2 = async (req, res) => {
+  try {
+    const { offerId } = req.params;
+    const userId = req.user._id;
+
+    // 0. Extract user coordinates from body or query
+    const rawLat = req.body.latitude ?? req.body.lat ?? req.query.lat;
+    const rawLng = req.body.longitude ?? req.body.lng ?? req.query.lng;
+
+    if (rawLat === undefined || rawLng === undefined || rawLat === null || rawLng === null || rawLat === "" || rawLng === "") {
+      return res.status(400).json({
+        success: false,
+        message: "Your device location coordinates (latitude and longitude) are required to verify in-store redemption.",
+      });
+    }
+
+    const userLat = Number(rawLat);
+    const userLng = Number(rawLng);
+
+    if (isNaN(userLat) || isNaN(userLng)) {
+      return res.status(400).json({
+        success: false,
+        message: "Provided location coordinates are invalid numbers.",
+      });
+    }
+
+    // 1. Fetch active, non-deleted, and non-paused offer
+    const offer = await Offer.findOne({
+      _id: offerId,
+      is_active: true,
+      is_deleted: false,
+      is_draft: false,
+      is_paused: false,
+    });
+
+    if (!offer) {
+      return res.status(404).json({
+        success: false,
+        message: "The requested offer is no longer available or is currently paused.",
+      });
+    }
+
+    // 2. Locate the Merchant's physical shop for coordinate validation
+    const shop = await MerchantShop.findOne({ merchantId: offer.merchant_id })
+      .select("latitude longitude shopName")
+      .lean();
+
+    // Fallback coordinates: check shop schema first, then offer location GeoJSON Point
+    const shopLat = shop?.latitude ?? (offer.location?.coordinates?.[1] || null);
+    const shopLng = shop?.longitude ?? (offer.location?.coordinates?.[0] || null);
+
+    if (shopLat === null || shopLng === null) {
+      return res.status(400).json({
+        success: false,
+        message: "Merchant shop GPS coordinates are not configured. Cannot verify in-store presence.",
+      });
+    }
+
+    // 3. Distance Verification (50-Meter In-Store Boundary)
+    const MAX_ALLOWED_DISTANCE_METERS = 50;
+    const distanceMeters = getDistanceInMeters(userLat, userLng, shopLat, shopLng);
+
+    if (distanceMeters > MAX_ALLOWED_DISTANCE_METERS) {
+      return res.status(403).json({
+        success: false,
+        message: `You are not at the shop, cannot redeem. You must be within 50 meters of the store to claim this offer (current distance: ${distanceMeters}m).`,
+        data: {
+          currentDistanceMeters: distanceMeters,
+          requiredRadiusMeters: MAX_ALLOWED_DISTANCE_METERS,
+        },
+      });
+    }
+
+    // 4. Validate offer expiration date
+    const now = new Date();
+    if (offer.end_date && new Date(offer.end_date) < now) {
+      return res.status(400).json({
+        success: false,
+        message: "This offer campaign has expired.",
+      });
+    }
+
+    // 5. ENFORCE OVERALL CLAIM LIMIT
+    if (offer.claim_limit !== undefined && offer.claim_limit !== null) {
+      if (offer.claimedCount >= offer.claim_limit) {
+        return res.status(400).json({
+          success: false,
+          message: `Claim limit reached! All ${offer.claim_limit} claims for this offer have already been taken.`,
+        });
+      }
+    }
+
+    // 6. ENFORCE PER-USER LIMIT
+    const userClaimCount = await OfferRedemption.countDocuments({
+      offerId,
+      userId,
+      status: "claimed",
+    });
+
+    if (offer.per_user_limit && userClaimCount >= offer.per_user_limit) {
+      return res.status(400).json({
+        success: false,
+        message: `You have already claimed this offer ${offer.per_user_limit} time(s).`,
+      });
+    }
+
+    // 7. Check for an existing uncompleted "redeemed" record
+    let redemption = await OfferRedemption.findOne({
+      offerId,
+      userId,
+      status: "redeemed",
+    });
+
+    let wasDirectClaim = false;
+
+    if (redemption) {
+      // Transition already-redeemed record to claimed
+      redemption.status = "claimed";
+      redemption.claimedAt = new Date();
+      await redemption.save();
+    } else {
+      // Direct claim without prior reserve
+      wasDirectClaim = true;
+      const uniqueCode = typeof generateUniqueClaimCode === "function"
+        ? generateUniqueClaimCode()
+        : Math.floor(100000 + Math.random() * 900000).toString();
+
+      const hoursToMs = (offer.redeem_time_hours || 24) * 60 * 60 * 1000;
+      const calculatedExpiry = new Date(Date.now() + hoursToMs);
+      const finalExpiresAt =
+        offer.end_date && new Date(offer.end_date) < calculatedExpiry
+          ? new Date(offer.end_date)
+          : calculatedExpiry;
+
+      redemption = new OfferRedemption({
+        offerId,
+        userId,
+        shopId: shop?._id || offer.merchant_id,
+        merchantId: offer.merchant_id,
+        redemptionCode: uniqueCode,
+        expiresAt: finalExpiresAt,
+        status: "claimed",
+        redeemedAt: new Date(),
+        claimedAt: new Date(),
+      });
+
+      await redemption.save();
+    }
+
+    // 8. Atomically update offer counters
+    await Offer.findByIdAndUpdate(offerId, {
+      $inc: {
+        claimedCount: 1,
+        ...(wasDirectClaim ? { redeemedCount: 1 } : {}),
+      },
+    });
+
+    const redemptionCode = redemption.redemptionCode;
+
+    // 9. Track analytics and execute hooks
+    if (wasDirectClaim) {
+      if (typeof trackOfferMetric === "function") {
+        await trackOfferMetric(offerId, offer.merchant_id, "redeems", { userId });
+      }
+      if (typeof trackDailyMetric2 === "function") {
+        await trackDailyMetric2(offer.merchant_id, "redeems", {
+          userId,
+          offerId,
+          redemptionCode,
+        });
+      }
+      if (typeof onOfferRedeemedHook === "function") {
+        await onOfferRedeemedHook(offer.merchant_id, userId);
+      }
+    }
+
+    if (typeof trackDailyMetric2 === "function") {
+      await trackDailyMetric2(offer.merchant_id, "footfall", {
+        userId,
+        offerId,
+        redemptionCode,
+      });
+    }
+
+    if (typeof trackOfferMetric === "function") {
+      await trackOfferMetric(offerId, offer.merchant_id, "claims", {
+        userId,
+        redemptionCode,
+      });
+    }
+
+    if (typeof onOfferClaimedHook === "function") {
+      await onOfferClaimedHook(offer.merchant_id, userId);
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Offer successfully claimed! Show this confirmation screen to the shopkeeper.",
+      data: {
+        offerTitle: offer.title,
+        redemptionCode: redemption.redemptionCode,
+        claimedAt: redemption.claimedAt,
+        status: redemption.status,
+        distanceMeters,
+      },
+    });
+  } catch (error) {
+    console.error("Direct User Claim Exception:", error);
+    return res.status(500).json({
+      success: false,
+      message: "An internal server error occurred while processing your claim.",
+      error: error.message,
+    });
+  }
+};
+
 export const getUserOfferHistory = async (req, res) => {
   try {
     const userId = req.user._id;

@@ -1,12 +1,233 @@
 import DeliveryOrder from "../models/deliveryModel.js";
 import Merchant from "../models/merchantModel.js";
+import MerchantShop from "../models/merchantShopModel.js";
 import User from "../models/userModel.js";
 import Product from "../models/productModel.js";
 import { sendDeliveryNotification } from "../utils/deliveryNotificationHelper.js";
 
 // ==========================================
+// PRICING CALCULATION HELPERS
+// ==========================================
+
+const isTimeInWindow = (startTime, endTime, targetDate = new Date()) => {
+  if (!startTime || !endTime) return false;
+
+  const [startHour, startMin] = startTime.split(":").map(Number);
+  const [endHour, endMin] = endTime.split(":").map(Number);
+
+  const currentMinutes = targetDate.getHours() * 60 + targetDate.getMinutes();
+  const windowStart = startHour * 60 + startMin;
+  const windowEnd = endHour * 60 + endMin;
+
+  if (windowStart <= windowEnd) {
+    return currentMinutes >= windowStart && currentMinutes <= windowEnd;
+  }
+  return currentMinutes >= windowStart || currentMinutes <= windowEnd;
+};
+
+const calculateDeliveryFee = (pricingConfig = {}, distanceKm = 1, orderDate = new Date()) => {
+  const baseFee = pricingConfig.baseFee ?? 20;
+  const standardRate = pricingConfig.ratePerKm ?? 10;
+  const minimumFee = pricingConfig.minimumDeliveryFee ?? 20;
+
+  const night = pricingConfig.nightConfig || {};
+  const peak = pricingConfig.peakConfig || {};
+
+  let appliedRate = standardRate;
+  let flatSurcharge = 0;
+  let tierApplied = "STANDARD";
+
+  if (night.isEnabled && isTimeInWindow(night.startTime, night.endTime, orderDate)) {
+    appliedRate = night.ratePerKm ?? standardRate;
+    flatSurcharge = night.flatSurcharge ?? 0;
+    tierApplied = "NIGHT";
+  } else if (peak.isEnabled && isTimeInWindow(peak.startTime, peak.endTime, orderDate)) {
+    appliedRate = peak.ratePerKm ?? standardRate;
+    flatSurcharge = peak.flatSurcharge ?? 0;
+    tierApplied = "PEAK";
+  }
+
+  const rawFee = (distanceKm * appliedRate) + baseFee + flatSurcharge;
+  const deliveryFee = Math.max(minimumFee, Math.round(rawFee));
+
+  return {
+    deliveryFee,
+    breakdown: {
+      appliedRatePerKm: appliedRate,
+      baseFee,
+      surcharge: flatSurcharge,
+      tierApplied,
+    },
+  };
+};
+
+const calculateDistanceKm = (lat1, lon1, lat2, lon2) => {
+  const R = 6371; // Earth's mean radius in km
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLon = (lon2 - lon1) * (Math.PI / 180);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * (Math.PI / 180)) *
+      Math.cos(lat2 * (Math.PI / 180)) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return Math.max(0.5, Number((R * c).toFixed(2)));
+};
+
+// ==========================================
 // 1. USER ENDPOINTS
 // ==========================================
+
+
+
+/**
+ * GET /api/delivery/estimate-fee
+ * Query Params:
+ *  - merchantId (or shopId)
+ *  - latitude  (optional, defaults to req.user.latitude)
+ *  - longitude (optional, defaults to req.user.longitude)
+ */
+export const getUserDeliveryFeeEstimate = async (req, res) => {
+  try {
+    const { merchantId, shopId, latitude, longitude } = req.query;
+
+    if (!merchantId && !shopId) {
+      return res.status(400).json({
+        success: false,
+        message: "Either merchantId or shopId is required.",
+      });
+    }
+
+    // 1. Resolve user coordinates (from query params or profile)
+    let userLat = latitude !== undefined && latitude !== null ? Number(latitude) : req.user?.latitude;
+    let userLng = longitude !== undefined && longitude !== null ? Number(longitude) : req.user?.longitude;
+
+    if (userLat === undefined || userLng === undefined || isNaN(userLat) || isNaN(userLng)) {
+      return res.status(400).json({
+        success: false,
+        message: "User delivery location coordinates (latitude and longitude) are required.",
+      });
+    }
+
+    // 2. Fetch Merchant profile and MerchantShop in parallel
+    const shopQuery = merchantId ? { merchantId } : { _id: shopId };
+    const shop = await MerchantShop.findOne(shopQuery)
+      .select("merchantId shopName latitude longitude visibilityRadiusKm address city")
+      .lean();
+
+    if (!shop) {
+      return res.status(404).json({ success: false, message: "Merchant shop not found." });
+    }
+
+    const resolvedMerchantId = shop.merchantId;
+    const merchant = await Merchant.findById(resolvedMerchantId)
+      .select("isDeliveryEnabled isBlocked status deliveryPricing")
+      .lean();
+
+    if (!merchant || merchant.isBlocked || merchant.status === "banned") {
+      return res.status(404).json({
+        success: false,
+        message: "Merchant account is inactive or restricted.",
+      });
+    }
+
+    if (!merchant.isDeliveryEnabled) {
+      return res.status(400).json({
+        success: false,
+        isDeliverable: false,
+        message: "This merchant does not currently provide delivery service.",
+      });
+    }
+
+    if (!shop.latitude || !shop.longitude) {
+      return res.status(400).json({
+        success: false,
+        message: "Shop geographic coordinates are not configured.",
+      });
+    }
+
+    // 3. Compute Distance
+    const distanceKm = calculateDistanceKm(shop.latitude, shop.longitude, userLat, userLng);
+
+    // 4. Verify Merchant Service Radius Cap
+    const maxRadius = Number(shop.visibilityRadiusKm) || 15;
+    const isDeliverable = distanceKm <= maxRadius;
+
+    if (!isDeliverable) {
+      return res.status(200).json({
+        success: true,
+        isDeliverable: false,
+        message: `Your location is outside the merchant delivery radius (${distanceKm} km away. Maximum service radius is ${maxRadius} km).`,
+        data: {
+          distanceKm,
+          maxAllowedRadiusKm: maxRadius,
+          deliveryFee: null,
+        },
+      });
+    }
+
+    // 5. Evaluate Merchant Dynamic Delivery Fee Tier
+    const now = new Date();
+    const pricing = merchant.deliveryPricing || {};
+    const baseFee = pricing.baseFee ?? 20;
+    const standardRate = pricing.ratePerKm ?? 10;
+    const minimumFee = pricing.minimumDeliveryFee ?? 20;
+
+    const night = pricing.nightConfig || {};
+    const peak = pricing.peakConfig || {};
+
+    let appliedRatePerKm = standardRate;
+    let flatSurcharge = 0;
+    let tierApplied = "STANDARD";
+    let tierReason = "Standard daytime rate";
+
+    if (night.isEnabled && isTimeInWindow(night.startTime, night.endTime, now)) {
+      appliedRatePerKm = night.ratePerKm ?? standardRate;
+      flatSurcharge = night.flatSurcharge ?? 0;
+      tierApplied = "NIGHT";
+      tierReason = `Night hours delivery rate applied (${night.startTime} - ${night.endTime})`;
+    } else if (peak.isEnabled && isTimeInWindow(peak.startTime, peak.endTime, now)) {
+      appliedRatePerKm = peak.ratePerKm ?? standardRate;
+      flatSurcharge = peak.flatSurcharge ?? 0;
+      tierApplied = "PEAK";
+      tierReason = `Peak rush hours rate applied (${peak.startTime} - ${peak.endTime})`;
+    }
+
+    // 1 KM = X ₹ formula
+    const rawDeliveryFee = (distanceKm * appliedRatePerKm) + baseFee + flatSurcharge;
+    const finalDeliveryFee = Math.max(minimumFee, Math.round(rawDeliveryFee));
+    const platformFee = Number(process.env.DEFAULT_PLATFORM_FEE) || 10;
+
+    return res.status(200).json({
+      success: true,
+      isDeliverable: true,
+      data: {
+        shopId: shop._id,
+        shopName: shop.shopName,
+        distanceKm,
+        deliveryFee: finalDeliveryFee,
+        platformFee,
+        totalDeliveryCharge: finalDeliveryFee + platformFee,
+        tierApplied,
+        tierReason,
+        breakdown: {
+          baseFee,
+          ratePerKm: appliedRatePerKm,
+          flatSurcharge,
+          minimumDeliveryFee: minimumFee,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("User Delivery Fee Estimate Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to estimate delivery charge.",
+      error: error.message,
+    });
+  }
+};
 
 export const createDeliveryOrder = async (req, res) => {
   try {
@@ -32,9 +253,10 @@ export const createDeliveryOrder = async (req, res) => {
       });
     }
 
-    const [merchant, user] = await Promise.all([
+    const [merchant, user, shop] = await Promise.all([
       Merchant.findById(merchantId),
       User.findById(userId),
+      MerchantShop.findOne({ merchantId }).lean(),
     ]);
 
     if (!merchant || merchant.isBlocked) {
@@ -55,12 +277,11 @@ export const createDeliveryOrder = async (req, res) => {
       return res.status(404).json({ success: false, message: "User record not found." });
     }
 
-    // Normalize raw items input
+    // 1. Normalize and resolve inventory items
     const rawItemsList = Array.isArray(items) && items.length > 0
       ? items
       : [{ productId, productName: customItemName, quantity, unitPrice: itemPrice, variantInfo }];
 
-    // Batch-fetch all catalog products in one query
     const productIds = rawItemsList.map((i) => i.productId).filter(Boolean);
     const dbProducts = await Product.find({
       _id: { $in: productIds },
@@ -97,12 +318,36 @@ export const createDeliveryOrder = async (req, res) => {
       });
     }
 
+    // 2. Geolocation & Distance Calculation
     const finalAddress = deliveryAddress || user.address;
     const finalPhone = contactPhone || user.phone || user.mobile;
-    const deliveryFee = Number(process.env.DEFAULT_DELIVERY_FEE) || 30;
+    const userLat = finalAddress?.latitude ?? user.latitude;
+    const userLng = finalAddress?.longitude ?? user.longitude;
+
+    let distanceKm = 1;
+    if (shop?.latitude && shop?.longitude && userLat && userLng) {
+      distanceKm = calculateDistanceKm(shop.latitude, shop.longitude, userLat, userLng);
+
+      // Check merchant configured service radius
+      const maxAllowedRadius = shop.visibilityRadiusKm || 15;
+      if (distanceKm > maxAllowedRadius) {
+        return res.status(400).json({
+          success: false,
+          message: `Delivery address is outside the merchant's delivery zone (${distanceKm} km away. Maximum allowed: ${maxAllowedRadius} km).`,
+        });
+      }
+    }
+
+    // 3. Dynamic Delivery Fee Evaluation (Base + Per KM + Peak / Night)
+    const { deliveryFee, breakdown } = calculateDeliveryFee(
+      merchant.deliveryPricing,
+      distanceKm,
+      new Date()
+    );
+
     const platformFee = Number(process.env.DEFAULT_PLATFORM_FEE) || 10;
 
-    // Creates exactly ONE DeliveryOrder document
+    // 4. Create and persist single DeliveryOrder document
     const newOrder = new DeliveryOrder({
       userId,
       merchantId,
@@ -110,7 +355,9 @@ export const createDeliveryOrder = async (req, res) => {
       deliveryAddress: finalAddress,
       contactPhone: finalPhone,
       note: note ? note.trim() : "",
+      distanceKm,
       deliveryFee,
+      deliveryFeeBreakdown: breakdown,
       platformFee,
       estimatedDeliveryTime: {
         value: Number(estimatedMinutes) || 30,
@@ -121,19 +368,20 @@ export const createDeliveryOrder = async (req, res) => {
 
     await newOrder.save();
 
-    // Async push notification
-    await sendDeliveryNotification({
+    // Async push notification to merchant
+    sendDeliveryNotification({
       recipientType: "Merchant",
       recipientId: merchantId,
       title: "📦 New Delivery Order Received!",
-      body: `${user.name || "A customer"} placed an order with ${resolvedItems.length} item(s). Tap to review and accept.`,
+      body: `${user.name || "A customer"} placed an order with ${resolvedItems.length} item(s). Delivery: ₹${deliveryFee} (${breakdown.tierApplied}).`,
       type: "DELIVERY_ORDER_NEW",
       orderId: newOrder._id,
       extraData: {
         totalItems: String(resolvedItems.length),
         customerName: user.name || "Customer",
+        tierApplied: breakdown.tierApplied,
       },
-    });
+    }).catch((err) => console.error("Notification trigger error:", err.message));
 
     return res.status(201).json({
       success: true,
@@ -172,16 +420,15 @@ export const cancelDeliveryOrder = async (req, res) => {
     order.cancelReason = cancelReason || "Canceled by user prior to merchant acceptance.";
     await order.save();
 
-    // Notify Merchant that customer canceled the pending request
     sendDeliveryNotification({
       recipientType: "Merchant",
       recipientId: order.merchantId,
       title: "❌ Delivery Order Canceled",
-      body: `Customer canceled Order #${order._id.toString().slice(-6)}.`,
+      body: `Customer canceled Order #${order.orderNumber || order._id.toString().slice(-6)}.`,
       type: "DELIVERY_ORDER_CANCELED",
       orderId: order._id,
       extraData: { cancelReason: order.cancelReason },
-    });
+    }).catch((err) => console.error("Notification trigger error:", err.message));
 
     return res.status(200).json({
       success: true,
@@ -242,7 +489,6 @@ export const respondToDeliveryOrder = async (req, res) => {
 
       order.expectedDeliveryAt = new Date(now.getTime() + durationValue * multiplier);
 
-      // Notify User: Order Accepted
       sendDeliveryNotification({
         recipientType: "User",
         recipientId: order.userId,
@@ -254,12 +500,11 @@ export const respondToDeliveryOrder = async (req, res) => {
           estimatedTime: `${durationValue} ${timeUnit}`,
           expectedDeliveryAt: order.expectedDeliveryAt.toISOString(),
         },
-      });
+      }).catch((err) => console.error("Notification trigger error:", err.message));
     } else {
       order.status = "declined";
       order.declineReason = declineReason || "Declined by merchant.";
 
-      // Notify User: Order Declined
       sendDeliveryNotification({
         recipientType: "User",
         recipientId: order.userId,
@@ -268,7 +513,7 @@ export const respondToDeliveryOrder = async (req, res) => {
         type: "DELIVERY_ORDER_DECLINED",
         orderId: order._id,
         extraData: { declineReason: order.declineReason },
-      });
+      }).catch((err) => console.error("Notification trigger error:", err.message));
     }
 
     await order.save();
@@ -331,7 +576,6 @@ export const updateDeliveryOrderStatus = async (req, res) => {
     const merchant = await Merchant.findById(merchantId).select("name shop_name");
     const shopDisplayName = merchant?.shop_name || merchant?.name || "The store";
 
-    // Notify User on status progression
     if (status === "dispatched") {
       sendDeliveryNotification({
         recipientType: "User",
@@ -340,7 +584,7 @@ export const updateDeliveryOrderStatus = async (req, res) => {
         body: `Your order from ${shopDisplayName} is out for delivery!`,
         type: "DELIVERY_ORDER_DISPATCHED",
         orderId: order._id,
-      });
+      }).catch((err) => console.error("Notification trigger error:", err.message));
     } else if (status === "delivered") {
       sendDeliveryNotification({
         recipientType: "User",
@@ -349,7 +593,7 @@ export const updateDeliveryOrderStatus = async (req, res) => {
         body: `Your order from ${shopDisplayName} has been delivered. Enjoy your purchase!`,
         type: "DELIVERY_ORDER_DELIVERED",
         orderId: order._id,
-      });
+      }).catch((err) => console.error("Notification trigger error:", err.message));
     }
 
     return res.status(200).json({
@@ -377,7 +621,7 @@ export const getMerchantDeliveryOrders = async (req, res) => {
 
     const orders = await DeliveryOrder.find(query)
       .populate("userId", "name phone email")
-      .populate("items.productId", "title thumbnail category_id price")
+      .populate("items.productId", "name thumbnail category_id price discounted_price")
       .sort({ createdAt: -1 })
       .lean();
 
@@ -409,7 +653,7 @@ export const getDeliveryOrderById = async (req, res) => {
     const order = await DeliveryOrder.findOne(accessQuery)
       .populate("userId", "name phone email")
       .populate("merchantId", "name shop_name phone logo address")
-      .populate("items.productId", "title thumbnail category_id price")
+      .populate("items.productId", "name thumbnail category_id price discounted_price")
       .lean();
 
     if (!order) {
@@ -461,7 +705,7 @@ export const getDeliveryOrders = async (req, res) => {
 
     const orders = await DeliveryOrder.find(query)
       .populate("merchantId", "name shop_name phone logo address")
-      .populate("items.productId", "title thumbnail category_id price")
+      .populate("items.productId", "name thumbnail category_id price discounted_price")
       .sort({ createdAt: -1 })
       .lean();
 

@@ -182,6 +182,36 @@ export const createOffer = async (req, res) => {
     const data = { ...req.body };
     const merchantId = req.merchant._id; // Extracted from auth middleware token validation
 
+    // 0. Duplicate Title Guard for Today
+    const trimmedTitle = (data.title || "").trim();
+    if (!trimmedTitle) {
+      return res.status(400).json({
+        success: false,
+        message: "Offer title is required.",
+      });
+    }
+
+    const startOfToday = new Date();
+    startOfToday.setUTCHours(0, 0, 0, 0);
+
+    const endOfToday = new Date();
+    endOfToday.setUTCHours(23, 59, 59, 999);
+
+    const escapedTitle = trimmedTitle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const duplicateOfferToday = await Offer.findOne({
+      merchant_id: merchantId,
+      title: { $regex: new RegExp(`^${escapedTitle}$`, "i") },
+      is_deleted: false,
+      createdAt: { $gte: startOfToday, $lte: endOfToday },
+    }).select("title createdAt");
+
+    if (duplicateOfferToday) {
+      return res.status(409).json({
+        success: false,
+        message: `An offer titled "${trimmedTitle}" has already been created by your account today. Please choose a different title or wait until tomorrow to reuse it.`,
+      });
+    }
+
     // Extract explicit latitude/longitude from either the query params or the request body
     const lat = req.query.lat || req.body.lat;
     const lng = req.query.lng || req.body.lng;
@@ -189,7 +219,7 @@ export const createOffer = async (req, res) => {
     if (lat === undefined || lng === undefined || lat === "" || lng === "") {
       return res.status(400).json({
         success: false,
-        message: "Explicit 'lat' and 'lng' positional coordinate parameters are required to deploy an offer."
+        message: "Explicit 'lat' and 'lng' positional coordinate parameters are required to deploy an offer.",
       });
     }
 
@@ -199,7 +229,7 @@ export const createOffer = async (req, res) => {
     if (isNaN(resolvedLat) || isNaN(resolvedLng)) {
       return res.status(400).json({
         success: false,
-        message: "Provided geographic coordinates are invalid numbers."
+        message: "Provided geographic coordinates are invalid numbers.",
       });
     }
 
@@ -213,7 +243,7 @@ export const createOffer = async (req, res) => {
     // Standardize input fields into timezone-safe clean UTC Date instances
     const finalStartDate = start_date ? new Date(start_date) : undefined;
     const finalEndDate = end_date ? new Date(end_date) : undefined;
-    
+
     if (finalStartDate) finalStartDate.setUTCHours(0, 0, 0, 0);
     if (finalEndDate) finalEndDate.setUTCHours(23, 59, 59, 999);
 
@@ -226,14 +256,14 @@ export const createOffer = async (req, res) => {
         $geoNear: {
           near: {
             type: "Point",
-            coordinates: [resolvedLng, resolvedLat] // [longitude, latitude]
+            coordinates: [resolvedLng, resolvedLat], // [longitude, latitude]
           },
           distanceField: "distance_meters",
           spherical: true,
-          query: { is_active: true }
-        }
+          query: { is_active: true },
+        },
       },
-      { $limit: 1 }
+      { $limit: 1 },
     ]);
 
     const closestArea = geoResults.length > 0 ? geoResults[0] : null;
@@ -241,7 +271,7 @@ export const createOffer = async (req, res) => {
     if (!closestArea) {
       return res.status(404).json({
         success: false,
-        message: "The provided coordinates do not map into any active operational geofenced Area boundaries."
+        message: "The provided coordinates do not map into any active operational geofenced Area boundaries.",
       });
     }
 
@@ -250,7 +280,7 @@ export const createOffer = async (req, res) => {
     // Map coordinates into a standard GeoJSON Point object for the final Offer schema
     data.location = {
       type: "Point",
-      coordinates: [resolvedLng, resolvedLat]
+      coordinates: [resolvedLng, resolvedLat],
     };
 
     // --- START: CONDITIONAL CALENDAR CAPACITY VALIDATIONS ---
@@ -282,9 +312,9 @@ export const createOffer = async (req, res) => {
         $or: [
           {
             start_date: { $lte: endWithBuffer },
-            end_date: { $gte: startWithBuffer }
-          }
-        ]
+            end_date: { $gte: startWithBuffer },
+          },
+        ],
       });
 
       if (existingOverlappingOffer) {
@@ -299,19 +329,21 @@ export const createOffer = async (req, res) => {
       const targetDateLookup = new Date(finalStartDate);
 
       // Find all shops registered in this specific resolved Area perimeter
-      const areaMerchantIds = await mongoose.model("MerchantShop").find({ area_id: targetAreaId }).distinct("merchantId");
+      const areaMerchantIds = await mongoose
+        .model("MerchantShop")
+        .find({ area_id: targetAreaId })
+        .distinct("merchantId");
 
-      // Concurrently query active regional booking metrics 
+      // Concurrently query active regional booking metrics
       const [dateRule, currentAreaBookingsCount] = await Promise.all([
         CalendarConfig.findOne({ area_id: targetAreaId, date: targetDateLookup }).lean(),
-        
         Offer.countDocuments({
           display_type: "calendar",
           start_date: targetDateLookup,
           is_active: true,
           is_deleted: false,
-          merchant_id: { $in: areaMerchantIds }
-        })
+          merchant_id: { $in: areaMerchantIds },
+        }),
       ]);
 
       if (dateRule) {
@@ -342,13 +374,13 @@ export const createOffer = async (req, res) => {
 
     // 2. Process Array Strings (Convert comma-separated tags from form-data arrays)
     if (typeof data.tags === "string") {
-      data.tags = data.tags.split(",").map(tag => tag.trim()).filter(Boolean);
+      data.tags = data.tags.split(",").map((tag) => tag.trim()).filter(Boolean);
     }
 
     // 3. Process product_id mapping array transformations
     if (data.product_id) {
       if (typeof data.product_id === "string") {
-        data.product_id = data.product_id.split(",").map(id => id.trim()).filter(Boolean);
+        data.product_id = data.product_id.split(",").map((id) => id.trim()).filter(Boolean);
       } else if (!Array.isArray(data.product_id)) {
         data.product_id = [data.product_id];
       }
@@ -357,10 +389,11 @@ export const createOffer = async (req, res) => {
     // 4. Instantiate and Save the Document
     const newOffer = new Offer({
       ...data,
+      title: trimmedTitle,
       merchant_id: merchantId,
       start_date: finalStartDate,
       end_date: finalEndDate,
-      location: data.location, // Injects verified [lng, lat] point object structures securely
+      location: data.location,
       discount_percentage: data.discount_percentage ? Number(data.discount_percentage) : null,
       discount_value: data.discount_value ? Number(data.discount_value) : null,
       minimum_purchase_amount: data.minimum_purchase_amount ? Number(data.minimum_purchase_amount) : 0,
@@ -368,7 +401,7 @@ export const createOffer = async (req, res) => {
       free_quantity: data.free_quantity ? Number(data.free_quantity) : null,
       max_free_quantity: data.max_free_quantity ? Number(data.max_free_quantity) : null,
       tags: data.tags || [],
-      product_id: data.product_id || []
+      product_id: data.product_id || [],
     });
 
     await newOffer.save();
@@ -379,13 +412,14 @@ export const createOffer = async (req, res) => {
       await CalendarConfig.findOneAndUpdate(
         { area_id: targetAreaId, date: targetDateLookup },
         { $inc: { current_booked_count: 1 } },
-        { 
-          upsert: true, 
-          new: true, 
-          setDefaultsOnInsert: true 
-        } 
+        {
+          upsert: true,
+          new: true,
+          setDefaultsOnInsert: true,
+        }
       );
     }
+
     (async () => {
       try {
         await notifyNearbyUsersForNewOffer({
@@ -408,7 +442,6 @@ export const createOffer = async (req, res) => {
       message: "Offer campaign submitted and listed successfully.",
       data: newOffer,
     });
-
   } catch (error) {
     console.error("Create Offer Coordinate Mapping Structural Failure Exception:", error);
     return res.status(500).json({ success: false, message: error.message });
@@ -1233,5 +1266,60 @@ export const getOffersStatsSummary = async (req, res) => {
   } catch (error) {
     console.error("Analytics Aggregation Failure:", error);
     res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+
+
+/**
+ * PATCH /api/offers/:id/toggle-pause
+ * Toggles an offer between active and paused states.
+ * Body: { "reason": "Stock exhausted for today" } (optional)
+ */
+export const togglePauseOffer = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const merchantId = req.merchant?._id;
+    const { reason } = req.body;
+
+    const offer = await Offer.findOne({ _id: id, merchant_id: merchantId, is_deleted: false });
+    if (!offer) {
+      return res.status(404).json({
+        success: false,
+        message: "Offer not found or unauthorized.",
+      });
+    }
+
+    if (offer.is_draft) {
+      return res.status(400).json({
+        success: false,
+        message: "Draft campaigns cannot be paused or resumed.",
+      });
+    }
+
+    const nextState = !offer.is_paused;
+    offer.is_paused = nextState;
+    offer.paused_at = nextState ? new Date() : null;
+    offer.pause_reason = nextState ? (reason?.trim() || "Paused by merchant") : null;
+
+    await offer.save();
+
+    return res.status(200).json({
+      success: true,
+      message: nextState ? "Offer has been paused." : "Offer has been resumed successfully.",
+      data: {
+        offerId: offer._id,
+        is_paused: offer.is_paused,
+        paused_at: offer.paused_at,
+        pause_reason: offer.pause_reason || 'yuhi',
+      },
+    });
+  } catch (error) {
+    console.error("Toggle Pause Offer Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update offer pause status.",
+      error: error.message,
+    });
   }
 };

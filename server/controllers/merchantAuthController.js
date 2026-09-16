@@ -732,6 +732,259 @@ export const deleteMerchantAccount = async (req, res) => {
   }
 };
 
+const isValidTimeFormat = (timeStr) => {
+  return /^([01]\d|2[0-3]):([0-5]\d)$/.test(timeStr);
+};
+
+/**
+ * PATCH /api/merchant/delivery-pricing
+ * Updates delivery configuration: Base rate per KM, base fixed fee, minimum fee, night rates, and peak hours.
+ */
+export const updateDeliveryPricing = async (req, res) => {
+  try {
+    const merchantId = req.merchant._id;
+    const {
+      isDeliveryEnabled,
+      baseFee,
+      ratePerKm,
+      minimumDeliveryFee,
+      nightConfig,
+      peakConfig,
+    } = req.body;
+
+    const merchant = await Merchant.findById(merchantId);
+    if (!merchant) {
+      return res.status(404).json({ success: false, message: "Merchant account not found." });
+    }
+
+    if (isDeliveryEnabled !== undefined) {
+      merchant.isDeliveryEnabled = Boolean(isDeliveryEnabled);
+    }
+
+    if (!merchant.deliveryPricing) {
+      merchant.deliveryPricing = {};
+    }
+
+    // 1. Numeric rate validations
+    if (baseFee !== undefined) {
+      const val = Number(baseFee);
+      if (isNaN(val) || val < 0) {
+        return res.status(400).json({ success: false, message: "Base fee cannot be negative." });
+      }
+      merchant.deliveryPricing.baseFee = val;
+    }
+
+    if (ratePerKm !== undefined) {
+      const val = Number(ratePerKm);
+      if (isNaN(val) || val < 0) {
+        return res.status(400).json({ success: false, message: "Rate per KM cannot be negative." });
+      }
+      merchant.deliveryPricing.ratePerKm = val;
+    }
+
+    if (minimumDeliveryFee !== undefined) {
+      const val = Number(minimumDeliveryFee);
+      if (isNaN(val) || val < 0) {
+        return res.status(400).json({ success: false, message: "Minimum delivery fee cannot be negative." });
+      }
+      merchant.deliveryPricing.minimumDeliveryFee = val;
+    }
+
+    // 2. Night window configuration validation
+    if (nightConfig) {
+      if (nightConfig.startTime && !isValidTimeFormat(nightConfig.startTime)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid nightConfig.startTime. Format must be 24-hour HH:mm (e.g., '22:00').",
+        });
+      }
+      if (nightConfig.endTime && !isValidTimeFormat(nightConfig.endTime)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid nightConfig.endTime. Format must be 24-hour HH:mm (e.g., '06:00').",
+        });
+      }
+
+      merchant.deliveryPricing.nightConfig = {
+        ...merchant.deliveryPricing.nightConfig,
+        ...(nightConfig.isEnabled !== undefined && { isEnabled: Boolean(nightConfig.isEnabled) }),
+        ...(nightConfig.ratePerKm !== undefined && { ratePerKm: Math.max(0, Number(nightConfig.ratePerKm)) }),
+        ...(nightConfig.flatSurcharge !== undefined && { flatSurcharge: Math.max(0, Number(nightConfig.flatSurcharge)) }),
+        ...(nightConfig.startTime && { startTime: nightConfig.startTime }),
+        ...(nightConfig.endTime && { endTime: nightConfig.endTime }),
+      };
+    }
+
+    // 3. Peak rush window configuration validation
+    if (peakConfig) {
+      if (peakConfig.startTime && !isValidTimeFormat(peakConfig.startTime)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid peakConfig.startTime. Format must be 24-hour HH:mm (e.g., '19:00').",
+        });
+      }
+      if (peakConfig.endTime && !isValidTimeFormat(peakConfig.endTime)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid peakConfig.endTime. Format must be 24-hour HH:mm (e.g., '21:30').",
+        });
+      }
+
+      merchant.deliveryPricing.peakConfig = {
+        ...merchant.deliveryPricing.peakConfig,
+        ...(peakConfig.isEnabled !== undefined && { isEnabled: Boolean(peakConfig.isEnabled) }),
+        ...(peakConfig.ratePerKm !== undefined && { ratePerKm: Math.max(0, Number(peakConfig.ratePerKm)) }),
+        ...(peakConfig.flatSurcharge !== undefined && { flatSurcharge: Math.max(0, Number(peakConfig.flatSurcharge)) }),
+        ...(peakConfig.startTime && { startTime: peakConfig.startTime }),
+        ...(peakConfig.endTime && { endTime: peakConfig.endTime }),
+      };
+    }
+
+    await merchant.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Delivery pricing parameters successfully updated.",
+      data: {
+        isDeliveryEnabled: merchant.isDeliveryEnabled,
+        deliveryPricing: merchant.deliveryPricing,
+      },
+    });
+  } catch (error) {
+    console.error("Update Delivery Pricing Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update delivery pricing structure.",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * GET /api/merchant/delivery-pricing
+ * Retrieves the merchant's active delivery pricing model.
+ */
+export const getDeliveryPricing = async (req, res) => {
+  try {
+    const merchantId = req.merchant._id;
+
+    const merchant = await Merchant.findById(merchantId)
+      .select("isDeliveryEnabled deliveryPricing name phone")
+      .lean();
+
+    if (!merchant) {
+      return res.status(404).json({ success: false, message: "Merchant not found." });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        merchantId: merchant._id,
+        isDeliveryEnabled: merchant.isDeliveryEnabled ?? false,
+        deliveryPricing: merchant.deliveryPricing || {
+          baseFee: 20,
+          ratePerKm: 10,
+          minimumDeliveryFee: 20,
+          nightConfig: {
+            isEnabled: false,
+            ratePerKm: 15,
+            flatSurcharge: 0,
+            startTime: "22:00",
+            endTime: "06:00",
+          },
+          peakConfig: {
+            isEnabled: false,
+            ratePerKm: 14,
+            flatSurcharge: 0,
+            startTime: "19:00",
+            endTime: "21:30",
+          },
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Get Delivery Pricing Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to retrieve delivery pricing parameters.",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * POST /api/merchant/delivery-pricing/estimate
+ * Preview delivery fee calculation for a custom distance and time without placing an order.
+ * Body: { "distanceKm": 5.2, "targetTime": "2026-09-15T22:30:00.000Z" }
+ */
+export const estimateDeliveryFee = async (req, res) => {
+  try {
+    const merchantId = req.merchant._id;
+    const { distanceKm, targetTime } = req.body;
+
+    const merchant = await Merchant.findById(merchantId).select("deliveryPricing isDeliveryEnabled").lean();
+    if (!merchant) {
+      return res.status(404).json({ success: false, message: "Merchant not found." });
+    }
+
+    const dist = Math.max(0.5, Number(distanceKm) || 1);
+    const evalDate = targetTime ? new Date(targetTime) : new Date();
+
+    const pricing = merchant.deliveryPricing || {};
+    const baseFee = pricing.baseFee ?? 20;
+    const standardRate = pricing.ratePerKm ?? 10;
+    const minimumFee = pricing.minimumDeliveryFee ?? 20;
+
+    const night = pricing.nightConfig || {};
+    const peak = pricing.peakConfig || {};
+
+    const isWindowActive = (start, end, d) => {
+      if (!start || !end) return false;
+      const [sh, sm] = start.split(":").map(Number);
+      const [eh, em] = end.split(":").map(Number);
+      const cur = d.getHours() * 60 + d.getMinutes();
+      const s = sh * 60 + sm;
+      const e = eh * 60 + em;
+      return s <= e ? cur >= s && cur <= e : cur >= s || cur <= e;
+    };
+
+    let appliedRate = standardRate;
+    let flatSurcharge = 0;
+    let tierApplied = "STANDARD";
+
+    if (night.isEnabled && isWindowActive(night.startTime, night.endTime, evalDate)) {
+      appliedRate = night.ratePerKm ?? standardRate;
+      flatSurcharge = night.flatSurcharge ?? 0;
+      tierApplied = "NIGHT";
+    } else if (peak.isEnabled && isWindowActive(peak.startTime, peak.endTime, evalDate)) {
+      appliedRate = peak.ratePerKm ?? standardRate;
+      flatSurcharge = peak.flatSurcharge ?? 0;
+      tierApplied = "PEAK";
+    }
+
+    const raw = (dist * appliedRate) + baseFee + flatSurcharge;
+    const estimatedFee = Math.max(minimumFee, Math.round(raw));
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        distanceKm: dist,
+        evaluationTime: evalDate.toISOString(),
+        tierApplied,
+        estimatedDeliveryFee: estimatedFee,
+        breakdown: {
+          baseFee,
+          appliedRatePerKm: appliedRate,
+          flatSurcharge,
+          minimumFee,
+        },
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 /**
  * DELETE /api/merchant/account/permanent
  * Hard delete: Completely wipes all merchant records from the database.

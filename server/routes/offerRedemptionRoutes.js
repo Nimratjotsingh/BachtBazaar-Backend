@@ -1,5 +1,5 @@
 import express from "express";
-import { redeemOffer,userSelfClaimOffer,getUserOfferHistory, cancelUserOfferRedemption } from "../controllers/offerRedemptionController.js";
+import { redeemOffer,userSelfClaimOffer,getUserOfferHistory, cancelUserOfferRedemption, userSelfClaimOffer2 } from "../controllers/offerRedemptionController.js";
 import { protectUser } from "../middleware/authMiddleware.js"; // Standard consumer authentication middleware
 
 const router = express.Router();
@@ -8,7 +8,7 @@ const router = express.Router();
 router.get("/history", protectUser, getUserOfferHistory);
 router.post("/:offerId/redeem", protectUser, redeemOffer);
 
-router.post("/:offerId/claim-direct", protectUser, userSelfClaimOffer);
+router.post("/:offerId/claim-direct", protectUser, userSelfClaimOffer2);
 
 router.delete("/:redemptionId/delete", protectUser, cancelUserOfferRedemption);
 

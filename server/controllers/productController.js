@@ -3,52 +3,136 @@ import { validate } from "../validators/validate.js";
 import { productSchema } from "../validators/productValidator.js";
 import Wishlist from "../models/wishlistModel.js";
 import { notifyWishlistUsersOnPriceDrop } from "../utils/priceDropNotificationHelper.js";
-
+import ProductSuggestion from "../models/productSuggestionModel.js"; 
+import crypto from 'crypto'
 // ==========================================
 // MERCHANT ACTIONS
 // ==========================================
 
 // --- Create Product ---
+const generateAutoSKU = (productName = "PRD") => {
+  const cleanPrefix = productName
+    .replace(/[^a-zA-Z0-9]/g, "")
+    .slice(0, 3)
+    .toUpperCase()
+    .padEnd(3, "X");
+
+  const randomHash = crypto.randomBytes(2).toString("hex").toUpperCase();
+  const timeSlice = Date.now().toString(36).slice(-4).toUpperCase();
+
+  return `${cleanPrefix}-${randomHash}-${timeSlice}`;
+};
+
 export const createProduct = async (req, res) => {
   try {
     const data = { ...req.body };
     const merchantId = req.merchant._id;
 
-    if (!data.name || !data.name.trim()) {
+    // 1. Verify if selecting from an Admin Product Suggestion
+    let suggestionDoc = null;
+    if (data.suggestion_id) {
+      suggestionDoc = await ProductSuggestion.findOne({
+        _id: data.suggestion_id,
+        is_active: true,
+      });
+
+      if (!suggestionDoc) {
+        return res.status(404).json({
+          success: false,
+          message: "Selected product suggestion template not found or inactive.",
+        });
+      }
+    }
+
+    // 2. Resolve Product Name (Merchant input or inherited from template)
+    const resolvedName = (data.name || suggestionDoc?.name || "").trim();
+    if (!resolvedName) {
       return res.status(400).json({
         success: false,
         message: "Product name is required.",
       });
     }
 
-    const trimmedName = data.name.trim();
-
-    // 0. Check for existing product with the same name by this merchant
-    const escapedName = trimmedName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    // 3. Check for existing active product with the same name by this merchant
+    const escapedName = resolvedName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const duplicateProduct = await Product.findOne({
       merchant_id: merchantId,
       name: { $regex: new RegExp(`^${escapedName}$`, "i") },
-      
+      is_deleted: false,
     });
 
     if (duplicateProduct) {
       return res.status(409).json({
         success: false,
-        message: `A product with the name "${trimmedName}" already exists in your inventory.`,
+        message: `A product with the name "${resolvedName}" already exists in your inventory.`,
       });
     }
 
-    // 1. Handle Thumbnail
-    if (req.files && req.files.thumbnail) {
+    // 4. Handle Media (Uploaded files vs template defaults)
+    if (req.files?.thumbnail) {
       data.thumbnail = `/uploads/${req.files.thumbnail[0].filename}`;
+    } else if (suggestionDoc?.thumbnail && !data.thumbnail) {
+      data.thumbnail = suggestionDoc.thumbnail;
     }
 
-    // 2. Handle Image Array
-    if (req.files && req.files.images) {
+    if (!data.thumbnail) {
+      return res.status(400).json({
+        success: false,
+        message: "A main thumbnail image is required.",
+      });
+    }
+
+    if (req.files?.images) {
       data.images = req.files.images.map((file) => `/uploads/${file.filename}`);
+    } else if (suggestionDoc?.images?.length && (!data.images || data.images.length === 0)) {
+      data.images = suggestionDoc.images;
     }
 
-    // 3. Normalize Array References (IDs & Tags)
+    // 5. Inherit template specifications if not provided by merchant
+    if (!data.description && suggestionDoc?.description) {
+      data.description = suggestionDoc.description;
+    }
+    if (!data.category_id && suggestionDoc?.category_id) {
+      data.category_id = suggestionDoc.category_id;
+    }
+    if (!data.subcategory_id && suggestionDoc?.subcategory_id) {
+      data.subcategory_id = suggestionDoc.subcategory_id;
+    }
+    if (!data.tags && suggestionDoc?.tags) {
+      data.tags = suggestionDoc.tags;
+    }
+    if (!data.unit_size && suggestionDoc?.unit_size) {
+      data.unit_size = suggestionDoc.unit_size;
+    }
+    if (!data.weight && suggestionDoc?.weight?.value) {
+      data.weight = suggestionDoc.weight;
+    }
+    if (!data.volume && suggestionDoc?.volume?.value) {
+      data.volume = suggestionDoc.volume;
+    }
+
+    // 6. Automatic SKU Generation (if omitted or blank)
+    if (!data.sku || !data.sku.trim()) {
+      let generatedSKU = generateAutoSKU(resolvedName);
+      let isUnique = false;
+      let attempts = 0;
+
+      // Ensure zero collision against existing unique SKU indexes
+      while (!isUnique && attempts < 5) {
+        const existingSKU = await Product.findOne({ sku: generatedSKU });
+        if (!existingSKU) {
+          isUnique = true;
+        } else {
+          generatedSKU = generateAutoSKU(resolvedName);
+          attempts++;
+        }
+      }
+      data.sku = generatedSKU;
+    } else {
+      data.sku = data.sku.trim().toUpperCase();
+    }
+
+    // 7. Normalize Array References & Structured Objects
     if (typeof data.category_id === "string") {
       try {
         data.category_id = JSON.parse(data.category_id);
@@ -73,34 +157,28 @@ export const createProduct = async (req, res) => {
       }
     }
 
-    // 4. Parse Optional Weight & Volume
-    if (data.weight) {
-      if (typeof data.weight === "string") {
-        try {
-          data.weight = JSON.parse(data.weight);
-        } catch {
-          data.weight = null;
-        }
-      }
-      if (data.weight && (!data.weight.value || !data.weight.unit)) {
+    if (data.weight && typeof data.weight === "string") {
+      try {
+        data.weight = JSON.parse(data.weight);
+      } catch {
         data.weight = null;
       }
     }
+    if (data.weight && (!data.weight.value || !data.weight.unit)) {
+      data.weight = null;
+    }
 
-    if (data.volume) {
-      if (typeof data.volume === "string") {
-        try {
-          data.volume = JSON.parse(data.volume);
-        } catch {
-          data.volume = null;
-        }
-      }
-      if (data.volume && (!data.volume.value || !data.volume.unit)) {
+    if (data.volume && typeof data.volume === "string") {
+      try {
+        data.volume = JSON.parse(data.volume);
+      } catch {
         data.volume = null;
       }
     }
+    if (data.volume && (!data.volume.value || !data.volume.unit)) {
+      data.volume = null;
+    }
 
-    // 5. Parse Optional Dates
     if (data.manufacturing_date) {
       data.manufacturing_date = new Date(data.manufacturing_date);
     } else {
@@ -113,23 +191,33 @@ export const createProduct = async (req, res) => {
       delete data.expiry_date;
     }
 
-    // 6. Force default administrative state
-    data.name = trimmedName;
-    data.approval_status = "pending";
-    data.approved_by = null;
-    data.approval_date = null;
+    // 8. Auto-Approval vs Admin Moderation Queue
+    const isAutoApproved = Boolean(suggestionDoc);
+
+    data.name = resolvedName;
+    data.merchant_id = merchantId;
+    data.suggestion_id = suggestionDoc ? suggestionDoc._id : null;
+    data.approval_status = isAutoApproved ? "approved" : "pending";
+    data.approval_date = isAutoApproved ? new Date() : null;
+    data.approved_by = isAutoApproved ? suggestionDoc.created_by : null;
     data.rejection_reason = "";
 
-    const newProduct = new Product({
-      ...data,
-      merchant_id: merchantId,
-    });
-
+    const newProduct = new Product(data);
     await newProduct.save();
+
+    // Increment usage analytics on the template
+    if (suggestionDoc) {
+      await ProductSuggestion.findByIdAndUpdate(suggestionDoc._id, {
+        $inc: { usage_count: 1 },
+      });
+    }
 
     return res.status(201).json({
       success: true,
-      message: "Product submitted for admin review successfully",
+      message: isAutoApproved
+        ? "Product created and automatically approved via catalog suggestion."
+        : "Custom product submitted for administrative review successfully.",
+      autoApproved: isAutoApproved,
       product: newProduct,
     });
   } catch (error) {
@@ -142,7 +230,6 @@ export const createProduct = async (req, res) => {
     return res.status(400).json({ success: false, message: error.message });
   }
 };
-
 // --- List All Products (Merchant Context) ---
 export const listProductsAll = async (req, res) => {
   try {
@@ -401,24 +488,68 @@ export const updateProduct = async (req, res) => {
   }
 };
 
-// --- Soft Delete Product ---
+
+import Offer from "../models/offerModel.js";
+
 export const deleteProduct = async (req, res) => {
   try {
     const { id } = req.params;
+    const merchantId = req.merchant._id;
+    const now = new Date();
 
-    const product = await Product.findOneAndUpdate(
-      { _id: id, merchant_id: req.merchant._id },
-      { is_deleted: true, is_active: false },
-      { new: true }
-    );
+    // 1. Verify product existence and merchant ownership
+    const product = await Product.findOne({
+      _id: id,
+      merchant_id: merchantId,
+      is_deleted: false,
+    });
 
     if (!product) {
-      return res.status(404).json({ success: false, message: "Product not found or unauthorized" });
+      return res.status(404).json({
+        success: false,
+        message: "Product not found or unauthorized",
+      });
     }
 
-    res.json({ success: true, message: "Product moved to trash" });
+    // 2. Check if an active, running offer is currently linked to this product
+    const runningOffer = await Offer.findOne({
+      merchant_id: merchantId,
+      product_id: id,
+      is_deleted: false,
+      is_active: true,
+      is_draft: false,
+      is_paused: false,
+      start_date: { $lte: now },
+      $or: [
+        { end_date: { $exists: false } },
+        { end_date: null },
+        { end_date: { $gte: now } },
+      ],
+    }).select("title");
+
+    if (runningOffer) {
+      return res.status(400).json({
+        success: false,
+        message: `An offer ("${runningOffer.title}") is currently running on this product. You cannot delete it yet. Please end or pause the offer first.`,
+      });
+    }
+
+    // 3. Safe soft-delete
+    product.is_deleted = true;
+    product.is_active = false;
+    await product.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Product moved to trash successfully",
+    });
   } catch (error) {
-    res.status(500).json({ success: false, message: "Failed to delete product" });
+    console.error("Delete Product Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to delete product",
+      error: error.message,
+    });
   }
 };
 

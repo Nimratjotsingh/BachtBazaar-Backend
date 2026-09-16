@@ -150,7 +150,23 @@ const offerSchema = new mongoose.Schema(
     },
     draft_step: {
       type: Number,
-      default: 1, // Step tracker for multi-stage creation wizards (e.g. 1, 2, 3)
+      default: 1,
+    },
+
+    // --- OFFER PAUSE CONTROL FIELDS ---
+    is_paused: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    paused_at: {
+      type: Date,
+      default: null,
+    },
+    pause_reason: {
+      type: String,
+      trim: true,
+      default: null, // e.g. "Out of stock", "High demand", "Emergency store closure"
     },
 
     is_active: {
@@ -171,9 +187,10 @@ const offerSchema = new mongoose.Schema(
 // --- Geospatial Index Configuration ---
 offerSchema.index({ location: "2dsphere" });
 
-// --- Composite Optimization Index (Excludes Drafts from Customer Searches) ---
+// --- Composite Optimization Index (Excludes Drafts, Inactive, and Paused Offers) ---
 offerSchema.index({
   is_draft: 1,
+  is_paused: 1,
   is_active: 1,
   is_deleted: 1,
   start_date: 1,

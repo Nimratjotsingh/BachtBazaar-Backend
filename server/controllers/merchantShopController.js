@@ -70,18 +70,26 @@ export const upsertShopProfile = async (req, res) => {
 
     const logoFile = req.files?.logoImage?.[0];
     const bannerFile = req.files?.shopBannerImage?.[0];
+    const storeFrontFile = req.files?.storeFrontImage?.[0];
 
     if (logoFile) {
       update.logo = {
         data: logoFile.buffer,
-        contentType: logoFile.mimetype
+        contentType: logoFile.mimetype,
       };
     }
 
     if (bannerFile) {
       update.banner = {
         data: bannerFile.buffer,
-        contentType: bannerFile.mimetype
+        contentType: bannerFile.mimetype,
+      };
+    }
+
+    if (storeFrontFile) {
+      update.storeFront = {
+        data: storeFrontFile.buffer,
+        contentType: storeFrontFile.mimetype,
       };
     }
 
@@ -96,7 +104,7 @@ export const upsertShopProfile = async (req, res) => {
     if (error instanceof ValidationError) {
       return res.status(400).json({ message: error.message });
     }
-    console.log(error);
+    console.error("Upsert Shop Profile Error:", error);
     return res.status(500).json({ message: "Update failed" });
   }
 };

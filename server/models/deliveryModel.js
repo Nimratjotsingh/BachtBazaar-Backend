@@ -1,6 +1,5 @@
 import mongoose from "mongoose";
 
-// Sub-schema for individual items within a delivery order
 const deliveryOrderItemSchema = new mongoose.Schema(
   {
     productId: {
@@ -31,7 +30,7 @@ const deliveryOrderItemSchema = new mongoose.Schema(
     },
     variantInfo: {
       type: String,
-      default: "", // e.g., "Color: Red, Size: XL"
+      default: "",
       trim: true,
     },
     itemTotal: {
@@ -43,7 +42,6 @@ const deliveryOrderItemSchema = new mongoose.Schema(
   { _id: true }
 );
 
-// Main Delivery Order Schema
 const deliveryOrderSchema = new mongoose.Schema(
   {
     orderNumber: {
@@ -65,7 +63,6 @@ const deliveryOrderSchema = new mongoose.Schema(
       index: true,
     },
 
-    // --- MULTIPLE PRODUCTS / ITEMS ARRAY ---
     items: {
       type: [deliveryOrderItemSchema],
       validate: [
@@ -74,30 +71,44 @@ const deliveryOrderSchema = new mongoose.Schema(
       ],
     },
 
-    // User Delivery Address Snapshot
     deliveryAddress: {
       street: { type: String },
       city: { type: String },
       state: { type: String },
       zipCode: { type: String },
       landmark: { type: String, default: "" },
+      latitude: { type: Number },
+      longitude: { type: Number },
     },
-    // User Contact Phone Snapshot
     contactPhone: {
       type: String,
       required: [true, "Contact phone number is required."],
     },
-    // Optional delivery instructions / notes from user
     note: {
       type: String,
       trim: true,
       default: "",
     },
 
-    // Financial Breakdown
+    // --- FINANCIAL AUDIT BREAKDOWN ---
     itemPrice: {
       type: Number,
       min: [0, "Item price cannot be negative."],
+    },
+    distanceKm: {
+      type: Number,
+      default: 1,
+      min: 0,
+    },
+    deliveryFeeBreakdown: {
+      appliedRatePerKm: { type: Number, default: 0 },
+      baseFee: { type: Number, default: 0 },
+      surcharge: { type: Number, default: 0 },
+      tierApplied: {
+        type: String,
+        enum: ["STANDARD", "NIGHT", "PEAK"],
+        default: "STANDARD",
+      },
     },
     deliveryFee: {
       type: Number,
@@ -111,14 +122,12 @@ const deliveryOrderSchema = new mongoose.Schema(
     },
     totalAmount: {
       type: Number,
-      
     },
 
-    // --- ESTIMATED DELIVERY TIME ---
     estimatedDeliveryTime: {
       value: {
         type: Number,
-        default: 30, // Default 30 mins, or set by merchant upon order acceptance
+        default: 30,
         min: [1, "Estimated time value must be at least 1."],
       },
       unit: {
@@ -129,10 +138,9 @@ const deliveryOrderSchema = new mongoose.Schema(
     },
     expectedDeliveryAt: {
       type: Date,
-      default: null, // Dynamic timestamp calculated when order status becomes 'accepted' or 'dispatched'
+      default: null,
     },
 
-    // Order Lifecycle Status
     status: {
       type: String,
       enum: [
@@ -163,7 +171,6 @@ const deliveryOrderSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Auto-generate order number before validation
 deliveryOrderSchema.pre("validate", async function () {
   if (!this.orderNumber) {
     const randomDigits = Math.floor(100000 + Math.random() * 900000);
@@ -171,7 +178,6 @@ deliveryOrderSchema.pre("validate", async function () {
   }
 });
 
-// Auto-calculate item sub-totals, sum itemPrice, and totalAmount
 deliveryOrderSchema.pre("save", async function () {
   if (this.items && this.items.length > 0) {
     let calculatedItemPrice = 0;
