@@ -1,11 +1,33 @@
 import mongoose from "mongoose";
 
+const specificationSchema = new mongoose.Schema(
+  {
+    key: {
+      type: String,
+      required: [true, "Specification title/key is required"],
+      trim: true,
+    },
+    value: {
+      type: String,
+      required: [true, "Specification value is required"],
+      trim: true,
+    },
+  },
+  { _id: false }
+);
+
 const productSchema = new mongoose.Schema(
   {
     merchant_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Merchant",
       required: [true, "Product must belong to a merchant"],
+      index: true,
+    },
+    suggestion_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "ProductSuggestion",
+      default: null,
       index: true,
     },
     name: {
@@ -61,7 +83,7 @@ const productSchema = new mongoose.Schema(
       unique: true,
       trim: true,
       uppercase: true,
-      required: [true, "SKU is required for inventory tracking"],
+      index: true,
     },
     images: {
       type: [String],
@@ -79,39 +101,19 @@ const productSchema = new mongoose.Schema(
       index: true,
     },
 
-    // --- Optional Quantity & Physical Measurement Specs ---
     unit_size: {
-      // Unified display string (e.g. "500 g", "1.5 L", "12 pcs", "100 ml")
       type: String,
       trim: true,
       default: null,
     },
-    weight: {
-      value: {
-        type: Number,
-        min: 0,
-        default: null,
-      },
-      unit: {
-        type: String,
-        enum: ["mg", "g", "kg", "oz", "lb"],
-        default: null,
-      },
-    },
-    volume: {
-      value: {
-        type: Number,
-        min: 0,
-        default: null,
-      },
-      unit: {
-        type: String,
-        enum: ["ml", "l", "fl_oz"],
-        default: null,
-      },
+
+    // --- Dynamic Key-Value Specifications Array ---
+    // Example: [{ key: "Weight", value: "500g" }, { key: "Flavour", value: "Chocolate" }]
+    specifications: {
+      type: [specificationSchema],
+      default: [],
     },
 
-    // --- Optional Shelf-life / Dates ---
     manufacturing_date: {
       type: Date,
       default: null,
@@ -122,7 +124,6 @@ const productSchema = new mongoose.Schema(
       index: true,
     },
 
-    // --- Admin Approval Fields ---
     approval_status: {
       type: String,
       enum: ["pending", "approved", "rejected"],
@@ -174,8 +175,25 @@ const productSchema = new mongoose.Schema(
   }
 );
 
-// --- Indexing for Performance ---
 productSchema.index({ is_deleted: 1, is_active: 1, approval_status: 1 });
+productSchema.index(
+  { merchant_id: 1, name: 1 },
+  { unique: true, partialFilterExpression: { is_deleted: false } }
+);
+
+// Auto-generate SKU fallback hook
+productSchema.pre("validate", function () {
+  if (!this.sku) {
+    const cleanPrefix = (this.name || "PRD")
+      .replace(/[^a-zA-Z0-9]/g, "")
+      .slice(0, 3)
+      .toUpperCase()
+      .padEnd(3, "X");
+    const randomHex = Math.floor(1000 + Math.random() * 9000).toString(16).toUpperCase();
+    const timeSlice = Date.now().toString(36).slice(-4).toUpperCase();
+    this.sku = `${cleanPrefix}-${randomHex}-${timeSlice}`;
+  }
+});
 
 const Product = mongoose.models.Product || mongoose.model("Product", productSchema);
 

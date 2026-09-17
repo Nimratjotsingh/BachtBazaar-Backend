@@ -1,15 +1,14 @@
+import crypto from "crypto";
 import Product from "../models/productModel.js";
-import { validate } from "../validators/validate.js"; 
-import { productSchema } from "../validators/productValidator.js";
+import Offer from "../models/offerModel.js";
+import ProductSuggestion from "../models/productSuggestionModel.js";
 import Wishlist from "../models/wishlistModel.js";
 import { notifyWishlistUsersOnPriceDrop } from "../utils/priceDropNotificationHelper.js";
-import ProductSuggestion from "../models/productSuggestionModel.js"; 
-import crypto from 'crypto'
+
 // ==========================================
-// MERCHANT ACTIONS
+// HELPERS
 // ==========================================
 
-// --- Create Product ---
 const generateAutoSKU = (productName = "PRD") => {
   const cleanPrefix = productName
     .replace(/[^a-zA-Z0-9]/g, "")
@@ -23,6 +22,33 @@ const generateAutoSKU = (productName = "PRD") => {
   return `${cleanPrefix}-${randomHash}-${timeSlice}`;
 };
 
+const parseSpecifications = (rawSpecs) => {
+  let specs = rawSpecs;
+  if (typeof specs === "string") {
+    try {
+      specs = JSON.parse(specs);
+    } catch {
+      return [];
+    }
+  }
+
+  if (Array.isArray(specs)) {
+    return specs
+      .filter((item) => item && typeof item === "object" && item.key && item.value)
+      .map((item) => ({
+        key: String(item.key).trim(),
+        value: String(item.value).trim(),
+      }));
+  }
+
+  return [];
+};
+
+// ==========================================
+// MERCHANT ACTIONS
+// ==========================================
+
+// --- Create Product ---
 export const createProduct = async (req, res) => {
   try {
     const data = { ...req.body };
@@ -104,20 +130,22 @@ export const createProduct = async (req, res) => {
     if (!data.unit_size && suggestionDoc?.unit_size) {
       data.unit_size = suggestionDoc.unit_size;
     }
-    if (!data.weight && suggestionDoc?.weight?.value) {
-      data.weight = suggestionDoc.weight;
-    }
-    if (!data.volume && suggestionDoc?.volume?.value) {
-      data.volume = suggestionDoc.volume;
+
+    // 6. Dynamic Key-Value Specifications Array
+    if (data.specifications !== undefined) {
+      data.specifications = parseSpecifications(data.specifications);
+    } else if (suggestionDoc?.specifications?.length) {
+      data.specifications = suggestionDoc.specifications;
+    } else {
+      data.specifications = [];
     }
 
-    // 6. Automatic SKU Generation (if omitted or blank)
+    // 7. Automatic SKU Generation (if omitted or blank)
     if (!data.sku || !data.sku.trim()) {
       let generatedSKU = generateAutoSKU(resolvedName);
       let isUnique = false;
       let attempts = 0;
 
-      // Ensure zero collision against existing unique SKU indexes
       while (!isUnique && attempts < 5) {
         const existingSKU = await Product.findOne({ sku: generatedSKU });
         if (!existingSKU) {
@@ -132,7 +160,7 @@ export const createProduct = async (req, res) => {
       data.sku = data.sku.trim().toUpperCase();
     }
 
-    // 7. Normalize Array References & Structured Objects
+    // 8. Normalize Array References & Structured Objects
     if (typeof data.category_id === "string") {
       try {
         data.category_id = JSON.parse(data.category_id);
@@ -157,28 +185,6 @@ export const createProduct = async (req, res) => {
       }
     }
 
-    if (data.weight && typeof data.weight === "string") {
-      try {
-        data.weight = JSON.parse(data.weight);
-      } catch {
-        data.weight = null;
-      }
-    }
-    if (data.weight && (!data.weight.value || !data.weight.unit)) {
-      data.weight = null;
-    }
-
-    if (data.volume && typeof data.volume === "string") {
-      try {
-        data.volume = JSON.parse(data.volume);
-      } catch {
-        data.volume = null;
-      }
-    }
-    if (data.volume && (!data.volume.value || !data.volume.unit)) {
-      data.volume = null;
-    }
-
     if (data.manufacturing_date) {
       data.manufacturing_date = new Date(data.manufacturing_date);
     } else {
@@ -191,7 +197,7 @@ export const createProduct = async (req, res) => {
       delete data.expiry_date;
     }
 
-    // 8. Auto-Approval vs Admin Moderation Queue
+    // 9. Auto-Approval vs Admin Moderation Queue
     const isAutoApproved = Boolean(suggestionDoc);
 
     data.name = resolvedName;
@@ -205,7 +211,6 @@ export const createProduct = async (req, res) => {
     const newProduct = new Product(data);
     await newProduct.save();
 
-    // Increment usage analytics on the template
     if (suggestionDoc) {
       await ProductSuggestion.findByIdAndUpdate(suggestionDoc._id, {
         $inc: { usage_count: 1 },
@@ -230,198 +235,143 @@ export const createProduct = async (req, res) => {
     return res.status(400).json({ success: false, message: error.message });
   }
 };
-// --- List All Products (Merchant Context) ---
+
+// --- List All Products (Admin or Global Catalog View) ---
 export const listProductsAll = async (req, res) => {
   try {
-    const { 
-      page = 1, 
-      limit = 10, 
-      search = "", 
-      category, 
-      minPrice, 
-      maxPrice, 
+    const {
+      page = 1,
+      limit = 10,
+      search = "",
+      category,
+      minPrice,
+      maxPrice,
       featured,
-      approvalStatus // Allows merchant to filter by pending, approved, or rejected
+      approvalStatus,
     } = req.query || {};
 
-    // Base query constraints: must belong to merchant and not be soft deleted
- 
+    const query = { is_deleted: false };
 
     if (search && search.trim() !== "") {
       query.$or = [
-        { name: { $regex: search, $options: "i" } },
-        { tags: { $in: [new RegExp(search.trim(), "i")] } }
+        { name: { $regex: search.trim(), $options: "i" } },
+        { tags: { $in: [new RegExp(search.trim(), "i")] } },
       ];
     }
 
     if (category) query.category_id = category;
     if (approvalStatus) query.approval_status = approvalStatus;
-    
+
     if (featured !== undefined) {
       query.is_featured = featured === "true";
     }
-    
+
     if (minPrice || maxPrice) {
       query.price = {};
       if (minPrice) query.price.$gte = Number(minPrice);
       if (maxPrice) query.price.$lte = Number(maxPrice);
     }
 
-    const skip = (Math.max(1, Number(page)) - 1) * Number(limit);
+    const currentLimit = Number(limit);
+    const skip = (Math.max(1, Number(page)) - 1) * currentLimit;
 
-    const total = await Product.countDocuments();
-    const products = await Product.find()
-      .populate("category_id", "label")
-      .populate("subcategory_id", "label")
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(Number(limit));
+    const [total, products] = await Promise.all([
+      Product.countDocuments(query),
+      Product.find(query)
+        .populate("merchant_id", "name email phone")
+        .populate("category_id", "label")
+        .populate("subcategory_id", "label")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(currentLimit)
+        .lean(),
+    ]);
 
-    res.json({
+    return res.json({
       success: true,
       products,
       total,
-      pages: Math.ceil(total / limit) || 1,
-      currentPage: Number(page)
+      pages: Math.ceil(total / currentLimit) || 1,
+      currentPage: Number(page),
     });
   } catch (error) {
-    console.error("List Products Error:", error);
-    res.status(500).json({ 
-      success: false, 
+    console.error("List Products All Error:", error);
+    return res.status(500).json({
+      success: false,
       message: "Failed to retrieve products",
-      error: error.message 
+      error: error.message,
     });
   }
 };
 
+// --- List Products (Merchant Authenticated Context) ---
 export const listProducts = async (req, res) => {
-
   try {
-
-    // 1. Destructure with default values to prevent undefined errors
-
     const {
-
       page = 1,
-
       limit = 10,
-
       search = "",
-
       category,
-
       minPrice,
-
       maxPrice,
+      featured,
+      approvalStatus,
+    } = req.query || {};
 
-      featured
-
-    } = req.query || {}; // Safety fallback to empty object
-
-
-
-    const query = { is_deleted: false };
-
-
-
-    // 2. Only build the $or query if search actually has a value
+    const query = {
+      merchant_id: req.merchant._id,
+      is_deleted: false,
+    };
 
     if (search && search.trim() !== "") {
-
       query.$or = [
-
-        { name: { $regex: search, $options: "i" } },
-
-        { tags: { $in: [new RegExp(search.trim(), "i")] } }
-
+        { name: { $regex: search.trim(), $options: "i" } },
+        { tags: { $in: [new RegExp(search.trim(), "i")] } },
       ];
-
     }
-
-
 
     if (category) query.category_id = category;
-
-   
-
-    // 3. Handle boolean conversion strictly
+    if (approvalStatus) query.approval_status = approvalStatus;
 
     if (featured !== undefined) {
-
       query.is_featured = featured === "true";
-
     }
-
-   
-
-    // 4. Build price range safely
 
     if (minPrice || maxPrice) {
-
       query.price = {};
-
       if (minPrice) query.price.$gte = Number(minPrice);
-
       if (maxPrice) query.price.$lte = Number(maxPrice);
-
     }
 
+    const currentLimit = Number(limit);
+    const skip = (Math.max(1, Number(page)) - 1) * currentLimit;
 
+    const [total, products] = await Promise.all([
+      Product.countDocuments(query),
+      Product.find(query)
+        .populate("category_id", "label")
+        .populate("subcategory_id", "label")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(currentLimit)
+        .lean(),
+    ]);
 
-    // 5. Calculate skip safely
-
-    const skip = (Math.max(1, Number(page)) - 1) * Number(limit);
-
-
-
-    const total = await Product.countDocuments(query);
-
-    const products = await Product.find({...query,  merchant_id: req.merchant._id,is_deleted: { $ne: true
-
-     }})
-
-      .populate("category_id", "label")
-
-      .populate("subcategory_id", "label")
-
-      .sort({ createdAt: -1 })
-
-      .skip(skip)
-
-      .limit(Number(limit));
-
-
-
-    res.json({
-
+    return res.json({
       success: true,
-
       products,
-
       total,
-
-      pages: Math.ceil(total / limit) || 1,
-
-      currentPage: Number(page)
-
+      pages: Math.ceil(total / currentLimit) || 1,
+      currentPage: Number(page),
     });
-
   } catch (error) {
-
     console.error("List Products Error:", error);
-
-    res.status(500).json({
-
+    return res.status(500).json({
       success: false,
-
       message: "Failed to retrieve products",
-
-      error: error.message
-
+      error: error.message,
     });
-
   }
-
 };
 
 // --- Get Single Product Details ---
@@ -431,48 +381,106 @@ export const getProduct = async (req, res) => {
       .populate("merchant_id", "name email phone")
       .populate("category_id", "label")
       .populate("subcategory_id", "label")
-      .populate("approved_by", "name email");
+      .populate("approved_by", "name email")
+      .lean();
 
-    if (!product) return res.status(404).json({ success: false, message: "Product not found" });
-    res.json({ success: true, product });
+    if (!product) {
+      return res.status(404).json({ success: false, message: "Product not found" });
+    }
+
+    return res.json({ success: true, product });
   } catch (error) {
-    res.status(500).json({ success: false, message: "Error fetching product details" });
+    return res.status(500).json({ success: false, message: "Error fetching product details", error: error.message });
   }
 };
 
-// --- Update Product (Triggers Re-Verification) ---
+// --- Update Product (Triggers Price Drop Alerts & Specification Sync) ---
 export const updateProduct = async (req, res) => {
   try {
     const { id } = req.params;
-    const { price, discounted_price, ...otherUpdates } = req.body;
+    const { price, discounted_price, specifications, tags, category_id, subcategory_id, ...otherUpdates } = req.body;
 
-    const existingProduct = await Product.findById(id);
+    const existingProduct = await Product.findOne({
+      _id: id,
+      merchant_id: req.merchant._id,
+      is_deleted: false,
+    });
+
     if (!existingProduct) {
-      return res.status(404).json({ success: false, message: "Product not found." });
+      return res.status(404).json({ success: false, message: "Product not found or unauthorized." });
     }
 
-    // Determine old and new effective prices (discounted price takes priority if present)
     const oldEffectivePrice = Number(existingProduct.discounted_price || existingProduct.price);
 
     if (price !== undefined) existingProduct.price = Number(price);
-    if (discounted_price !== undefined) existingProduct.discounted_price = Number(discounted_price);
-    Object.assign(existingProduct, otherUpdates);
+    if (discounted_price !== undefined) {
+      existingProduct.discounted_price = discounted_price === null || discounted_price === "" ? null : Number(discounted_price);
+    }
 
+    if (specifications !== undefined) {
+      existingProduct.specifications = parseSpecifications(specifications);
+    }
+
+    if (tags !== undefined) {
+      if (typeof tags === "string") {
+        try {
+          existingProduct.tags = JSON.parse(tags);
+        } catch {
+          existingProduct.tags = tags.split(",").map((t) => t.trim()).filter(Boolean);
+        }
+      } else if (Array.isArray(tags)) {
+        existingProduct.tags = tags;
+      }
+    }
+
+    if (category_id !== undefined) {
+      if (typeof category_id === "string") {
+        try {
+          existingProduct.category_id = JSON.parse(category_id);
+        } catch {
+          existingProduct.category_id = [category_id];
+        }
+      } else if (Array.isArray(category_id)) {
+        existingProduct.category_id = category_id;
+      }
+    }
+
+    if (subcategory_id !== undefined) {
+      if (typeof subcategory_id === "string") {
+        try {
+          existingProduct.subcategory_id = JSON.parse(subcategory_id);
+        } catch {
+          existingProduct.subcategory_id = [subcategory_id];
+        }
+      } else if (Array.isArray(subcategory_id)) {
+        existingProduct.subcategory_id = subcategory_id;
+      }
+    }
+
+    // Media updates if files were submitted in multipart
+    if (req.files?.thumbnail) {
+      existingProduct.thumbnail = `/uploads/${req.files.thumbnail[0].filename}`;
+    }
+    if (req.files?.images) {
+      existingProduct.images = req.files.images.map((file) => `/uploads/${file.filename}`);
+    }
+
+    Object.assign(existingProduct, otherUpdates);
     await existingProduct.save();
 
     const newEffectivePrice = Number(existingProduct.discounted_price || existingProduct.price);
     const isPriceReduced = newEffectivePrice < oldEffectivePrice;
 
-    // Trigger price drop push + in-app notification pipeline
+    // Trigger price drop push/notification
     if (isPriceReduced) {
       notifyWishlistUsersOnPriceDrop({
         itemId: existingProduct._id,
         itemType: "products",
-        itemTitle: existingProduct.name || existingProduct.title,
+        itemTitle: existingProduct.name,
         oldPrice: oldEffectivePrice,
         newPrice: newEffectivePrice,
         thumbnail: existingProduct.thumbnail || "",
-        merchantId: existingProduct.merchant_id || existingProduct.merchantId,
+        merchantId: existingProduct.merchant_id,
       }).catch((err) => console.error("Price Drop Notification Error:", err.message));
     }
 
@@ -488,16 +496,13 @@ export const updateProduct = async (req, res) => {
   }
 };
 
-
-import Offer from "../models/offerModel.js";
-
+// --- Delete Product (With Running/Paused Offer Safety Verification) ---
 export const deleteProduct = async (req, res) => {
   try {
     const { id } = req.params;
     const merchantId = req.merchant._id;
     const now = new Date();
 
-    // 1. Verify product existence and merchant ownership
     const product = await Product.findOne({
       _id: id,
       merchant_id: merchantId,
@@ -511,7 +516,7 @@ export const deleteProduct = async (req, res) => {
       });
     }
 
-    // 2. Check if an active, running offer is currently linked to this product
+    // Validate that no active, unpaused offer is running on this product
     const runningOffer = await Offer.findOne({
       merchant_id: merchantId,
       product_id: id,
@@ -534,7 +539,6 @@ export const deleteProduct = async (req, res) => {
       });
     }
 
-    // 3. Safe soft-delete
     product.is_deleted = true;
     product.is_active = false;
     await product.save();
@@ -556,19 +560,24 @@ export const deleteProduct = async (req, res) => {
 // --- Featured Toggle ---
 export const toggleFeatured = async (req, res) => {
   try {
-    const product = await Product.findById(req.params.id);
-    if (!product || product.is_deleted) {
+    const product = await Product.findOne({
+      _id: req.params.id,
+      merchant_id: req.merchant._id,
+      is_deleted: false,
+    });
+
+    if (!product) {
       return res.status(404).json({ success: false, message: "Product not found" });
     }
-    
+
     product.is_featured = !product.is_featured;
     await product.save();
-    res.json({ success: true, featured: product.is_featured });
+
+    return res.json({ success: true, featured: product.is_featured });
   } catch (error) {
-    res.status(500).json({ success: false, message: "Failed to toggle featured status" });
+    return res.status(500).json({ success: false, message: "Failed to toggle featured status", error: error.message });
   }
 };
-
 
 // ==========================================
 // ADMIN WORKFLOW ENDPOINTS
@@ -579,68 +588,66 @@ export const getPendingProductsAdmin = async (req, res) => {
   try {
     const { page = 1, limit = 10, status = "pending" } = req.query;
 
-    const filter = { 
+    const filter = {
       is_deleted: false,
-      approval_status: status 
+      approval_status: status,
     };
 
-    const skip = (Math.max(1, Number(page)) - 1) * Number(limit);
-    const total = await Product.countDocuments(filter);
-    
-    const queueItems = await Product.find(filter)
-      .populate("merchant_id", "name email store_name")
-      .populate("category_id", "label")
-      .populate("subcategory_id", "label")
-      .sort({ updatedAt: 1 }) // Review oldest submissions first
-      .skip(skip)
-      .limit(Number(limit));
+    const currentLimit = Number(limit);
+    const skip = (Math.max(1, Number(page)) - 1) * currentLimit;
 
-    res.status(200).json({
+    const [total, queueItems] = await Promise.all([
+      Product.countDocuments(filter),
+      Product.find(filter)
+        .populate("merchant_id", "name email phone")
+        .populate("category_id", "label")
+        .populate("subcategory_id", "label")
+        .sort({ updatedAt: 1 }) // Review oldest submissions first
+        .skip(skip)
+        .limit(currentLimit)
+        .lean(),
+    ]);
+
+    return res.status(200).json({
       success: true,
       count: queueItems.length,
       total,
-      pages: Math.ceil(total / limit) || 1,
+      pages: Math.ceil(total / currentLimit) || 1,
       currentPage: Number(page),
-      data: queueItems
+      data: queueItems,
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return res.status(500).json({ success: false, message: error.message });
   }
 };
 
-// --- Approve or Reject a Product listing ---
+// --- Approve, Reject, or Reset a Product Listing ---
 export const reviewProductAdmin = async (req, res) => {
   try {
-    console.log('hi');
     const { id } = req.params;
-    const { status, rejection_reason } = req.body; // status: 'approved' or 'rejected'
+    const { status, rejection_reason } = req.body;
 
-    
-    if (!["approved", "rejected","pending"].includes(status)) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "Invalid action status evaluation parameter choice." 
+    if (!["approved", "rejected", "pending"].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid action status parameter choice. Must be 'approved', 'rejected', or 'pending'.",
       });
     }
 
     if (status === "rejected" && (!rejection_reason || rejection_reason.trim() === "")) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "You must provide a clear rejection explanation reason for feedback records." 
+      return res.status(400).json({
+        success: false,
+        message: "You must provide a clear rejection explanation reason.",
       });
     }
 
     const reviewPayload = {
       approval_status: status,
-      approved_by: req.superAdmin?._id || req.admin?._id, // Backwards compatible check for your admin objects
-      approval_date: new Date(),
-      rejection_reason: status === "rejected" ? rejection_reason.trim() : ""
+      approved_by: status === "approved" ? (req.superAdmin?._id || req.admin?._id) : null,
+      approval_date: status === "approved" ? new Date() : null,
+      rejection_reason: status === "rejected" ? rejection_reason.trim() : "",
+      ...(status === "rejected" && { is_active: false }),
     };
-
-    // If rejected, you might also want to set is_active to false automatically
-    if (status === "rejected") {
-      reviewPayload.is_active = false;
-    }
 
     const verifiedProduct = await Product.findOneAndUpdate(
       { _id: id, is_deleted: false },
@@ -652,12 +659,12 @@ export const reviewProductAdmin = async (req, res) => {
       return res.status(404).json({ success: false, message: "Target product listing not found." });
     }
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
-      message: `Product has been successfully ${status}.`,
-      product: verifiedProduct
+      message: `Product has been successfully marked as ${status}.`,
+      product: verifiedProduct,
     });
   } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
+    return res.status(400).json({ success: false, message: error.message });
   }
 };

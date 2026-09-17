@@ -7,7 +7,6 @@ import {
 } from "lucide-react";
 import { accountClient, buildAuthHeaders } from "../../lib/api";
 
-
 const ProductSuggestionsManager = ({ token }) => {
   // --- Core Lifecycle States ---
   const [suggestions, setSuggestions] = useState([]);
@@ -16,8 +15,11 @@ const ProductSuggestionsManager = ({ token }) => {
   const [loading, setLoading] = useState(false);
   const [view, setView] = useState("list"); // 'list' | 'form'
   const [selectedSuggestion, setSelectedSuggestion] = useState(null);
+
+  // Previews & Retained Image State
   const [thumbnailPreview, setThumbnailPreview] = useState(null);
-  const [imagesPreviews, setImagesPreviews] = useState([]);
+  const [existingImages, setExistingImages] = useState([]);
+  const [newImagesPreviews, setNewImagesPreviews] = useState([]);
 
   // --- Filter States ---
   const [searchTerm, setSearchTerm] = useState("");
@@ -37,8 +39,8 @@ const ProductSuggestionsManager = ({ token }) => {
     volumeValue: "",
     volumeUnit: "ml",
     tags: "",
-    thumbnail: null,
-    images: [],
+    thumbnailFile: null,
+    newImagesFiles: [],
     is_active: true,
   };
   const [formData, setFormData] = useState(initialFormState);
@@ -75,9 +77,9 @@ const ProductSuggestionsManager = ({ token }) => {
   // PIPELINE 2: MEDIA HANDLERS
   // ==========================================
   const handleThumbnailChange = (e) => {
-    const file = e.target.files[0];
+    const file = e.target.files?.[0];
     if (file) {
-      setFormData((prev) => ({ ...prev, thumbnail: file }));
+      setFormData((prev) => ({ ...prev, thumbnailFile: file }));
       setThumbnailPreview(URL.createObjectURL(file));
     }
   };
@@ -85,13 +87,58 @@ const ProductSuggestionsManager = ({ token }) => {
   const handleImagesChange = (e) => {
     const files = Array.from(e.target.files || []);
     if (files.length > 0) {
-      setFormData((prev) => ({ ...prev, images: files }));
-      setImagesPreviews(files.map((file) => URL.createObjectURL(file)));
+      setFormData((prev) => ({ ...prev, newImagesFiles: files }));
+      setNewImagesPreviews(files.map((file) => URL.createObjectURL(file)));
     }
   };
 
+  const removeExistingImage = (indexToRemove) => {
+    setExistingImages((prev) => prev.filter((_, idx) => idx !== indexToRemove));
+  };
+
   // ==========================================
-  // PIPELINE 3: PERSISTENCE & MUTATIONS
+  // PIPELINE 3: EDIT TRIGGER & FORM POPULATION
+  // ==========================================
+  const handleOpenEdit = (item) => {
+    setSelectedSuggestion(item);
+
+    const categoryId =
+      item.category_id?.[0]?._id ||
+      item.category_id?.[0] ||
+      item.category_id ||
+      "";
+
+    const subcategoryId =
+      item.subcategory_id?.[0]?._id ||
+      item.subcategory_id?.[0] ||
+      item.subcategory_id ||
+      "";
+
+    setFormData({
+      name: item.name || "",
+      description: item.description || "",
+      category_id: categoryId.toString(),
+      subcategory_id: subcategoryId.toString(),
+      suggested_price: item.suggested_price ?? "",
+      unit_size: item.unit_size || "",
+      weightValue: item.weight?.value ?? "",
+      weightUnit: item.weight?.unit || "g",
+      volumeValue: item.volume?.value ?? "",
+      volumeUnit: item.volume?.unit || "ml",
+      tags: Array.isArray(item.tags) ? item.tags.join(", ") : item.tags || "",
+      thumbnailFile: null,
+      newImagesFiles: [],
+      is_active: item.is_active ?? true,
+    });
+
+    setThumbnailPreview(item.thumbnail || null);
+    setExistingImages(Array.isArray(item.images) ? item.images : []);
+    setNewImagesPreviews([]);
+    setView("form");
+  };
+
+  // ==========================================
+  // PIPELINE 4: PERSISTENCE & MUTATIONS
   // ==========================================
   const handleSave = async (e) => {
     e.preventDefault();
@@ -101,7 +148,7 @@ const ProductSuggestionsManager = ({ token }) => {
       return;
     }
 
-    if (!selectedSuggestion && !formData.thumbnail) {
+    if (!selectedSuggestion && !formData.thumbnailFile) {
       alert("A master thumbnail image is required.");
       return;
     }
@@ -117,7 +164,7 @@ const ProductSuggestionsManager = ({ token }) => {
     if (formData.subcategory_id) {
       data.append("subcategory_id", JSON.stringify([formData.subcategory_id]));
     }
-    if (formData.suggested_price) {
+    if (formData.suggested_price !== "") {
       data.append("suggested_price", formData.suggested_price);
     }
     if (formData.unit_size) {
@@ -132,7 +179,7 @@ const ProductSuggestionsManager = ({ token }) => {
       data.append("tags", JSON.stringify(parsedTags));
     }
 
-    if (formData.weightValue) {
+    if (formData.weightValue !== "") {
       data.append(
         "weight",
         JSON.stringify({
@@ -142,7 +189,7 @@ const ProductSuggestionsManager = ({ token }) => {
       );
     }
 
-    if (formData.volumeValue) {
+    if (formData.volumeValue !== "") {
       data.append(
         "volume",
         JSON.stringify({
@@ -152,11 +199,18 @@ const ProductSuggestionsManager = ({ token }) => {
       );
     }
 
-    if (formData.thumbnail) {
-      data.append("thumbnail", formData.thumbnail);
+    // Handle single thumbnail (new file upload vs retaining existing string)
+    if (formData.thumbnailFile) {
+      data.append("thumbnail", formData.thumbnailFile);
+    } else if (selectedSuggestion && selectedSuggestion.thumbnail) {
+      data.append("existingThumbnail", selectedSuggestion.thumbnail);
     }
 
-    formData.images.forEach((file) => {
+    // Retained images array for existing records
+    data.append("existingImages", JSON.stringify(existingImages));
+
+    // Append newly selected image files
+    formData.newImagesFiles.forEach((file) => {
       data.append("images", file);
     });
 
@@ -178,6 +232,7 @@ const ProductSuggestionsManager = ({ token }) => {
       setView("list");
       resetForm();
     } catch (err) {
+      console.error("Save product suggestion error:", err);
       alert(err.response?.data?.message || "Operation failed to commit suggestion data.");
     } finally {
       setLoading(false);
@@ -217,7 +272,8 @@ const ProductSuggestionsManager = ({ token }) => {
   const resetForm = () => {
     setFormData(initialFormState);
     setThumbnailPreview(null);
-    setImagesPreviews([]);
+    setExistingImages([]);
+    setNewImagesPreviews([]);
     setSelectedSuggestion(null);
   };
 
@@ -239,7 +295,7 @@ const ProductSuggestionsManager = ({ token }) => {
         item.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         item.tags?.some((t) => t.toLowerCase().includes(searchTerm.toLowerCase()));
 
-      const itemCatId = item.category_id?.[0]?._id || item.category_id?.[0];
+      const itemCatId = (item.category_id?.[0]?._id || item.category_id?.[0] || item.category_id)?.toString();
       const matchesCategory = filterCategory === "all" || itemCatId === filterCategory;
 
       const matchesStatus =
@@ -252,9 +308,11 @@ const ProductSuggestionsManager = ({ token }) => {
   }, [suggestions, searchTerm, filterCategory, filterStatus]);
 
   const relevantSubCategories = useMemo(() => {
-    return subCategories.filter(
-      (sub) => (sub.categoryId?._id || sub.categoryId) === formData.category_id
-    );
+    if (!formData.category_id) return [];
+    return subCategories.filter((sub) => {
+      const parentId = (sub.categoryId?._id || sub.categoryId || sub.category_id)?.toString();
+      return parentId === formData.category_id.toString();
+    });
   }, [subCategories, formData.category_id]);
 
   // ==========================================
@@ -279,7 +337,7 @@ const ProductSuggestionsManager = ({ token }) => {
           </h2>
 
           <form onSubmit={handleSave} className="space-y-5">
-            {/* Suggestion Name */}
+            {/* Title */}
             <div className="space-y-1.5">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
                 Product Title / Name *
@@ -396,7 +454,7 @@ const ProductSuggestionsManager = ({ token }) => {
               </div>
             </div>
 
-            {/* Weight & Volume Measurements */}
+            {/* Weight & Volume */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-100">
               <div className="space-y-1.5">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
@@ -406,7 +464,7 @@ const ProductSuggestionsManager = ({ token }) => {
                   <input
                     type="number"
                     min="0"
-                    placeholder="Value (e.g. 500)"
+                    placeholder="Value"
                     value={formData.weightValue}
                     onChange={(e) =>
                       setFormData({ ...formData, weightValue: e.target.value })
@@ -436,7 +494,7 @@ const ProductSuggestionsManager = ({ token }) => {
                   <input
                     type="number"
                     min="0"
-                    placeholder="Value (e.g. 1)"
+                    placeholder="Value"
                     value={formData.volumeValue}
                     onChange={(e) =>
                       setFormData({ ...formData, volumeValue: e.target.value })
@@ -471,15 +529,15 @@ const ProductSuggestionsManager = ({ token }) => {
               />
             </div>
 
-            {/* Primary Thumbnail Upload */}
+            {/* Thumbnail Upload & Current Image Preview */}
             <div className="space-y-1.5">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
-                Master Thumbnail Upload *
+                Master Thumbnail Upload {selectedSuggestion ? "(Leave blank to keep existing)" : "*"}
               </label>
               <div className="flex items-center gap-5 p-4 bg-slate-50 rounded-2xl border border-slate-100">
                 <div className="w-24 h-24 rounded-xl bg-white border border-slate-200 shadow-inner flex items-center justify-center overflow-hidden shrink-0">
                   {thumbnailPreview ? (
-                    <img src={thumbnailPreview} className="w-full h-full object-cover" alt="" />
+                    <img src={thumbnailPreview} className="w-full h-full object-cover" alt="Thumbnail Preview" />
                   ) : (
                     <ImageIcon className="text-slate-300" size={24} />
                   )}
@@ -501,7 +559,7 @@ const ProductSuggestionsManager = ({ token }) => {
             {/* Extra Gallery Photos */}
             <div className="space-y-1.5">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
-                Additional Gallery Photos (Up to 10)
+                Additional Gallery Photos
               </label>
               <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 space-y-3">
                 <input
@@ -511,13 +569,39 @@ const ProductSuggestionsManager = ({ token }) => {
                   onChange={handleImagesChange}
                   className="text-xs font-bold text-slate-500 file:mr-4 file:py-1.5 file:px-3.5 file:rounded-xl file:border-0 file:text-[10px] file:font-black file:uppercase file:tracking-wider file:bg-white file:text-blue-600 file:border file:border-blue-100 file:shadow-sm hover:file:bg-blue-50 cursor-pointer w-full"
                 />
-                {imagesPreviews.length > 0 && (
-                  <div className="flex gap-2 flex-wrap">
-                    {imagesPreviews.map((src, i) => (
-                      <div key={i} className="w-14 h-14 rounded-lg overflow-hidden border border-slate-200 bg-white">
-                        <img src={src} className="w-full h-full object-cover" alt="" />
-                      </div>
-                    ))}
+
+                {/* Retained existing remote images with removal buttons */}
+                {existingImages.length > 0 && (
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Current Images:</span>
+                    <div className="flex gap-2 flex-wrap">
+                      {existingImages.map((src, i) => (
+                        <div key={i} className="relative w-14 h-14 rounded-lg overflow-hidden border border-slate-200 bg-white group">
+                          <img src={src} className="w-full h-full object-cover" alt="" />
+                          <button
+                            type="button"
+                            onClick={() => removeExistingImage(i)}
+                            className="absolute top-0.5 right-0.5 bg-black/60 text-white rounded-full p-0.5 hover:bg-rose-600 transition cursor-pointer"
+                          >
+                            <X size={10} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Local newly selected previews */}
+                {newImagesPreviews.length > 0 && (
+                  <div>
+                    <span className="text-[10px] font-bold text-blue-600 uppercase block mb-1">New Files Staged:</span>
+                    <div className="flex gap-2 flex-wrap">
+                      {newImagesPreviews.map((src, i) => (
+                        <div key={i} className="w-14 h-14 rounded-lg overflow-hidden border border-blue-200 bg-white">
+                          <img src={src} className="w-full h-full object-cover" alt="" />
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
@@ -538,11 +622,12 @@ const ProductSuggestionsManager = ({ token }) => {
             </div>
 
             <button
+              type="submit"
               disabled={loading}
               className="w-full h-14 bg-blue-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-blue-700 shadow-lg shadow-blue-100 transition-all disabled:opacity-50 cursor-pointer"
             >
               {loading ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} strokeWidth={2.5} />}
-              Save Master Suggestion
+              {selectedSuggestion ? "Update Master Suggestion" : "Save Master Suggestion"}
             </button>
           </form>
         </div>
@@ -555,7 +640,7 @@ const ProductSuggestionsManager = ({ token }) => {
   // ==========================================
   return (
     <div className="p-8 space-y-8 bg-[#F8FAFC] min-h-screen text-slate-700 antialiased font-sans max-w-[1700px] mx-auto">
-      {/* --- HEADER --- */}
+      {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-200 pb-5">
         <div>
           <h1 className="text-3xl font-extrabold text-[#0F172A] flex items-center gap-3 tracking-tight">
@@ -585,7 +670,7 @@ const ProductSuggestionsManager = ({ token }) => {
         </div>
       </div>
 
-      {/* --- STAT TICKER STRIP --- */}
+      {/* Stats Strip */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5">
         <StatTickerBox
           title="Total Master Templates"
@@ -613,7 +698,7 @@ const ProductSuggestionsManager = ({ token }) => {
         />
       </div>
 
-      {/* --- SEARCH & FILTER BAR --- */}
+      {/* Filter Bar */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col xl:flex-row gap-4">
         <div className="relative flex-1">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
@@ -658,7 +743,7 @@ const ProductSuggestionsManager = ({ token }) => {
         </div>
       </div>
 
-      {/* --- VISUAL PRODUCT CARDS GALLERY --- */}
+      {/* Grid of Catalog Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         {loading && suggestions.length === 0 ? (
           <div className="col-span-full flex flex-col items-center justify-center py-24 text-blue-600">
@@ -678,14 +763,12 @@ const ProductSuggestionsManager = ({ token }) => {
               className="bg-white rounded-[24px] border border-slate-100 shadow-sm overflow-hidden group hover:shadow-md transition-all duration-300 flex flex-col justify-between"
             >
               <div>
-                {/* Media Showcase */}
                 <div className="h-44 bg-slate-50 relative overflow-hidden flex items-center justify-center border-b border-slate-100">
-                  {console.log(item.thumbnail)}
                   {item.thumbnail ? (
                     <img
-                      src={`/public/${item.thumbnail}`}
+                      src={item.thumbnail}
                       className="w-full h-full object-contain p-2 group-hover:scale-105 transition-transform duration-500"
-                      alt=""
+                      alt={item.name}
                     />
                   ) : (
                     <ImageIcon size={28} className="text-slate-300" />
@@ -707,7 +790,6 @@ const ProductSuggestionsManager = ({ token }) => {
                   </div>
                 </div>
 
-                {/* Details */}
                 <div className="p-5 space-y-3">
                   <h3 className="font-extrabold text-[#0F172A] line-clamp-1 text-sm group-hover:text-blue-600 transition-colors">
                     {item.name}
@@ -757,7 +839,7 @@ const ProductSuggestionsManager = ({ token }) => {
                 </div>
               </div>
 
-              {/* Action Buttons Row */}
+              {/* Action Buttons */}
               <div className="px-5 pb-5 pt-1">
                 <div className="flex items-center justify-between border-t border-slate-50 pt-3 text-[11px] font-bold text-slate-400">
                   <span className="inline-flex items-center gap-1">
@@ -776,34 +858,7 @@ const ProductSuggestionsManager = ({ token }) => {
                       <Power size={14} />
                     </button>
                     <button
-                      onClick={() => {
-                        setSelectedSuggestion(item);
-                        setFormData({
-                          name: item.name || "",
-                          description: item.description || "",
-                          category_id:
-                            item.category_id?.[0]?._id || item.category_id?.[0] || "",
-                          subcategory_id:
-                            item.subcategory_id?.[0]?._id || item.subcategory_id?.[0] || "",
-                          suggested_price: item.suggested_price ?? "",
-                          unit_size: item.unit_size || "",
-                          weightValue: item.weight?.value ?? "",
-                          weightUnit: item.weight?.unit || "g",
-                          volumeValue: item.volume?.value ?? "",
-                          volumeUnit: item.volume?.unit || "ml",
-                          tags: item.tags?.join(", ") || "",
-                          thumbnail: null,
-                          images: [],
-                          is_active: item.is_active ?? true,
-                        });
-                        setThumbnailPreview(
-                          item.thumbnail ? `${API_BASE_URL}${item.thumbnail}` : null
-                        );
-                        setImagesPreviews(
-                          (item.images || []).map((img) => `${API_BASE_URL}${img}`)
-                        );
-                        setView("form");
-                      }}
+                      onClick={() => handleOpenEdit(item)}
                       className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl border border-transparent hover:border-blue-100 transition cursor-pointer"
                       title="Modify Template"
                     >
@@ -827,7 +882,6 @@ const ProductSuggestionsManager = ({ token }) => {
   );
 };
 
-// --- Embedded Stat Block ---
 const StatTickerBox = ({ title, val, icon, theme }) => (
   <div className="bg-white p-5 rounded-2xl border border-slate-200/60 shadow-sm flex items-center justify-between">
     <div className="space-y-1">

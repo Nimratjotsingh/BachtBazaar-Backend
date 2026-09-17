@@ -10,7 +10,8 @@ router.put(
   protectMerchant,
   upload.fields([
     { name: "logoImage", maxCount: 1 },
-    { name: "shopBannerImage", maxCount: 1 }
+    { name: "shopBannerImage", maxCount: 1 },
+    { name: "storeFrontImage", maxCount: 1 },
   ]),
   upsertShopProfile
 );
