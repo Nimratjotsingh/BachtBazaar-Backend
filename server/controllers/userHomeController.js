@@ -327,7 +327,7 @@ export const getShopDetails = async (req, res) => {
         is_active: true,
         approval_status: "approved",
       })
-        .select("name price discounted_price thumbnail stock is_featured ratings")
+        .select("name price discounted_price thumbnail stock is_featured ratings specifications")
         .sort({ createdAt: -1 })
         .lean(),
 
