@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import admin from "../config/firebase.js";
 import { generateToken } from "../utils/generateToken.js";
 import { ACCOUNT_TYPES, ROLES } from "../constants/roles.js";
+import axios from 'axios';
 
 import {
   phoneSchema,
@@ -104,6 +105,24 @@ const resolvePhoneFromTokenOrBypass = async (reqBody) => {
   return formatPhone(decoded.phone_number);
 };
 
+
+const options = {
+  method: 'POST',
+  url: 'https://api.msg91.com/api/v5/widget/sendOtp',
+  headers: {authkey: process.env.MSG_AUTH_KEY, 'content-type': 'application/json'},
+  data: '{"widgetId": "36696e664361363931323437",  "identifier": "916283657726"}'
+};
+
+export const sendOtpNew= async(req,res)=>{
+  try {
+  const { data } = await axios.request(options);
+  console.log(data);
+  return data;
+} catch (error) {
+  console.error(error);
+  return error
+}
+}
 
 // check user exists (before otp)
 export const sendOtp = async (req, res) => {

@@ -12,7 +12,8 @@ import {
     logoutUser,
     googleAuthUser,
     createUser,
-    updateFcmToken
+    updateFcmToken,
+    sendOtpNew
 } from "../controllers/userController.js";
 import { getProfileImage } from "../controllers/userController.js";
 
@@ -32,6 +33,7 @@ router.post("/auth/login-otp", loginWithOtp);
 router.post("/auth/forgot-password", forgotPassword);
 router.post("/auth/logout", logoutUser);
 router.post("/auth/login-google", googleAuthUser);
+router.get('/auth/newOtp',sendOtpNew)
 
 router.post("/fcmToken", protectUser,updateFcmToken);
 

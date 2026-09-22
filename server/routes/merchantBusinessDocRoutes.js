@@ -1,7 +1,7 @@
 import express from "express";
-import upload from "../middleware/upload.js";
+import upload from "../middleware/uploadSec.js";
 import { protectMerchant } from "../middleware/authMiddleware.js";
-import { upsertBusinessDocs } from "../controllers/merchantBusinessDocController.js";
+import { checkTaskStatus,requestAadhaarVerification,requestPanVerification, upsertBusinessDocs,requestFssaiVerification } from "../controllers/merchantBusinessDocController.js";
 
 const router = express.Router();
 
@@ -17,5 +17,17 @@ router.post(
   ]),
   upsertBusinessDocs
 );
+
+router.post("/pan/request", protectMerchant, requestPanVerification);
+router.post("/aadhaar/request", protectMerchant, requestAadhaarVerification);
+
+
+// Async FSSAI Request
+router.post("/fssai/request", protectMerchant, requestFssaiVerification);
+
+// 2. Poll or check verification result by requestId
+router.get("/task-status/:requestId", protectMerchant, checkTaskStatus);
+
+
 
 export default router;

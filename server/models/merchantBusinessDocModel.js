@@ -1,27 +1,39 @@
 import mongoose from "mongoose";
 
-const imageSchema = new mongoose.Schema({
-  data: Buffer,
-  contentType: String
-}, { _id: false });
+const merchantBusinessDocSchema = new mongoose.Schema(
+  {
+    merchantId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Merchant",
+      required: true,
+      unique: true,
+      index: true,
+    },
+    // Document Identifiers
+    gstNumber: { type: String, trim: true, uppercase: true },
+    tradeLicenseNumber: { type: String, trim: true },
+    shopRegistrationNumber: { type: String, trim: true },
+    fssaiNumber: { type: String, trim: true },
+    panNumber: { type: String, trim: true, uppercase: true },
+    aadhaarNumber: { type: String, trim: true },
 
-const merchantBusinessDocSchema = new mongoose.Schema({
-  merchantId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "Merchant",
-    required: true,
-    unique: true
+    // Document Image URLs (stored paths or cloud links)
+    gstImage: { type: String, default: null },
+    tradeLicenseImage: { type: String, default: null },
+    shopRegistrationImage: { type: String, default: null },
+    fssaiImage: { type: String, default: null },
+    panImage: { type: String, default: null },
+    aadhaarFrontImage: { type: String, default: null },
+    aadhaarBackImage: { type: String, default: null },
+
+    // Verification ledger
+    verificationResults: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
   },
-  gstNumber: String,
-  gstImage: imageSchema,
-  tradeLicenseNumber: String,
-  tradeLicenseImage: imageSchema,
-  shopRegistrationNumber: String,
-  shopRegistrationImage: imageSchema,
-  fssaiNumber: String,
-  fssaiImage: imageSchema,
-  panNumber: String,
-  panImage: imageSchema
-}, { timestamps: true });
+  { timestamps: true }
+);
 
-export default mongoose.model("MerchantBusinessDoc", merchantBusinessDocSchema);
+export default mongoose.models.MerchantBusinessDoc ||
+  mongoose.model("MerchantBusinessDoc", merchantBusinessDocSchema);
