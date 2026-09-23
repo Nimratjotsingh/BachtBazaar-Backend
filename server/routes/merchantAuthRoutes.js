@@ -25,7 +25,7 @@ import {
 
 import {getNearbyCustomerRequestsForMerchant} from '../controllers/MerchantBidController.js'
 import { protectMerchant } from "../middleware/authMiddleware.js";
-import { updateFcmToken } from "../controllers/userController.js";
+import { retryOtp, updateFcmToken } from "../controllers/userController.js";
 import { getDeliveryOrderById } from "../controllers/deliveryController.js";
 
 const router = express.Router();
@@ -35,6 +35,7 @@ router.post("/register/verify-otp", registerMerchantVerifyOtp);
 router.post('/register/test',createTestMerchant)
 router.post("/send-otp", sendOtp);
 router.post("/verify-otp", verifyOtp);
+router.post('/resend-otp',retryOtp)
 router.post("/set-password", protectMerchant, setPassword);
 router.post("/login-password", loginWithPassword);
 router.post("/login-otp", loginWithOtp);

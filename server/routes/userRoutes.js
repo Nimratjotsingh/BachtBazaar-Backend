@@ -3,6 +3,7 @@ import {
     updateProfile,
     sendOtp,
     verifyOtp,
+    retryOtp,
     setPassword,
     loginWithPassword,
     loginWithOtp,
@@ -25,8 +26,10 @@ const router = express.Router();
 
 // auth
 router.post("/auth/send-otp", sendOtp);
+router.post('/auth/resend-otp',retryOtp)
 router.post('/auth/create',createUser)
 router.post("/auth/verify-otp", verifyOtp);
+
 router.post("/auth/set-password", protectUser, setPassword);
 router.post("/auth/login-password", loginWithPassword);
 router.post("/auth/login-otp", loginWithOtp);

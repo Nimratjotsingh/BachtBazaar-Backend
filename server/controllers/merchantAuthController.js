@@ -115,6 +115,7 @@ export const sendOtp = async (req, res) => {
         params: {
           template_id: templateId,
           mobile: cleanedMobile,
+          otp_expiry: 5
         },
         headers: {
           authkey: authKey,
@@ -296,6 +297,67 @@ export const verifyOtp = async (req, res) => {
   }
 };
 
+export const retryOtp = async (req, res) => {
+  try {
+    const { phone, retryType } = req.body;
+
+    if (!phone) {
+      return res.status(400).json({
+        success: false,
+        message: "Phone number is required.",
+      });
+    }
+
+    const formattedPhone = typeof formatPhone === "function" ? formatPhone(phone) : phone;
+    const cleanedMobile = String(formattedPhone).replace(/\D/g, "");
+    
+    // retrytype can be 'text' (SMS) or 'voice' (Call)
+    const validRetryType = retryType && retryType.toLowerCase() === "voice" ? "voice" : "text";
+
+    const authKey = process.env.MSG91_AUTH_KEY;
+    const accountId = process.env.MSG91_ACCOUNT_ID || "5d8e43cab19f/00986b9f-d7cb-4973-a18a-9b6ebc3ba6ec";
+
+    const response = await axios.post(
+      "https://control.msg91.com/api/v5/otp/retry",
+      null,
+      {
+        params: {
+          mobile: cleanedMobile,
+          retrytype: validRetryType,
+        },
+        headers: {
+          authkey: authKey,
+          "account-id": accountId,
+          "Content-Type": "application/json",
+        },
+        timeout: 10000,
+      }
+    );
+
+    const msg91Data = response.data;
+
+    if (msg91Data?.type !== "success") {
+      return res.status(400).json({
+        success: false,
+        message: msg91Data?.message || "Failed to retry OTP.",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: msg91Data.message || "OTP resent successfully.",
+      retryType: validRetryType,
+    });
+  } catch (error) {
+    const errorData = error.response?.data;
+    console.error("User retry-otp error:", errorData || error.message);
+
+    return res.status(error.response?.status || 500).json({
+      success: false,
+      message: errorData?.message || "Failed to resend OTP.",
+    });
+  }
+};
 export const setPassword = async (req, res) => {
   try {
     const { password } = validate(passwordSchema, req.body);
