@@ -130,16 +130,58 @@ export const sendOtp = async (req, res) => {
     const { phone } = validate(phoneSchema, req.body);
 
     const formattedPhone = formatPhone(phone);
+    console.log(formattedPhone)
     const user = await User.findOne({ phone: formattedPhone });
 
-    res.json({
-      success: true,
-      exists: !!user
-    });
+    // Clean phone number (strip spaces/plus) for MSG91 (e.g., 919478273358)
+    const cleanedMobile = formattedPhone.replace(/\D/g, "");
 
+    const authKey = process.env.MSG91_AUTH_KEY;
+    const accountId = process.env.MSG91_ACCOUNT_ID || "5d8e43cab19f/00986b9f-d7cb-4973-a18a-9b6ebc3ba6ec";
+    const templateId = process.env.MSG91_OTP_TEMPLATE_ID || "6ab39f9937af69ca760d4a14";
+
+    // Call MSG91 v5 Send OTP API
+    const response = await axios.post(
+      "https://control.msg91.com/api/v5/otp",
+      null, // Body is null as MSG91 accepts query parameters for template_id and mobile
+      {
+        params: {
+          template_id: templateId,
+          mobile: cleanedMobile,
+        },
+        headers: {
+          authkey: authKey,
+          "account-id": accountId,
+          "Content-Type": "application/json",
+        },
+        timeout: 10000,
+      }
+    );
+
+    const msg91Data = response.data;
+
+    // Check if MSG91 sent the OTP successfully
+    if (msg91Data?.type !== "success") {
+      return res.status(502).json({
+        success: false,
+        message: msg91Data?.message || "Failed to dispatch OTP from SMS gateway.",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      exists: !!user,
+      requestId: msg91Data.request_id,
+      message: "OTP sent successfully.",
+    });
   } catch (error) {
-    console.log("error send-otp", error.message);
-    res.status(500).json({ message: "Error sending OTP" });
+    console.log(error)
+    console.error("error send-otp:", error.response?.data || error.message);
+
+    return res.status(500).json({
+      success: false,
+      message: error.response?.data?.message || "Error sending OTP",
+    });
   }
 };
 
@@ -162,21 +204,74 @@ export const getProfileImage = async (req, res) => {
 // verify OTP (firebase)
 export const verifyOtp = async (req, res) => {
   try {
-    const { fcmToken } = req.body;
-    const phone = await resolvePhoneFromTokenOrBypass(req.body);
+    const { phone, otp, fcmToken } = req.body;
 
-    let user = await User.findOne({ phone });
+    if (!phone || !otp) {
+      return res.status(400).json({
+        success: false,
+        message: "Both phone number and OTP are required.",
+      });
+    }
+
+    // 1. Format phone number (e.g., standardizing for database and stripping non-digits for MSG91)
+    const formattedPhone = typeof formatPhone === "function" ? formatPhone(phone) : phone;
+    const cleanedMobile = String(formattedPhone).replace(/\D/g, "");
+    const cleanedOtp = String(otp).trim();
+
+    // 2. Call MSG91 Verify OTP API
+    const authKey = process.env.MSG91_AUTH_KEY;
+    const accountId = process.env.MSG91_ACCOUNT_ID;
+
+    try {
+      const msg91Res = await axios.post(
+        "https://control.msg91.com/api/v5/otp/verify",
+        null,
+        {
+          params: {
+            mobile: cleanedMobile,
+            otp: cleanedOtp,
+          },
+          headers: {
+            authkey: authKey,
+            "account-id": accountId,
+            "Content-Type": "application/json",
+          },
+          timeout: 10000,
+        }
+      );
+
+      // Check MSG91 response type
+      if (msg91Res.data?.type !== "success") {
+        return res.status(401).json({
+          success: false,
+          message: msg91Res.data?.message || "Invalid or expired OTP.",
+        });
+      }
+    } catch (apiError) {
+      const errResponse = apiError.response?.data;
+      console.error("MSG91 Verify Error:", errResponse || apiError.message);
+      return res.status(401).json({
+        success: false,
+        message: errResponse?.message || "Invalid OTP or verification expired.",
+      });
+    }
+
+    // 3. User Lookup or Registration
+    let user = await User.findOne({ phone: formattedPhone });
     let isNewUser = false;
 
     if (!user) {
       isNewUser = true;
+
+      const cleanPhone = formattedPhone.replace(/\D/g, "");
       const newReferralCode = typeof generateUniqueReferralCode === "function"
         ? await generateUniqueReferralCode()
         : undefined;
 
       user = await User.create({
-        phone,
+        phone: formattedPhone,
         isVerified: true,
+        email: `${cleanPhone}@phone.local`,
         referralCode: newReferralCode,
         fcmToken: fcmToken ? String(fcmToken).trim() : null,
       });
@@ -202,9 +297,10 @@ export const verifyOtp = async (req, res) => {
       }
     }
 
+    // 4. Token Generation
     const jwtToken = generateToken(user._id, {
-      role: user.role || ROLES.USER,
-      accountType: ACCOUNT_TYPES.USER,
+      role: user.role || (typeof ROLES !== "undefined" ? ROLES.USER : "user"),
+      accountType: typeof ACCOUNT_TYPES !== "undefined" ? ACCOUNT_TYPES.USER : "user",
     });
 
     return res.status(200).json({
@@ -212,12 +308,15 @@ export const verifyOtp = async (req, res) => {
       message: "OTP verified. Please set your password.",
       nextStep: "Call POST /api/users/set-password with your password",
       token: jwtToken,
-      user: sanitizeUser(user),
+      user: typeof sanitizeUser === "function" ? sanitizeUser(user) : user,
       isNewUser,
     });
   } catch (error) {
     console.error("error verify-otp:", error.message);
-    return res.status(401).json({ success: false, message: "Invalid OTP" });
+    return res.status(500).json({
+      success: false,
+      message: "An internal server error occurred while verifying OTP.",
+    });
   }
 };
 

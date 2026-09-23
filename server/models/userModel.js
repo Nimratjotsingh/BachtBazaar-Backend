@@ -47,10 +47,12 @@ const userSchema = new mongoose.Schema(
       type: String,
     },
     email: {
+      sparse: true,
       unique: true,
       type: String,
       lowercase: true,
       trim: true,
+      default: undefined
     },
     profileImage: {
       data: Buffer,
@@ -110,6 +112,7 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+
     deletedAt: {
       type: Date,
       default: null,

@@ -9,6 +9,7 @@ import Service from "../models/serviceModel.js";
 import CustomerJournal from "../models/CustomerJournalModel.js";
 import Wishlist from "../models/wishlistModel.js";
 import MerchantDailyAnalytics from "../models/MerchantDailyAnalytics.js";
+import axios from 'axios'
 
 
 import { generateToken } from "../utils/generateToken.js";
@@ -95,9 +96,59 @@ const resolvePhoneFromTokenOrBypass = async (reqBody) => {
 export const sendOtp = async (req, res) => {
   try {
     const { phone } = validate(phoneSchema, req.body);
-    const merchant = await Merchant.findOne({ phone: formatPhone(phone) });
-    return res.json({ success: true, exists: !!merchant });
+
+    const formattedPhone = formatPhone(phone);
+    const merchant = await Merchant.findOne({ phone: formattedPhone });
+
+    // Clean phone number (strip non-digits, e.g. 919478273358)
+    const cleanedMobile = formattedPhone.replace(/\D/g, "");
+
+    const authKey = process.env.MSG91_AUTH_KEY;
+    const accountId = process.env.MSG91_ACCOUNT_ID;
+    const templateId = process.env.MSG91_OTP_TEMPLATE_ID;
+
+    // Dispatch OTP via MSG91 v5 API
+    const response = await axios.post(
+      "https://control.msg91.com/api/v5/otp",
+      null,
+      {
+        params: {
+          template_id: templateId,
+          mobile: cleanedMobile,
+        },
+        headers: {
+          authkey: authKey,
+          "account-id": accountId,
+          "Content-Type": "application/json",
+        },
+        timeout: 10000,
+      }
+    );
+
+    const msg91Data = response.data;
+
+    if (msg91Data?.type !== "success") {
+      return res.status(502).json({
+        success: false,
+        message: msg91Data?.message || "Failed to dispatch OTP from SMS gateway.",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      exists: !!merchant,
+      requestId: msg91Data.request_id,
+      message: "OTP sent successfully.",
+    });
   } catch (error) {
+    if (error.response?.data) {
+      console.error("MSG91 Send OTP Error:", error.response.data);
+      return res.status(502).json({
+        success: false,
+        message: error.response.data.message || "Failed to dispatch OTP.",
+      });
+    }
+
     return handleValidation(res, error, "Error sending OTP");
   }
 };
@@ -162,20 +213,86 @@ export const registerMerchantVerifyOtp = async (req, res) => {
 
 export const verifyOtp = async (req, res) => {
   try {
-    const phone = await resolvePhoneFromTokenOrBypass(req.body);
+    const { phone, otp } = req.body;
 
-    let merchant = await Merchant.findOne({ phone });
-    if (!merchant) {
-      merchant = await Merchant.create({ phone, isVerified: true });
+    if (!phone || !otp) {
+      return res.status(400).json({
+        success: false,
+        message: "Both phone number and OTP are required.",
+      });
     }
 
+    // Format and clean phone number for MSG91 (e.g. 919478273358)
+    const formattedPhone = typeof formatPhone === "function" ? formatPhone(phone) : phone;
+    const cleanedMobile = String(formattedPhone).replace(/\D/g, "");
+    const cleanedOtp = String(otp).trim();
+
+    const authKey = process.env.MSG91_AUTH_KEY;
+    const accountId = process.env.MSG91_ACCOUNT_ID;
+
+    // Call MSG91 v5 OTP Verify API
+    try {
+      const msg91Res = await axios.post(
+        "https://control.msg91.com/api/v5/otp/verify",
+        null,
+        {
+          params: {
+            mobile: cleanedMobile,
+            otp: cleanedOtp,
+          },
+          headers: {
+            authkey: authKey,
+            "account-id": accountId,
+            "Content-Type": "application/json",
+          },
+          timeout: 10000,
+        }
+      );
+
+      if (msg91Res.data?.type !== "success") {
+        return res.status(401).json({
+          success: false,
+          message: msg91Res.data?.message || "Invalid or expired OTP.",
+        });
+      }
+    } catch (apiError) {
+      const errResponse = apiError.response?.data;
+      console.error("MSG91 Merchant Verify Error:", errResponse || apiError.message);
+      return res.status(401).json({
+        success: false,
+        message: errResponse?.message || "Invalid OTP or verification expired.",
+      });
+    }
+
+    // Lookup or register merchant
+    let merchant = await Merchant.findOne({ phone: formattedPhone });
+    if (!merchant) {
+      merchant = await Merchant.create({
+        phone: formattedPhone,
+        isVerified: true,
+      });
+    } else if (!merchant.isVerified) {
+      merchant.isVerified = true;
+      await merchant.save();
+    }
+
+    // Generate JWT Auth Token
     const jwtToken = generateToken(merchant._id, {
-      role: merchant.role || ROLES.MERCHANT,
-      accountType: ACCOUNT_TYPES.MERCHANT
+      role: merchant.role || (typeof ROLES !== "undefined" ? ROLES.MERCHANT : "merchant"),
+      accountType: typeof ACCOUNT_TYPES !== "undefined" ? ACCOUNT_TYPES.MERCHANT : "merchant",
     });
-    return res.json({ success: true, token: jwtToken, merchant: sanitizeMerchant(merchant) });
+
+    return res.status(200).json({
+      success: true,
+      token: jwtToken,
+      merchant: typeof sanitizeMerchant === "function" ? sanitizeMerchant(merchant) : merchant,
+    });
   } catch (error) {
-    return handleFirebaseAuthError(res, error, "Invalid OTP");
+    console.error("Merchant verify-otp error:", error.message);
+    return res.status(500).json({
+      success: false,
+      message: "An internal server error occurred while verifying OTP.",
+    });
   }
 };
 
