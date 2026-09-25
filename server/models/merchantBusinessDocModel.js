@@ -1,5 +1,10 @@
 import mongoose from "mongoose";
 
+const imageSchema = new mongoose.Schema({
+  data: Buffer,
+  contentType: String
+}, { _id: false });
+
 const merchantBusinessDocSchema = new mongoose.Schema(
   {
     merchantId: {
@@ -18,13 +23,13 @@ const merchantBusinessDocSchema = new mongoose.Schema(
     aadhaarNumber: { type: String, trim: true },
 
     // Document Image URLs (stored paths or cloud links)
-    gstImage: { type: String, default: null },
-    tradeLicenseImage: { type: String, default: null },
-    shopRegistrationImage: { type: String, default: null },
-    fssaiImage: { type: String, default: null },
-    panImage: { type: String, default: null },
-    aadhaarFrontImage: { type: String, default: null },
-    aadhaarBackImage: { type: String, default: null },
+    gstImage: imageSchema,
+    tradeLicenseImage: imageSchema,
+    shopRegistrationImage: imageSchema,
+    fssaiImage: imageSchema,
+    panImage: imageSchema,
+    aadhaarFrontImage: imageSchema,
+    aadhaarBackImage: imageSchema,
 
     // Verification ledger
     verificationResults: {
