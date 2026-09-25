@@ -100,7 +100,7 @@ export const fetchTaskStatusFromIdfy = async (requestId) => {
     };
   }
 
-  // Task is still being processed by government registries
+  // 1. Task is still processing on government gateways
   if (taskDoc.status === "in_progress") {
     return {
       status: "in_progress",
@@ -111,9 +111,20 @@ export const fetchTaskStatusFromIdfy = async (requestId) => {
 
   const taskCompleted = taskDoc.status === "completed";
   const sourceOutput = taskDoc.result?.source_output || {};
+  const taskType = taskDoc.type || taskDoc.task_type || taskDoc.action_type || taskDoc.action;
 
-  // --- PAN Evaluation ---
-  if (taskDoc.type === "ind_pan") {
+  // Safe fallback error extractor
+  const rawError =
+    taskDoc.result?.error?.message ||
+    taskDoc.result?.error ||
+    taskDoc.error?.message ||
+    taskDoc.error ||
+    null;
+
+  // ==========================================
+  // 1. PAN EVALUATION (ind_pan)
+  // ==========================================
+  if (taskType === "ind_pan") {
     const idFound = sourceOutput.status === "id_found";
     const panStatusText = sourceOutput.pan_status || "";
     const isOperative = /operative|valid|existing/i.test(panStatusText);
@@ -126,16 +137,16 @@ export const fetchTaskStatusFromIdfy = async (requestId) => {
 
     let failureReason = null;
     if (!isValid) {
-      if (!idFound) failureReason = "PAN not found in Income Tax registry.";
-      else if (!isOperative) failureReason = `PAN status is inactive: ${panStatusText}`;
-      else failureReason = taskDoc.result?.error || "PAN verification checks failed.";
+      if (!idFound) failureReason = "PAN card record not found in Income Tax registry.";
+      else if (!isOperative) failureReason = `PAN status is inactive: ${panStatusText || "Invalid"}`;
+      else failureReason = rawError || "PAN verification checks failed.";
     }
 
     return {
       type: "ind_pan",
       status: isValid ? "verified" : "failed",
       isValid,
-      panNumber: sourceOutput.input_details?.input_pan_number || null,
+      panNumber: sourceOutput.input_details?.input_pan_number || sourceOutput.pan_number || null,
       registeredName: sourceOutput.input_details?.input_name || null,
       panStatusText,
       nameMatch,
@@ -146,8 +157,10 @@ export const fetchTaskStatusFromIdfy = async (requestId) => {
     };
   }
 
-  // --- Aadhaar Evaluation ---
-  if (taskDoc.type === "ind_aadhaar") {
+  // ==========================================
+  // 2. AADHAAR EVALUATION (ind_aadhaar)
+  // ==========================================
+  if (taskType === "ind_aadhaar") {
     const idFound =
       sourceOutput.status === "id_found" ||
       sourceOutput.status === "valid" ||
@@ -161,13 +174,89 @@ export const fetchTaskStatusFromIdfy = async (requestId) => {
       state: sourceOutput.state || null,
       gender: sourceOutput.gender || null,
       ageBand: sourceOutput.age_band || null,
-      failureReason: isValid ? null : taskDoc.result?.error || "Aadhaar number could not be validated.",
+      failureReason: isValid ? null : rawError || "Aadhaar number could not be validated with source.",
       rawResponse: taskDoc,
     };
   }
 
+  // ==========================================
+  // 3. DRIVING LICENSE EVALUATION (ind_driving_license)
+  // ==========================================
+  if (taskType === "ind_driving_license") {
+    const sourceStatus = (sourceOutput.status || "").toLowerCase();
+    
+    // IDfy indicates success when status is "id_found", "valid", or "active"
+    const idFound =
+      sourceStatus === "id_found" ||
+      sourceStatus === "valid" ||
+      sourceStatus === "active";
+
+    const dlStatus = (sourceOutput.dl_status || (idFound ? "ACTIVE" : "INVALID")).toUpperCase();
+    const isValid = taskCompleted && idFound;
+
+    const vehicleClasses = Array.isArray(sourceOutput.cov_details)
+      ? sourceOutput.cov_details.map((item) => item.cov).filter(Boolean)
+      : [];
+
+    return {
+      type: "ind_driving_license",
+      status: isValid ? "verified" : "failed",
+      isValid,
+      dlNumber: sourceOutput.id_number || sourceOutput.dl_number || null,
+      holderName: sourceOutput.name || sourceOutput.name_on_card || null,
+      dateOfBirth: sourceOutput.dob || sourceOutput.date_of_birth || null,
+      fatherOrHusbandName: sourceOutput.relatives_name || sourceOutput.father_or_husband_name || null,
+      dlStatus,
+      issueDate: sourceOutput.date_of_issue || null,
+      validFrom: sourceOutput.nt_validity_from || sourceOutput.valid_from || null,
+      validUpto: sourceOutput.nt_validity_to || sourceOutput.valid_upto || null,
+      vehicleClasses,
+      covDetails: sourceOutput.cov_details || [],
+      address: sourceOutput.address || null,
+      rto: sourceOutput.issuing_rto_name || sourceOutput.rto || null,
+      failureReason: isValid ? null : rawError || `Driving License status: ${sourceStatus || "not found"}`,
+      rawResponse: taskDoc,
+    };
+  }
+
+  // ==========================================
+  // 4. FSSAI EVALUATION (ind_fssai)
+  // ==========================================
+  if (taskType === "ind_fssai") {
+    const sourceStatus = (sourceOutput.status || "").toLowerCase();
+    const licenseStatus = (sourceOutput.license_status || "").toLowerCase();
+
+    const isLicenseActive =
+      sourceStatus === "active" ||
+      sourceStatus === "valid" ||
+      licenseStatus === "active" ||
+      licenseStatus === "valid";
+
+    const isValid = taskCompleted && isLicenseActive;
+
+    return {
+      type: "ind_fssai",
+      status: isValid ? "verified" : "failed",
+      isValid,
+      licenseNumber: sourceOutput.input_details?.id_number || sourceOutput.license_number || null,
+      companyName: sourceOutput.company_name || sourceOutput.premises_name || sourceOutput.business_name || null,
+      licenseStatus: sourceOutput.license_status || sourceOutput.status || null,
+      validFrom: sourceOutput.valid_from || null,
+      validUpto: sourceOutput.valid_upto || null,
+      address: sourceOutput.address || sourceOutput.premises_address || null,
+      failureReason: isValid ? null : rawError || `FSSAI license is ${licenseStatus || "invalid / expired"}.`,
+      rawResponse: taskDoc,
+    };
+  }
+
+  // ==========================================
+  // FALLBACK FOR UNHANDLED TASKS
+  // ==========================================
   return {
-    status: taskDoc.status,
+    type: taskType || "unknown",
+    status: taskDoc.status || "failed",
+    isValid: false,
+    failureReason: rawError || `Task completed with unhandled type: ${taskType || "undefined"}`,
     rawResponse: taskDoc,
   };
 };
@@ -185,4 +274,26 @@ export const dispatchAsyncFssaiVerification = async ({ fssaiNumber }) => {
 
   const response = await idfyClient.post("/async/verify_with_source/ind_fssai", payload);
   return response.data; // Returns { request_id: "..." }
+};
+
+export const dispatchAsyncDrivingLicenseVerification = async ({ dlNumber, dob }) => {
+  const cleanDl = String(dlNumber).trim().toUpperCase();
+  const formattedDob = normalizeToYYYYMMDD(dob);
+
+  if (!formattedDob) {
+    throw new Error("Valid Date of Birth (YYYY-MM-DD) is required for Driving License verification.");
+  }
+
+  const payload = {
+    task_id: randomUUID(),
+    group_id: randomUUID(),
+    data: {
+      id_number: cleanDl,
+      date_of_birth: formattedDob,
+      consent: "yes",
+    },
+  };
+
+  const response = await idfyClient.post("/async/verify_with_source/ind_driving_license", payload);
+  return response.data; // { request_id: "..." }
 };

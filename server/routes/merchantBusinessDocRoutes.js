@@ -1,7 +1,7 @@
 import express from "express";
 import upload from "../middleware/uploadSec.js";
 import { protectMerchant } from "../middleware/authMiddleware.js";
-import { checkTaskStatus,requestAadhaarVerification,requestPanVerification, upsertBusinessDocs,requestFssaiVerification } from "../controllers/merchantBusinessDocController.js";
+import { checkTaskStatus,requestAadhaarVerification,requestPanVerification, upsertBusinessDocs,requestFssaiVerification,requestDrivingLicenseVerification } from "../controllers/merchantBusinessDocController.js";
 
 const router = express.Router();
 
@@ -27,6 +27,8 @@ router.post("/fssai/request", protectMerchant, requestFssaiVerification);
 
 // 2. Poll or check verification result by requestId
 router.get("/task-status/:requestId", protectMerchant, checkTaskStatus);
+
+router.post('/dl/request',protectMerchant,requestDrivingLicenseVerification)
 
 
 

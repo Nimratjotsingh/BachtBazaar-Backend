@@ -1,6 +1,6 @@
 import Merchant from "../models/merchantModel.js";
 import MerchantBusinessDoc from "../models/merchantBusinessDocModel.js";
-import {dispatchAsyncAadhaarVerification,dispatchAsyncPanVerification,fetchTaskStatusFromIdfy,normalizeToYYYYMMDD, dispatchAsyncFssaiVerification} from '../services/idfyService.js'
+import {dispatchAsyncAadhaarVerification,dispatchAsyncPanVerification,fetchTaskStatusFromIdfy,normalizeToYYYYMMDD, dispatchAsyncFssaiVerification,dispatchAsyncDrivingLicenseVerification} from '../services/idfyService.js'
 import fs from "fs/promises";
 
 export const upsertBusinessDocs = async (req, res) => {
@@ -283,6 +283,8 @@ export const requestFssaiVerification = async (req, res) => {
  * 3. Unified Status Check Endpoint
  * GET /api/merchant/business-docs/task-status/:requestId
  */
+
+
 export const checkTaskStatus = async (req, res) => {
   try {
     const { requestId } = req.params;
@@ -358,8 +360,29 @@ export const checkTaskStatus = async (req, res) => {
         failureReason: taskResult.failureReason,
         rawResponse: taskResult.rawResponse,
       };
+    } else if (taskResult.type === "ind_driving_license") {
+      if (taskResult.dlNumber) {
+        updateDoc.drivingLicenseNumber = taskResult.dlNumber;
+      }
+      updateDoc["verificationResults.drivingLicense"] = {
+        status: taskResult.status,
+        requestId,
+        verifiedAt: isVerified ? new Date() : null,
+        holderName: taskResult.holderName,
+        dateOfBirth: taskResult.dateOfBirth,
+        fatherOrHusbandName: taskResult.fatherOrHusbandName,
+        dlStatus: taskResult.dlStatus,
+        issueDate: taskResult.issueDate,
+        validFrom: taskResult.validFrom,
+        validUpto: taskResult.validUpto,
+        vehicleClasses: taskResult.vehicleClasses,
+        covDetails: taskResult.covDetails,
+        address: taskResult.address,
+        rto: taskResult.rto,
+        failureReason: taskResult.failureReason,
+        rawResponse: taskResult.rawResponse,
+      };
     } else {
-      // Fallback generic task logger
       updateDoc[`verificationResults.${taskResult.type || "unknown"}`] = {
         status: taskResult.status,
         requestId,
@@ -369,7 +392,7 @@ export const checkTaskStatus = async (req, res) => {
     }
 
     // 4. Update the business document record
-    const updatedBusinessDoc = await MerchantBusinessDoc.findOneAndUpdate(
+    await MerchantBusinessDoc.findOneAndUpdate(
       { merchantId },
       { $set: updateDoc,$setOnInsert: { merchantId } },
       { new: true, upsert: true }
@@ -398,6 +421,18 @@ export const checkTaskStatus = async (req, res) => {
       responseData.validFrom = taskResult.validFrom;
       responseData.validUpto = taskResult.validUpto;
       responseData.address = taskResult.address;
+    } else if (taskResult.type === "ind_driving_license") {
+      responseData.dlNumber = taskResult.dlNumber;
+      responseData.holderName = taskResult.holderName;
+      responseData.dateOfBirth = taskResult.dateOfBirth;
+      responseData.fatherOrHusbandName = taskResult.fatherOrHusbandName;
+      responseData.dlStatus = taskResult.dlStatus;
+      responseData.issueDate = taskResult.issueDate;
+      responseData.validFrom = taskResult.validFrom;
+      responseData.validUpto = taskResult.validUpto;
+      responseData.vehicleClasses = taskResult.vehicleClasses;
+      responseData.address = taskResult.address;
+      responseData.rto = taskResult.rto;
     }
 
     return res.status(isVerified ? 200 : 422).json({
@@ -415,6 +450,91 @@ export const checkTaskStatus = async (req, res) => {
       success: false,
       message: "An internal server error occurred while retrieving verification status.",
       error: error.message,
+    });
+  }
+};
+
+const DL_REGEX = /^[A-Z]{2}[0-9]{2}[0-9A-Z]{7,12}$/i;
+
+/**
+ * Dispatch Async DL Verification Request
+ * POST /api/merchant/business-docs/driving-license/request
+ */
+export const requestDrivingLicenseVerification = async (req, res) => {
+  try {
+    const merchantId = req.merchant._id;
+    const { dlNumber, drivingLicenseNumber, dob, dateOfBirth } = req.body;
+
+    const targetDl = String(drivingLicenseNumber || dlNumber || "")
+      .replace(/[\s-]/g, "")
+      .toUpperCase();
+    const rawDob = dob || dateOfBirth;
+
+    if (!targetDl) {
+      return res.status(400).json({
+        success: false,
+        message: "Driving license number is required.",
+      });
+    }
+
+    if (!rawDob) {
+      return res.status(400).json({
+        success: false,
+        message: "Date of birth (YYYY-MM-DD) is required for driving license verification.",
+      });
+    }
+
+    const formattedDob = normalizeToYYYYMMDD(rawDob);
+    if (!formattedDob) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid Date of Birth format. Please provide YYYY-MM-DD or DD-MM-YYYY.",
+      });
+    }
+
+    // Call IDfy Async API
+    const idfyResponse = await dispatchAsyncDrivingLicenseVerification({
+      dlNumber: targetDl,
+      dob: formattedDob,
+    });
+
+    const requestId = idfyResponse?.request_id;
+    if (!requestId) {
+      return res.status(502).json({
+        success: false,
+        message: "Failed to initiate driving license verification with IDfy.",
+        rawResponse: idfyResponse,
+      });
+    }
+
+    // Store in-progress record in DB
+    await MerchantBusinessDoc.findOneAndUpdate(
+      { merchantId },
+      {
+        $set: {
+          drivingLicenseNumber: targetDl,
+          "verificationResults.drivingLicense": {
+            status: "in_progress",
+            requestId,
+            submittedAt: new Date(),
+          },
+        },
+        $setOnInsert: { merchantId },
+      },
+      { upsert: true }
+    );
+
+    return res.status(202).json({
+      success: true,
+      message: "Driving license verification request submitted successfully.",
+      requestId,
+    });
+  } catch (error) {
+    console.error("Async DL Request Error:", error.response?.data || error.message);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to submit driving license verification request.",
+      error: error.response?.data?.message || error.message,
     });
   }
 };
