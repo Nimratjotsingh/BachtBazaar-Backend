@@ -422,7 +422,7 @@ const ProductSuggestionsManager = ({ token }) => {
             </div>
 
             {/* Price & Unit Display */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
                   Suggested Price / Benchmark (₹)
@@ -454,7 +454,7 @@ const ProductSuggestionsManager = ({ token }) => {
               </div>
             </div>
 
-            {/* Weight & Volume */}
+           
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-100">
               <div className="space-y-1.5">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
@@ -516,7 +516,7 @@ const ProductSuggestionsManager = ({ token }) => {
               </div>
             </div>
 
-            {/* Tags */}
+           
             <div className="space-y-1.5">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
                 Metadata Search Tags (Comma Separated)
@@ -527,7 +527,7 @@ const ProductSuggestionsManager = ({ token }) => {
                 onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
                 placeholder="e.g., instant food, breakfast, grocery, maggi"
               />
-            </div>
+            </div> */}
 
             {/* Thumbnail Upload & Current Image Preview */}
             <div className="space-y-1.5">

@@ -521,9 +521,9 @@ export const deleteProduct = async (req, res) => {
       merchant_id: merchantId,
       product_id: id,
       is_deleted: false,
-      is_active: true,
+      
       is_draft: false,
-      is_paused: false,
+    
       start_date: { $lte: now },
       $or: [
         { end_date: { $exists: false } },

@@ -128,7 +128,7 @@ export const sendOtpNew= async(req,res)=>{
 export const sendOtp = async (req, res) => {
   try {
     const { phone } = validate(phoneSchema, req.body);
-
+    
     const formattedPhone = formatPhone(phone);
     console.log(formattedPhone)
     const user = await User.findOne({ phone: formattedPhone });
