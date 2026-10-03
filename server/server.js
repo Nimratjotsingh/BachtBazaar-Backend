@@ -66,6 +66,8 @@ import customerJournalRoutes from './routes/customerJournalRoutes.js';
 import reviewRoutes from './routes/reviewRoutes.js';
 import offerReviewRoutes from './routes/offerReviewRoutes.js';
 import adminProductSuggestionRoutes from './routes/adminProductSuggeationRoutes.js';
+import adminServiceSuggestionRoutes from './routes/adminSuggestionRoutes.js';
+import adminServiceRoutes from './routes/adminServiceRoutes.js';
 
 dotenv.config();
 // console.log(process.env.MONGO_URI)
@@ -98,6 +100,8 @@ if (isDevelopment) {
   });
 }
 
+app.use('/api/admin/service-suggestions',adminServiceSuggestionRoutes);
+app.use('/api/admin/services',adminServiceRoutes);
 
 app.use("/api/user", userRoutes);
 app.use("/api/users", userRoutes);

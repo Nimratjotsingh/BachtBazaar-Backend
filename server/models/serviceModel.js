@@ -1,5 +1,41 @@
 import mongoose from "mongoose";
 
+// Embedded Schema for Service Provider Details
+const serviceProviderSchema = new mongoose.Schema(
+  {
+    name: {
+      type: String,
+      required: [true, "Service provider name is required"],
+      trim: true,
+    },
+    profile_image: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    experience: {
+      type: Number, // Number of years (or specify as String if formatted, e.g., '5 years')
+      min: [0, "Experience cannot be negative"],
+      default: 0,
+    },
+    designation: {
+      type: String,
+      trim: true,
+      default: null, // e.g., "Senior Stylist", "Master Technician", "Consultant"
+    },
+    gender: {
+      type: String,
+      enum: ["male", "female", "other", "prefer_not_to_say"],
+      default: "prefer_not_to_say",
+    },
+    specialisation: {
+      type: [String], // Array of skills/specialisations or a String
+      default: [],
+    },
+  },
+  { _id: false } // Prevents automatic generation of a separate _id for the embedded provider
+);
+
 const serviceSchema = new mongoose.Schema(
   {
     merchant_id: {
@@ -24,23 +60,32 @@ const serviceSchema = new mongoose.Schema(
     },
     // Supporting multiple categories
     category_id: {
-      type: [{
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Category"
-      }],
-      validate: [val => val.length > 0, "At least one category is required"],
+      type: [
+        {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Category",
+        },
+      ],
+      validate: [(val) => val.length > 0, "At least one category is required"],
       index: true,
     },
     subcategory_id: {
-      type: [{
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "SubCategory"
-      }],
+      type: [
+        {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "SubCategory",
+        },
+      ],
       index: true,
     },
     service_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "ServiceReference", // Optional reference to a master service list
+    },
+    // --- Added Service Provider Details ---
+    service_provider: {
+      type: serviceProviderSchema,
+      default: null,
     },
     price: {
       type: Number,
@@ -65,7 +110,7 @@ const serviceSchema = new mongoose.Schema(
     },
     images: {
       type: [String],
-      validate: [val => val.length <= 10, "Maximum 10 images allowed"],
+      validate: [(val) => val.length <= 10, "Maximum 10 images allowed"],
     },
     thumbnail: {
       type: String,
@@ -88,25 +133,42 @@ const serviceSchema = new mongoose.Schema(
       default: false,
       index: true,
     },
-    ratings: {
-  average: {
-    type: Number,
-    default: 0,
-    min: 0,
-    max: 5,
-  },
-  count: {
-    type: Number,
-    default: 0,
-  },
+    // Add these fields inside your existing serviceSchema in models/serviceModel.js:
+
+service_id: {
+  type: mongoose.Schema.Types.ObjectId,
+  ref: "ServiceReference",
+  default: null,
+  index: true,
 },
+approval_status: {
+  type: String,
+  enum: ["pending", "approved", "rejected"],
+  default: "pending",
+  index: true,
+},
+rejection_reason: {
+  type: String,
+  default: null,
+},
+    ratings: {
+      average: {
+        type: Number,
+        default: 0,
+        min: 0,
+        max: 5,
+      },
+      count: {
+        type: Number,
+        default: 0,
+      },
+    },
   },
+  
   {
     timestamps: true,
   }
 );
-
-
 
 const Service = mongoose.model("Service", serviceSchema);
 
