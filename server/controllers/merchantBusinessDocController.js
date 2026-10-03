@@ -1,6 +1,6 @@
 import Merchant from "../models/merchantModel.js";
 import MerchantBusinessDoc from "../models/merchantBusinessDocModel.js";
-import {dispatchAsyncAadhaarVerification,dispatchAsyncPanVerification,fetchTaskStatusFromIdfy,normalizeToYYYYMMDD, dispatchAsyncFssaiVerification,dispatchAsyncDrivingLicenseVerification} from '../services/idfyService.js'
+import {dispatchAsyncAadhaarVerification,dispatchAsyncPanVerification,fetchTaskStatusFromIdfy,normalizeToYYYYMMDD, dispatchAsyncGstVerification,dispatchAsyncFssaiVerification,dispatchAsyncDrivingLicenseVerification} from '../services/idfyService.js'
 import fs from "fs/promises";
 
 export const upsertBusinessDocs = async (req, res) => {
@@ -225,10 +225,12 @@ const FSSAI_REGEX = /^[0-9]{14}$/;
 export const requestFssaiVerification = async (req, res) => {
   try {
     const merchantId = req.merchant._id;
-    const { fssaiNumber } = req.body;
-    const cleanFssai = String(fssaiNumber || "").trim();
+    const { fssaiNumber, registration_no, registrationNo } = req.body;
+    
+    // Support multiple common field names from client payloads
+    const targetFssai = String(fssaiNumber || registration_no || registrationNo || "").trim();
 
-    if (!cleanFssai || !FSSAI_REGEX.test(cleanFssai)) {
+    if (!targetFssai || !FSSAI_REGEX.test(targetFssai)) {
       return res.status(400).json({
         success: false,
         message: "A valid 14-digit FSSAI license/registration number is required.",
@@ -236,7 +238,7 @@ export const requestFssaiVerification = async (req, res) => {
     }
 
     const idfyResponse = await dispatchAsyncFssaiVerification({
-      fssaiNumber: cleanFssai,
+      fssaiNumber: targetFssai,
     });
 
     const requestId = idfyResponse?.request_id;
@@ -248,12 +250,12 @@ export const requestFssaiVerification = async (req, res) => {
       });
     }
 
-    // Record pending task in database
+    // Persist pending task in database
     await MerchantBusinessDoc.findOneAndUpdate(
       { merchantId },
       {
         $set: {
-          fssaiNumber: cleanFssai,
+          fssaiNumber: targetFssai,
           "verificationResults.fssai": {
             status: "in_progress",
             requestId,
@@ -275,7 +277,7 @@ export const requestFssaiVerification = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Failed to submit FSSAI verification request.",
-      error: error.message,
+      error: error.response?.data?.message || error.message,
     });
   }
 };
@@ -382,6 +384,28 @@ export const checkTaskStatus = async (req, res) => {
         failureReason: taskResult.failureReason,
         rawResponse: taskResult.rawResponse,
       };
+    } else if (taskResult.type === "ind_gst_certificate") {
+      if (taskResult.gstin) {
+        updateDoc.gstNumber = taskResult.gstin;
+      }
+      updateDoc["verificationResults.gst"] = {
+        status: taskResult.status,
+        requestId,
+        verifiedAt: isVerified ? new Date() : null,
+        legalName: taskResult.legalName,
+        tradeName: taskResult.tradeName,
+        constitutionOfBusiness: taskResult.constitutionOfBusiness,
+        taxpayerType: taskResult.taxpayerType,
+        gstinStatus: taskResult.gstinStatus,
+        dateOfRegistration: taskResult.dateOfRegistration,
+        cancellationDate: taskResult.cancellationDate,
+        principalPlaceOfBusiness: taskResult.principalPlaceOfBusiness,
+        stateJurisdiction: taskResult.stateJurisdiction,
+        centerJurisdiction: taskResult.centerJurisdiction,
+        natureOfBusinessActivities: taskResult.natureOfBusinessActivities,
+        failureReason: taskResult.failureReason,
+        rawResponse: taskResult.rawResponse,
+      };
     } else {
       updateDoc[`verificationResults.${taskResult.type || "unknown"}`] = {
         status: taskResult.status,
@@ -407,6 +431,8 @@ export const checkTaskStatus = async (req, res) => {
     };
 
     if (taskResult.type === "ind_pan") {
+      responseData.panNumber = taskResult.panNumber;
+      responseData.registeredName = taskResult.registeredName;
       responseData.panStatus = taskResult.panStatusText;
       responseData.nameMatch = taskResult.nameMatch;
       responseData.dobMatch = taskResult.dobMatch;
@@ -416,6 +442,7 @@ export const checkTaskStatus = async (req, res) => {
       responseData.gender = taskResult.gender;
       responseData.ageBand = taskResult.ageBand;
     } else if (taskResult.type === "ind_fssai") {
+      responseData.licenseNumber = taskResult.licenseNumber;
       responseData.companyName = taskResult.companyName;
       responseData.licenseStatus = taskResult.licenseStatus;
       responseData.validFrom = taskResult.validFrom;
@@ -433,6 +460,15 @@ export const checkTaskStatus = async (req, res) => {
       responseData.vehicleClasses = taskResult.vehicleClasses;
       responseData.address = taskResult.address;
       responseData.rto = taskResult.rto;
+    } else if (taskResult.type === "ind_gst_certificate") {
+      responseData.gstin = taskResult.gstin;
+      responseData.legalName = taskResult.legalName;
+      responseData.tradeName = taskResult.tradeName;
+      responseData.constitutionOfBusiness = taskResult.constitutionOfBusiness;
+      responseData.taxpayerType = taskResult.taxpayerType;
+      responseData.gstinStatus = taskResult.gstinStatus;
+      responseData.dateOfRegistration = taskResult.dateOfRegistration;
+      responseData.principalPlaceOfBusiness = taskResult.principalPlaceOfBusiness;
     }
 
     return res.status(isVerified ? 200 : 422).json({
@@ -534,6 +570,73 @@ export const requestDrivingLicenseVerification = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Failed to submit driving license verification request.",
+      error: error.response?.data?.message || error.message,
+    });
+  }
+};
+
+const GSTIN_REGEX = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
+
+/**
+ * Request Async GST Certificate Verification
+ * POST /api/merchant/business-docs/gst/request
+ */
+export const requestGstVerification = async (req, res) => {
+  try {
+    const merchantId = req.merchant._id;
+    const { gstin, gstNumber } = req.body;
+
+    const cleanGstin = String(gstin || gstNumber || "")
+      .replace(/[\s-]/g, "")
+      .toUpperCase();
+
+    if (!cleanGstin || !GSTIN_REGEX.test(cleanGstin)) {
+      return res.status(400).json({
+        success: false,
+        message: "A valid 15-character GSTIN (GST identification number) is required.",
+      });
+    }
+
+    const idfyResponse = await dispatchAsyncGstVerification({
+      gstin: cleanGstin,
+    });
+
+    const requestId = idfyResponse?.request_id;
+    if (!requestId) {
+      return res.status(502).json({
+        success: false,
+        message: "Failed to initiate GST verification with IDfy.",
+        rawResponse: idfyResponse,
+      });
+    }
+
+    // Persist pending task in database
+    await MerchantBusinessDoc.findOneAndUpdate(
+      { merchantId },
+      {
+        $set: {
+          gstNumber: cleanGstin,
+          "verificationResults.gst": {
+            status: "in_progress",
+            requestId,
+            submittedAt: new Date(),
+          },
+        },
+        $setOnInsert: { merchantId },
+      },
+      { upsert: true }
+    );
+
+    return res.status(202).json({
+      success: true,
+      message: "GST verification request submitted successfully.",
+      requestId,
+    });
+  } catch (error) {
+    console.error("Async GST Request Error:", error.response?.data || error.message);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to submit GST verification request.",
       error: error.response?.data?.message || error.message,
     });
   }

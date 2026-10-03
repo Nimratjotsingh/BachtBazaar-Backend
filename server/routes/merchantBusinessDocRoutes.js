@@ -1,7 +1,7 @@
 import express from "express";
 import upload from "../middleware/uploadSec.js";
 import { protectMerchant } from "../middleware/authMiddleware.js";
-import { checkTaskStatus,requestAadhaarVerification,requestPanVerification, upsertBusinessDocs,requestFssaiVerification,requestDrivingLicenseVerification } from "../controllers/merchantBusinessDocController.js";
+import { checkTaskStatus,requestAadhaarVerification,requestPanVerification, upsertBusinessDocs,requestFssaiVerification,requestDrivingLicenseVerification, requestGstVerification } from "../controllers/merchantBusinessDocController.js";
 
 const router = express.Router();
 
@@ -30,6 +30,7 @@ router.get("/task-status/:requestId", protectMerchant, checkTaskStatus);
 
 router.post('/dl/request',protectMerchant,requestDrivingLicenseVerification)
 
+router.post('/gst/request',protectMerchant,requestGstVerification)
 
 
 export default router;

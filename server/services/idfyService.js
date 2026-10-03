@@ -45,15 +45,18 @@ export const dispatchAsyncPanVerification = async ({ panNumber, fullName = "", d
   const cleanPan = String(panNumber).trim().toUpperCase();
   const formattedDob = normalizeToYYYYMMDD(dob);
 
+  console.log(cleanPan)
+
   const payload = {
     task_id: randomUUID(),
     group_id: randomUUID(),
     data: {
       id_number: cleanPan,
-      ...(fullName && { name_to_match: fullName.trim() }),
-      ...(formattedDob && { date_of_birth: formattedDob }),
+      ...(fullName && { full_name: fullName.trim() }),
+      ...(formattedDob && { dob: formattedDob }),
     },
   };
+  console.log(payload)
 
   const response = await idfyClient.post("/async/verify_with_source/ind_pan", payload);
   return response.data; // Returns { request_id: "..." }
@@ -85,6 +88,24 @@ export const dispatchAsyncAadhaarVerification = async ({ aadhaarNumber }) => {
 /**
  * Queries the task status by request_id and parses source output
  */
+
+export const dispatchAsyncGstVerification = async ({ gstin }) => {
+  const cleanGstin = String(gstin).trim().toUpperCase();
+
+  const payload = {
+    task_id: randomUUID(),
+    group_id: randomUUID(),
+    data: {
+      gstin: cleanGstin,
+    },
+  };
+
+  const response = await idfyClient.post("/async/verify_with_source/ind_gst_certificate", payload);
+  return response.data; // { request_id: "..." }
+};
+
+
+
 export const fetchTaskStatusFromIdfy = async (requestId) => {
   const response = await idfyClient.get("", {
     params: { request_id: requestId },
@@ -100,7 +121,7 @@ export const fetchTaskStatusFromIdfy = async (requestId) => {
     };
   }
 
-  // 1. Task is still processing on government gateways
+  // 1. Task is still in progress on government gateways
   if (taskDoc.status === "in_progress") {
     return {
       status: "in_progress",
@@ -174,7 +195,7 @@ export const fetchTaskStatusFromIdfy = async (requestId) => {
       state: sourceOutput.state || null,
       gender: sourceOutput.gender || null,
       ageBand: sourceOutput.age_band || null,
-      failureReason: isValid ? null : rawError || "Aadhaar number could not be validated with source.",
+      failureReason: isValid ? null : rawError || "Aadhaar number could not be validated with source registry.",
       rawResponse: taskDoc,
     };
   }
@@ -184,8 +205,6 @@ export const fetchTaskStatusFromIdfy = async (requestId) => {
   // ==========================================
   if (taskType === "ind_driving_license") {
     const sourceStatus = (sourceOutput.status || "").toLowerCase();
-    
-    // IDfy indicates success when status is "id_found", "valid", or "active"
     const idFound =
       sourceStatus === "id_found" ||
       sourceStatus === "valid" ||
@@ -229,6 +248,7 @@ export const fetchTaskStatusFromIdfy = async (requestId) => {
     const isLicenseActive =
       sourceStatus === "active" ||
       sourceStatus === "valid" ||
+      sourceStatus === "id_found" ||
       licenseStatus === "active" ||
       licenseStatus === "valid";
 
@@ -238,13 +258,60 @@ export const fetchTaskStatusFromIdfy = async (requestId) => {
       type: "ind_fssai",
       status: isValid ? "verified" : "failed",
       isValid,
-      licenseNumber: sourceOutput.input_details?.id_number || sourceOutput.license_number || null,
-      companyName: sourceOutput.company_name || sourceOutput.premises_name || sourceOutput.business_name || null,
+      licenseNumber:
+        sourceOutput.registration_no ||
+        sourceOutput.input_details?.registration_no ||
+        sourceOutput.input_details?.id_number ||
+        sourceOutput.license_number ||
+        null,
+      companyName:
+        sourceOutput.company_name ||
+        sourceOutput.premises_name ||
+        sourceOutput.business_name ||
+        null,
       licenseStatus: sourceOutput.license_status || sourceOutput.status || null,
       validFrom: sourceOutput.valid_from || null,
       validUpto: sourceOutput.valid_upto || null,
       address: sourceOutput.address || sourceOutput.premises_address || null,
-      failureReason: isValid ? null : rawError || `FSSAI license is ${licenseStatus || "invalid / expired"}.`,
+      failureReason: isValid ? null : rawError || `FSSAI license is ${licenseStatus || sourceStatus || "invalid / expired"}.`,
+      rawResponse: taskDoc,
+    };
+  }
+
+  // ==========================================
+  // 5. GST CERTIFICATE EVALUATION (ind_gst_certificate)
+  // ==========================================
+  if (taskType === "ind_gst_certificate") {
+    const sourceStatus = (sourceOutput.status || "").toLowerCase();
+    const currentStatus = (sourceOutput.current_registration_status || sourceOutput.gstin_status || "").toLowerCase();
+
+    const isGstActive =
+      currentStatus === "active" ||
+      sourceStatus === "id_found" ||
+      sourceStatus === "valid" ||
+      sourceStatus === "active";
+
+    const isValid = taskCompleted && isGstActive;
+
+    return {
+      type: "ind_gst_certificate",
+      status: isValid ? "verified" : "failed",
+      isValid,
+      gstin: sourceOutput.gstin || sourceOutput.input_details?.gstin || null,
+      legalName: sourceOutput.legal_name || sourceOutput.legal_name_of_business || null,
+      tradeName: sourceOutput.trade_name || null,
+      constitutionOfBusiness: sourceOutput.constitution_of_business || null,
+      taxpayerType: sourceOutput.taxpayer_type || null,
+      gstinStatus: sourceOutput.current_registration_status || sourceOutput.gstin_status || null,
+      dateOfRegistration: sourceOutput.date_of_registration || null,
+      cancellationDate: sourceOutput.date_of_cancellation || null,
+      principalPlaceOfBusiness: sourceOutput.principal_place_of_business_fields || sourceOutput.address || null,
+      stateJurisdiction: sourceOutput.state_jurisdiction || null,
+      centerJurisdiction: sourceOutput.center_jurisdiction || null,
+      natureOfBusinessActivities: sourceOutput.nature_of_business_activities || [],
+      failureReason: isValid
+        ? null
+        : rawError || `GST registration status is ${currentStatus || sourceStatus || "inactive / not found"}.`,
       rawResponse: taskDoc,
     };
   }
@@ -268,7 +335,7 @@ export const dispatchAsyncFssaiVerification = async ({ fssaiNumber }) => {
     task_id: randomUUID(),
     group_id: randomUUID(),
     data: {
-      id_number: cleanFssai,
+      registration_no: cleanFssai, // IDfy expects registration_no for ind_fssai
     },
   };
 
