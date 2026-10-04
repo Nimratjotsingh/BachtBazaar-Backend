@@ -1560,14 +1560,16 @@ export const getNearbyShops15KmForUser = async (req, res) => {
     }
 
     // 2. Extract and validate user coordinates
-    const centerLat = req.user.latitude;
-    const centerLng = req.user.longitude;
+    const centerLat = Number(req.user.latitude);
+    const centerLng = Number(req.user.longitude);
 
     if (
-      centerLat === undefined ||
-      centerLng === undefined ||
-      centerLat === null ||
-      centerLng === null
+      req.user.latitude === undefined ||
+      req.user.longitude === undefined ||
+      req.user.latitude === null ||
+      req.user.longitude === null ||
+      isNaN(centerLat) ||
+      isNaN(centerLng)
     ) {
       return res.status(400).json({
         success: false,
@@ -1577,18 +1579,24 @@ export const getNearbyShops15KmForUser = async (req, res) => {
     }
 
     // --- DYNAMIC SEARCH RADIUS CONFIGURATION ---
-    const DEFAULT_SEARCH_RADIUS_KM = 15;
+    const FALLBACK_DEFAULT_RADIUS_KM = 15;
     const MAX_SEARCH_CEILING_KM = 50;
 
-    // User can supply ?radius=20 or ?distance=20; fallback to 15km
-    const parsedUserRadius = Number(radius ?? distance);
-    const targetUserRadiusKm =
-      !isNaN(parsedUserRadius) && parsedUserRadius > 0
-        ? Math.min(parsedUserRadius, MAX_SEARCH_CEILING_KM)
-        : DEFAULT_SEARCH_RADIUS_KM;
+    // Hierarchy: Query param (?radius / ?distance) -> User's configured defaultRadius -> Global fallback (15km)
+    const userConfiguredRadius = Number(req.user.defaultRadius);
+    const parsedQueryRadius = Number(radius ?? distance);
 
-    // Expand bounding box up to the search radius (or 50km ceiling if shops have larger reach)
-    const boundingRadiusKm = Math.max(targetUserRadiusKm, DEFAULT_SEARCH_RADIUS_KM);
+    let targetUserRadiusKm;
+    if (!isNaN(parsedQueryRadius) && parsedQueryRadius > 0) {
+      targetUserRadiusKm = Math.min(parsedQueryRadius, MAX_SEARCH_CEILING_KM);
+    } else if (!isNaN(userConfiguredRadius) && userConfiguredRadius > 0) {
+      targetUserRadiusKm = Math.min(userConfiguredRadius, MAX_SEARCH_CEILING_KM);
+    } else {
+      targetUserRadiusKm = FALLBACK_DEFAULT_RADIUS_KM;
+    }
+
+    // Expand bounding box dynamically to match whichever radius is larger
+    const boundingRadiusKm = Math.max(targetUserRadiusKm, FALLBACK_DEFAULT_RADIUS_KM);
 
     const kmPerDegreeLat = 111.1;
     const kmPerDegreeLng = 111.1 * Math.cos(centerLat * (Math.PI / 180));
@@ -1623,7 +1631,7 @@ export const getNearbyShops15KmForUser = async (req, res) => {
     if (rawShops.length === 0) {
       return res.status(200).json({
         success: true,
-        userLocation: { city: req.user.city, lat: centerLat, lng: centerLng },
+        userLocation: { city: req.user.city || "unknown", lat: centerLat, lng: centerLng },
         total: 0,
         pages: 1,
         currentPage: Number(page),
@@ -1645,15 +1653,20 @@ export const getNearbyShops15KmForUser = async (req, res) => {
         return;
       }
 
-      if (shop.latitude && shop.longitude) {
+      if (shop.latitude !== null && shop.longitude !== null) {
+        const sLat = Number(shop.latitude);
+        const sLng = Number(shop.longitude);
+
+        if (isNaN(sLat) || isNaN(sLng)) return;
+
         const R = 6371; // Earth radius in km
-        const dLat = (shop.latitude - centerLat) * (Math.PI / 180);
-        const dLng = (shop.longitude - centerLng) * (Math.PI / 180);
+        const dLat = (sLat - centerLat) * (Math.PI / 180);
+        const dLng = (sLng - centerLng) * (Math.PI / 180);
 
         const a =
           Math.sin(dLat / 2) * Math.sin(dLat / 2) +
           Math.cos(centerLat * (Math.PI / 180)) *
-            Math.cos(shop.latitude * (Math.PI / 180)) *
+            Math.cos(sLat * (Math.PI / 180)) *
             Math.sin(dLng / 2) *
             Math.sin(dLng / 2);
 
@@ -1662,9 +1675,9 @@ export const getNearbyShops15KmForUser = async (req, res) => {
 
         // Respect the merchant's configured visibility limit
         const merchantConfiguredRadius =
-          Number(shop.visibilityRadiusKm) || DEFAULT_SEARCH_RADIUS_KM;
+          Number(shop.visibilityRadiusKm) || FALLBACK_DEFAULT_RADIUS_KM;
 
-        // Effective reach is the intersection of both the user's search and the merchant's radius
+        // Effective reach is the intersection of both the user's radius and the merchant's radius
         const effectiveMaxRadius = Math.min(targetUserRadiusKm, merchantConfiguredRadius);
 
         if (distanceKm <= effectiveMaxRadius) {
@@ -1731,10 +1744,12 @@ export const getNearbyShops15KmForUser = async (req, res) => {
         shop.offers = lookupKey ? offersMap[lookupKey] || [] : [];
 
         // Dynamic Open/Closed Status
-        const statusDetails = checkShopOpenStatus(shop, now);
-        shop.isOpen = statusDetails.isOpen;
-        shop.statusReason = statusDetails.reason;
-        shop.isManualOverride = statusDetails.isManualOverride;
+        if (typeof checkShopOpenStatus === "function") {
+          const statusDetails = checkShopOpenStatus(shop, now);
+          shop.isOpen = statusDetails.isOpen;
+          shop.statusReason = statusDetails.reason;
+          shop.isManualOverride = statusDetails.isManualOverride;
+        }
       });
     }
 

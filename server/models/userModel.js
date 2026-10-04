@@ -42,6 +42,11 @@ const userSchema = new mongoose.Schema(
       type: Number,
       default: null,
     },
+    defaultRadius: {
+      type: Number,
+      default: 5, // Default search/discovery radius in kilometers
+      min: [1, "Radius must be at least 1 km"],
+    },
 
     address: {
       type: String,
@@ -52,7 +57,7 @@ const userSchema = new mongoose.Schema(
       type: String,
       lowercase: true,
       trim: true,
-      default: undefined
+      default: undefined,
     },
     profileImage: {
       data: Buffer,

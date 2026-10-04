@@ -20,6 +20,7 @@ import { getProfileImage } from "../controllers/userController.js";
 
 import upload from "../middleware/upload.js";
 import { protectUser } from "../middleware/authMiddleware.js";
+import {getUserRadius,resetUserRadius,updateUserRadius} from '../controllers/userRadiusController.js';
 
 
 const router = express.Router();
@@ -46,6 +47,9 @@ router.delete("/auth/delete-account", protectUser, deleteUserAccount);
 router.put("/profile", protectUser, upload.single("profileImage"), updateProfile);
 router.put("/password", protectUser, updatePassword);
 router.get("/profile-image", protectUser, getProfileImage);
+router.get("/radius",protectUser, getUserRadius);
+router.patch("/radius", protectUser,updateUserRadius);
+router.post("/radius/reset", protectUser,resetUserRadius);
 
 export default router;
 
