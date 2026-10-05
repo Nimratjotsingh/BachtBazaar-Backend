@@ -50,10 +50,8 @@ export const upsertPersonalDocs = async (req, res) => {
 
     if (hasPan) {
       const pan = panNumber.toUpperCase();
-      const panRes = await verifyPanWithCashfree(pan, name, dob);
-      if (panRes.status !== "VALID") {
-        return res.status(400).json({ message: "Invalid PAN" });
-      }
+      
+      
 
       update.panNumber = pan;
       update.panImage = {
@@ -70,6 +68,7 @@ export const upsertPersonalDocs = async (req, res) => {
 
     return res.json({ success: true, personalDocsId: doc._id });
   } catch (error) {
+    console.log(error.message)
     console.log(error);
     return res.status(500).json({ message: "Upload failed" });
   }
