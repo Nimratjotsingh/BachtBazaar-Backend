@@ -68,6 +68,8 @@ import offerReviewRoutes from './routes/offerReviewRoutes.js';
 import adminProductSuggestionRoutes from './routes/adminProductSuggeationRoutes.js';
 import adminServiceSuggestionRoutes from './routes/adminSuggestionRoutes.js';
 import adminServiceRoutes from './routes/adminServiceRoutes.js';
+import adminTagSuggestion from './routes/adminTagSuggestionRoutes.js';
+import tagSuggestionRoutes from './routes/tagSuggestionRoute.js';
 
 dotenv.config();
 // console.log(process.env.MONGO_URI)
@@ -176,6 +178,8 @@ app.use('/api/user/referrals',userReferalRoutes);
 app.use("/api/merchant/qr-templates", merchantQrTemplateRoutes);
 app.use("/api/admin/qr-templates", adminQrTemplateRoutes);
 app.use("/api/user/contacts", contactRoutes);
+app.use("/api/admin/tag-suggestions",adminTagSuggestion);
+app.use("/api/tag-suggestions",tagSuggestionRoutes)
 
 app.get("/health", (req, res) => {
   res.json({ message: "Server is healthy!" });
