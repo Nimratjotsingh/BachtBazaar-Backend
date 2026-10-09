@@ -34,19 +34,36 @@ export const createMerchantGoal = async (req, res) => {
       });
     }
 
+    const numericTarget = Number(targetValue);
+    if (isNaN(numericTarget) || numericTarget < 1) {
+      return res.status(400).json({
+        success: false,
+        message: "targetValue must be a positive number greater than or equal to 1.",
+      });
+    }
+
     const now = new Date();
     let start = new Date();
     let end = new Date();
 
-    if (timeframeType === "WEEKLY") {
+    const selectedTimeframe = timeframeType || "MONTHLY";
+
+    if (selectedTimeframe === "DAILY") {
+      // Current day from 00:00:00.000 to 23:59:59.999
       start.setHours(0, 0, 0, 0);
       end = new Date(start);
-      end.setDate(start.getDate() + 7);
       end.setHours(23, 59, 59, 999);
-    } else if (timeframeType === "MONTHLY") {
+    } else if (selectedTimeframe === "WEEKLY") {
+      // 7-day rolling window starting from start of current day
+      start.setHours(0, 0, 0, 0);
+      end = new Date(start);
+      end.setDate(start.getDate() + 6);
+      end.setHours(23, 59, 59, 999);
+    } else if (selectedTimeframe === "MONTHLY") {
+      // Calendar month from day 1 to last day of the current month
       start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
       end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
-    } else if (timeframeType === "CUSTOM") {
+    } else if (selectedTimeframe === "CUSTOM") {
       if (!startDate || !endDate) {
         return res.status(400).json({
           success: false,
@@ -55,6 +72,25 @@ export const createMerchantGoal = async (req, res) => {
       }
       start = new Date(startDate);
       end = new Date(endDate);
+
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+        return res.status(400).json({
+          success: false,
+          message: "startDate or endDate contains an invalid date format.",
+        });
+      }
+
+      if (start >= end) {
+        return res.status(400).json({
+          success: false,
+          message: "startDate must be strictly earlier than endDate.",
+        });
+      }
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid timeframeType. Supported options: DAILY, WEEKLY, MONTHLY, CUSTOM.",
+      });
     }
 
     const newGoal = new MerchantGoal({
@@ -62,8 +98,8 @@ export const createMerchantGoal = async (req, res) => {
       title: title.trim(),
       metricType,
       offerTypeConstraint: offerTypeConstraint || "ALL",
-      targetValue: Number(targetValue),
-      timeframeType: timeframeType || "MONTHLY",
+      targetValue: numericTarget,
+      timeframeType: selectedTimeframe,
       startDate: start,
       endDate: end,
     });

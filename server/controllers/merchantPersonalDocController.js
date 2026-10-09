@@ -60,6 +60,8 @@ export const upsertPersonalDocs = async (req, res) => {
       };
     }
 
+    
+
     const doc = await MerchantPersonalDoc.findOneAndUpdate(
       { merchantId: req.merchant._id },
       { $set: update, $setOnInsert: { merchantId: req.merchant._id } },

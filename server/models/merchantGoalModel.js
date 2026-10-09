@@ -36,7 +36,7 @@ const MerchantGoalSchema = new mongoose.Schema(
     },
     timeframeType: {
       type: String,
-      enum: ["WEEKLY", "MONTHLY", "CUSTOM"],
+      enum: ["DAILY","WEEKLY", "MONTHLY", "CUSTOM"],
       default: "MONTHLY",
     },
     startDate: { type: Date, required: true },
