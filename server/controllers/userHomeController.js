@@ -336,7 +336,7 @@ export const getShopDetails = async (req, res) => {
         is_deleted: false,
         is_active: true,
       })
-        .select("name price discountedPrice thumbnail pricing_type is_featured ratings")
+       
         .sort({ createdAt: -1 })
         .lean(),
 
