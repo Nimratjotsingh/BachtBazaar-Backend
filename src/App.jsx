@@ -34,6 +34,7 @@ import ProductSuggestionsManager from "./pages/ProductSuggestionManager/ProductS
 import ServiceSuggestionsManager from "./pages/ServiceSugesstionPage/ServiceSuggestion";
 import ServiceVerificationManager from "./pages/ServicesManager/ServicesManager";
 import TagSuggestionAdminPage from "./pages/TagSuggestion/TagSuggestion";
+import CallbackAdminPage from "./pages/Callback/AdminCallback";
 
 const TOKEN_STORAGE_KEY = "bb_admin_token";
 const gmaps_key = import.meta.env.VITE_API_GMAPS_KEY;
@@ -120,6 +121,7 @@ function App() {
         <Route path="service-suggestions" element={<ServiceSuggestionsManager token={token}/>}/>
         <Route path="service-verification-suggestions" element={<ServiceVerificationManager token={token}/>}/>
         <Route path="tag-suggestions" element={<TagSuggestionAdminPage token={token}/>}/>
+        <Route path="callback" element={<CallbackAdminPage token={token}/>}/>
       </Route>
 
       {/* 🔁 Fallback Catch-All for unknown URLs */}

@@ -53,6 +53,7 @@ const navItems = [
     { label: "Service Suggestions", to: "/dashboard/service-suggestions", icon: MessageSquareCheck },
     { label: "Service Suggestions", to: "/dashboard/service-verification-suggestions", icon: MessageSquareCheck },
     { label: "Tag Suggestions", to: "/dashboard/tag-suggestions", icon: MessageSquareCheck },
+    { label: "callbacks", to: "/dashboard/callback", icon: MessageSquareCheck },
   
   
 ];
