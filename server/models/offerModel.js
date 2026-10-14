@@ -29,6 +29,11 @@ const offerSchema = new mongoose.Schema(
       default: false,
       index: true,
     },
+    // Controls whether title/discount typography overlay renders on top of the thumbnail
+    is_text_shown: {
+      type: Boolean,
+      default: true,
+    },
     approval_status: {
       type: String,
       enum: ["approved", "pending", "rejected"],

@@ -102,7 +102,11 @@ export const getAllProductSuggestions = async (req, res) => {
     const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 10));
     const skip = (pageNum - 1) * limitNum;
 
-    const [suggestions, total] = await Promise.all([
+    // Concurrently fetch:
+    // 1. Paginated records
+    // 2. Count matching current filters (for pagination math)
+    // 3. Absolute total suggestions in the system (unfiltered)
+    const [suggestions, filteredTotal, totalSuggestions] = await Promise.all([
       ProductSuggestion.find(query)
         .populate("category_id", "label name")
         .populate("subcategory_id", "label name")
@@ -112,15 +116,20 @@ export const getAllProductSuggestions = async (req, res) => {
         .limit(limitNum)
         .lean(),
       ProductSuggestion.countDocuments(query),
+      ProductSuggestion.estimatedDocumentCount(), // Or countDocuments({})
     ]);
 
     return res.status(200).json({
       success: true,
+      totalSuggestions, // Overall count in the database
+      filteredTotal,    // Count matching search/filter
+      count: suggestions.length,
       pagination: {
-        total,
+        total: filteredTotal,
+        totalSuggestions,
         page: pageNum,
         limit: limitNum,
-        totalPages: Math.ceil(total / limitNum) || 1,
+        totalPages: Math.ceil(filteredTotal / limitNum) || 1,
       },
       data: suggestions,
     });

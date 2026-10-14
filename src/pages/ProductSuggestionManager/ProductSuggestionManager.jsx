@@ -3,7 +3,7 @@ import {
   Package, Plus, Edit3, Trash2, Save, Loader2, ArrowLeft,
   Image as ImageIcon, Search, Filter, Eye, Tag, X, Layers,
   Box, Sparkles, Tags, RefreshCw, ChevronDown, CheckCircle2,
-  DollarSign, Scale, Droplets, Power, ChevronLeft, ChevronRight, Hash
+  DollarSign, Scale, Droplets, Power, ChevronLeft, ChevronRight, Hash, Database
 } from "lucide-react";
 import { accountClient, buildAuthHeaders } from "../../lib/api";
 
@@ -13,6 +13,8 @@ const LAST_SUBCATEGORY_KEY = "admin_last_suggestion_subcat";
 const ProductSuggestionsManager = ({ token }) => {
   // --- Core Lifecycle States ---
   const [suggestions, setSuggestions] = useState([]);
+  const [serverTotalSuggestions, setServerTotalSuggestions] = useState(0); // Holds overall DB count from API
+  const [serverFilteredTotal, setServerFilteredTotal] = useState(null);
   const [categories, setCategories] = useState([]);
   const [subCategories, setSubCategories] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -73,7 +75,24 @@ const ProductSuggestionsManager = ({ token }) => {
         accountClient.get("/subcategories", { headers }),
       ]);
 
-      setSuggestions(suggestionsRes.data.data || []);
+      const resData = suggestionsRes.data;
+      const fetchedList = resData.data || [];
+      setSuggestions(fetchedList);
+
+      // Read totalSuggestions sent by your updated backend API
+      const overallTotal =
+        resData.totalSuggestions ??
+        resData.pagination?.totalSuggestions ??
+        fetchedList.length;
+
+      const filteredCount =
+        resData.filteredTotal ??
+        resData.pagination?.total ??
+        fetchedList.length;
+
+      setServerTotalSuggestions(overallTotal);
+      setServerFilteredTotal(filteredCount);
+
       setCategories(catRes.data.categories || catRes.data.data || []);
       setSubCategories(subRes.data.subCategories || subRes.data.data || []);
     } catch (err) {
@@ -350,12 +369,12 @@ const ProductSuggestionsManager = ({ token }) => {
   // ==========================================
   const computedMetrics = useMemo(() => {
     return {
-      total: suggestions.length,
+      total: serverTotalSuggestions || suggestions.length,
       active: suggestions.filter((s) => s.is_active).length,
       adopted: suggestions.reduce((acc, s) => acc + (s.usage_count || 0), 0),
       inactive: suggestions.filter((s) => !s.is_active).length,
     };
-  }, [suggestions]);
+  }, [suggestions, serverTotalSuggestions]);
 
   const filteredSuggestions = useMemo(() => {
     return suggestions.filter((item) => {
@@ -432,7 +451,6 @@ const ProductSuggestionsManager = ({ token }) => {
           </div>
 
           <form onSubmit={handleSave} className="space-y-5">
-            {/* Title */}
             <div className="space-y-1.5">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
                 Product Title / Name *
@@ -446,7 +464,6 @@ const ProductSuggestionsManager = ({ token }) => {
               />
             </div>
 
-            {/* Description */}
             <div className="space-y-1.5">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
                 Full Description & Specifications *
@@ -461,7 +478,6 @@ const ProductSuggestionsManager = ({ token }) => {
               />
             </div>
 
-            {/* Category & Subcategory */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
@@ -521,7 +537,6 @@ const ProductSuggestionsManager = ({ token }) => {
               </div>
             </div>
 
-            {/* Suggested Pricing & Unit Size */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
@@ -555,7 +570,6 @@ const ProductSuggestionsManager = ({ token }) => {
               </div>
             </div>
 
-            {/* Interactive Tags Multi-Chip Input */}
             <div className="space-y-2">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
                 Suggested Search Tags (Type and press Enter or Comma)
@@ -592,7 +606,6 @@ const ProductSuggestionsManager = ({ token }) => {
               </div>
             </div>
 
-            {/* Thumbnail Upload (Responsive Mobile Layout) */}
             <div className="space-y-1.5">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
                 Master Thumbnail Upload {selectedSuggestion ? "(Leave blank to keep existing)" : "*"}
@@ -623,7 +636,6 @@ const ProductSuggestionsManager = ({ token }) => {
               </div>
             </div>
 
-            {/* Extra Gallery Photos */}
             <div className="space-y-1.5">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
                 Additional Gallery Photos
@@ -672,7 +684,6 @@ const ProductSuggestionsManager = ({ token }) => {
               </div>
             </div>
 
-            {/* Active Toggle */}
             <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
               <input
                 type="checkbox"
@@ -708,10 +719,17 @@ const ProductSuggestionsManager = ({ token }) => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-200 pb-5">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-[#0F172A] flex items-center gap-3 tracking-tight">
-            <Package className="text-blue-600 w-7 h-7 sm:w-8 sm:h-8" /> Product Suggestions Catalog
-          </h1>
-          <p className="text-slate-500 text-xs sm:text-sm mt-0.5">
+          <div className="flex items-center gap-3 flex-wrap">
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-[#0F172A] flex items-center gap-3 tracking-tight">
+              <Package className="text-blue-600 w-7 h-7 sm:w-8 sm:h-8" /> Product Suggestions Catalog
+            </h1>
+            {/* Live Global Badge Count */}
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-50 border border-blue-200 text-blue-700 font-extrabold text-xs rounded-full shadow-xs">
+              <Database size={13} className="text-blue-600" />
+              <span>{serverTotalSuggestions || suggestions.length} Suggestions Total</span>
+            </span>
+          </div>
+          <p className="text-slate-500 text-xs sm:text-sm mt-1">
             Curate master product templates. Merchants selecting these items bypass approval queues.
           </p>
         </div>
@@ -740,24 +758,28 @@ const ProductSuggestionsManager = ({ token }) => {
         <StatTickerBox
           title="Total Master Templates"
           val={computedMetrics.total}
+          subtext="Available in database"
           icon={<Package />}
           theme="bg-blue-50 text-blue-600 border-blue-100"
         />
         <StatTickerBox
           title="Active & Approvable"
           val={computedMetrics.active}
+          subtext="Live for merchants"
           icon={<CheckCircle2 />}
           theme="bg-emerald-50 text-emerald-600 border-emerald-100"
         />
         <StatTickerBox
           title="Merchant Store Adoptions"
           val={computedMetrics.adopted}
+          subtext="Total usage count"
           icon={<Layers />}
           theme="bg-purple-50 text-purple-600 border-purple-100"
         />
         <StatTickerBox
           title="Inactive / Drafted"
           val={computedMetrics.inactive}
+          subtext="Hidden from merchants"
           icon={<Box />}
           theme="bg-slate-50 text-slate-600 border-slate-200"
         />
@@ -808,7 +830,7 @@ const ProductSuggestionsManager = ({ token }) => {
         </div>
       </div>
 
-      {/* Grid of Catalog Cards (Mobile-Optimized Responsive Aspect Ratio) */}
+      {/* Grid of Catalog Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
         {loading && suggestions.length === 0 ? (
           <div className="col-span-full flex flex-col items-center justify-center py-24 text-blue-600">
@@ -828,7 +850,6 @@ const ProductSuggestionsManager = ({ token }) => {
               className="bg-white rounded-[24px] border border-slate-100 shadow-xs overflow-hidden group hover:shadow-md transition-all duration-300 flex flex-col justify-between"
             >
               <div>
-                {/* Responsive Image Aspect Box (prevents mobile squish/crop) */}
                 <div className="relative w-full aspect-square sm:aspect-[4/3] bg-slate-50 flex items-center justify-center p-3 sm:p-4 border-b border-slate-100 overflow-hidden">
                   {item.thumbnail ? (
                     <img
@@ -841,7 +862,6 @@ const ProductSuggestionsManager = ({ token }) => {
                     <ImageIcon size={32} className="text-slate-300" />
                   )}
 
-                  {/* Overlaid Badges */}
                   <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between gap-1 pointer-events-none font-black text-[9px] uppercase tracking-wider">
                     <span
                       className={`px-2 py-0.5 rounded-md shadow-xs text-white ${
@@ -907,7 +927,6 @@ const ProductSuggestionsManager = ({ token }) => {
                 </div>
               </div>
 
-              {/* Action Buttons */}
               <div className="px-4 sm:px-5 pb-4 sm:pb-5 pt-1">
                 <div className="flex items-center justify-between border-t border-slate-50 pt-3 text-[11px] font-bold text-slate-400">
                   <span className="inline-flex items-center gap-1">
@@ -947,7 +966,7 @@ const ProductSuggestionsManager = ({ token }) => {
         )}
       </div>
 
-      {/* Pagination Bar */}
+      {/* Pagination Bar with Total Available Readouts */}
       {!loading && totalItems > 0 && (
         <div className="bg-white p-3 sm:p-4 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-4 text-xs font-bold text-slate-500">
           <div className="flex items-center gap-2 sm:gap-3 flex-wrap justify-center sm:justify-start">
@@ -960,7 +979,12 @@ const ProductSuggestionsManager = ({ token }) => {
               <strong className="text-slate-800">
                 {Math.min(currentPage * itemsPerPage, totalItems)}
               </strong>{" "}
-              of <strong className="text-slate-800">{totalItems}</strong> entries
+              of <strong className="text-slate-800">{totalItems}</strong> matching
+              {serverTotalSuggestions > 0 && (
+                <span className="text-slate-400 font-normal">
+                  {" "}(from <strong className="text-slate-700 font-bold">{serverTotalSuggestions}</strong> total available templates)
+                </span>
+              )}
             </span>
 
             <div className="flex items-center gap-1.5 ml-1 sm:ml-2">
@@ -1023,11 +1047,12 @@ const ProductSuggestionsManager = ({ token }) => {
   );
 };
 
-const StatTickerBox = ({ title, val, icon, theme }) => (
+const StatTickerBox = ({ title, val, subtext, icon, theme }) => (
   <div className="bg-white p-3.5 sm:p-5 rounded-2xl border border-slate-200/60 shadow-xs flex items-center justify-between">
     <div className="space-y-0.5 sm:space-y-1">
       <p className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-wider">{title}</p>
       <h3 className="text-lg sm:text-xl font-black font-mono text-slate-800 leading-none pt-0.5 sm:pt-1">{val}</h3>
+      {subtext && <p className="text-[10px] font-semibold text-slate-400">{subtext}</p>}
     </div>
     <div className={`w-8 h-8 sm:w-10 sm:h-10 border rounded-xl flex items-center justify-center shadow-inner p-1.5 sm:p-2 shrink-0 ${theme}`}>
       {React.cloneElement(icon, { size: 16, strokeWidth: 2.5 })}

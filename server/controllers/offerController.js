@@ -182,6 +182,18 @@ export const createOffer = async (req, res) => {
     const data = { ...req.body };
     const merchantId = req.merchant._id; // Extracted from auth middleware token validation
 
+    // Helper: Safely normalize booleans from JSON or multipart form-data
+    const parseBoolean = (value, fallback = true) => {
+      if (value === undefined || value === null || value === "") return fallback;
+      if (typeof value === "boolean") return value;
+      if (typeof value === "string") {
+        const lower = value.trim().toLowerCase();
+        if (lower === "true" || lower === "1") return true;
+        if (lower === "false" || lower === "0") return false;
+      }
+      return Boolean(value);
+    };
+
     // 0. Duplicate Title Guard for Today
     const trimmedTitle = (data.title || "").trim();
     if (!trimmedTitle) {
@@ -197,12 +209,12 @@ export const createOffer = async (req, res) => {
     const endOfToday = new Date();
     endOfToday.setUTCHours(23, 59, 59, 999);
 
-    const escapedTitle = trimmedTitle.replace(/[.*+?^${}()|[]]/g, "$&");
+    const escapedTitle = trimmedTitle.replace(/[.*+?^\${}()|[\]\\]/g, "\\$&");
     const duplicateOfferToday = await Offer.findOne({
       merchant_id: merchantId,
       title: { $regex: new RegExp(`^${escapedTitle}$`, "i") },
       is_deleted: false,
-      createdAt: { $gte: startOfToday, $lte: endOfToday },
+      createdAt: { $gte: startOfToday,$lte: endOfToday },
     }).select("title createdAt");
 
     if (duplicateOfferToday) {
@@ -394,6 +406,8 @@ export const createOffer = async (req, res) => {
       start_date: finalStartDate,
       end_date: finalEndDate,
       location: data.location,
+      is_text_shown: parseBoolean(data.is_text_shown, true),
+      isCustomImage: parseBoolean(data.isCustomImage, false),
       discount_percentage: data.discount_percentage ? Number(data.discount_percentage) : null,
       discount_value: data.discount_value ? Number(data.discount_value) : null,
       minimum_purchase_amount: data.minimum_purchase_amount ? Number(data.minimum_purchase_amount) : 0,
