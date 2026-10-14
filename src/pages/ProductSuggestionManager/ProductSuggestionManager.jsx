@@ -92,7 +92,6 @@ const ProductSuggestionsManager = ({ token }) => {
     setCurrentPage(1);
   }, [searchTerm, filterCategory, filterStatus, itemsPerPage]);
 
-  // Dynamic subcategories based on chosen category
   const relevantSubCategories = useMemo(() => {
     if (!formData.category_id) return [];
     return subCategories.filter((sub) => {
@@ -203,7 +202,6 @@ const ProductSuggestionsManager = ({ token }) => {
       return;
     }
 
-    // Persist last selected category & subcategory to localStorage
     if (formData.category_id) {
       localStorage.setItem(LAST_CATEGORY_KEY, formData.category_id);
     }
@@ -231,7 +229,6 @@ const ProductSuggestionsManager = ({ token }) => {
       data.append("unit_size", formData.unit_size.trim());
     }
 
-    // Append tags array
     if (formData.tags && formData.tags.length > 0) {
       data.append("tags", JSON.stringify(formData.tags));
     }
@@ -411,7 +408,7 @@ const ProductSuggestionsManager = ({ token }) => {
   // ==========================================
   if (view === "form") {
     return (
-      <div className="max-w-3xl mx-auto p-8 space-y-6 animate-in slide-in-from-bottom-4 duration-500 text-slate-700 antialiased font-sans">
+      <div className="max-w-3xl mx-auto p-4 sm:p-8 space-y-6 animate-in slide-in-from-bottom-4 duration-500 text-slate-700 antialiased font-sans">
         <button
           onClick={() => {
             setView("list");
@@ -422,13 +419,13 @@ const ProductSuggestionsManager = ({ token }) => {
           <ArrowLeft size={16} strokeWidth={2.5} /> Return to Suggestion Catalog
         </button>
 
-        <div className="bg-white p-8 rounded-[32px] border border-slate-200/70 shadow-2xl space-y-6">
-          <div className="flex justify-between items-center border-b border-slate-100 pb-4">
-            <h2 className="text-xl font-black text-[#0F172A] uppercase tracking-tight">
+        <div className="bg-white p-5 sm:p-8 rounded-[28px] sm:rounded-[32px] border border-slate-200/70 shadow-2xl space-y-6">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center border-b border-slate-100 pb-4 gap-2">
+            <h2 className="text-lg sm:text-xl font-black text-[#0F172A] uppercase tracking-tight">
               {selectedSuggestion ? "Modify Master Product Suggestion" : "Create Master Product Suggestion"}
             </h2>
             {formData.category_id && (
-              <span className="text-[10px] font-bold text-slate-400 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-100">
+              <span className="text-[10px] font-bold text-slate-400 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-100 w-fit">
                 Taxonomy Saved for Next Entry
               </span>
             )}
@@ -464,7 +461,7 @@ const ProductSuggestionsManager = ({ token }) => {
               />
             </div>
 
-            {/* Category & Subcategory (With Auto-Save on change) */}
+            {/* Category & Subcategory */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
@@ -595,28 +592,32 @@ const ProductSuggestionsManager = ({ token }) => {
               </div>
             </div>
 
-            {/* Thumbnail Upload */}
+            {/* Thumbnail Upload (Responsive Mobile Layout) */}
             <div className="space-y-1.5">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
                 Master Thumbnail Upload {selectedSuggestion ? "(Leave blank to keep existing)" : "*"}
               </label>
-              <div className="flex items-center gap-5 p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                <div className="w-24 h-24 rounded-xl bg-white border border-slate-200 shadow-inner flex items-center justify-center overflow-hidden shrink-0">
+              <div className="flex flex-col sm:flex-row items-center gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl bg-white border border-slate-200 shadow-inner flex items-center justify-center p-2 shrink-0 overflow-hidden">
                   {thumbnailPreview ? (
-                    <img src={thumbnailPreview} className="w-full h-full object-cover" alt="Thumbnail Preview" />
+                    <img 
+                      src={thumbnailPreview} 
+                      className="w-full h-full object-contain" 
+                      alt="Thumbnail Preview" 
+                    />
                   ) : (
-                    <ImageIcon className="text-slate-300" size={24} />
+                    <ImageIcon className="text-slate-300" size={28} />
                   )}
                 </div>
-                <div className="space-y-1.5 w-full">
+                <div className="space-y-2 w-full text-center sm:text-left">
                   <input
                     type="file"
                     accept="image/*"
                     onChange={handleThumbnailChange}
-                    className="text-xs font-bold text-slate-500 file:mr-4 file:py-1.5 file:px-3.5 file:rounded-xl file:border-0 file:text-[10px] file:font-black file:uppercase file:tracking-wider file:bg-white file:text-blue-600 file:border file:border-blue-100 file:shadow-sm hover:file:bg-blue-50 cursor-pointer w-full"
+                    className="text-xs font-bold text-slate-500 file:mr-3 file:py-2 file:px-3.5 file:rounded-xl file:border-0 file:text-[10px] file:font-black file:uppercase file:tracking-wider file:bg-white file:text-blue-600 file:border file:border-blue-100 file:shadow-xs hover:file:bg-blue-50 cursor-pointer w-full"
                   />
                   <p className="text-[10px] text-slate-400 font-medium">
-                    Clean high-resolution photo on clear background recommended.
+                    Clean high-resolution photo on clear background recommended. Image will scale without cropping.
                   </p>
                 </div>
               </div>
@@ -633,7 +634,7 @@ const ProductSuggestionsManager = ({ token }) => {
                   multiple
                   accept="image/*"
                   onChange={handleImagesChange}
-                  className="text-xs font-bold text-slate-500 file:mr-4 file:py-1.5 file:px-3.5 file:rounded-xl file:border-0 file:text-[10px] file:font-black file:uppercase file:tracking-wider file:bg-white file:text-blue-600 file:border file:border-blue-100 file:shadow-sm hover:file:bg-blue-50 cursor-pointer w-full"
+                  className="text-xs font-bold text-slate-500 file:mr-3 file:py-2 file:px-3.5 file:rounded-xl file:border-0 file:text-[10px] file:font-black file:uppercase file:tracking-wider file:bg-white file:text-blue-600 file:border file:border-blue-100 file:shadow-xs hover:file:bg-blue-50 cursor-pointer w-full"
                 />
 
                 {existingImages.length > 0 && (
@@ -641,8 +642,8 @@ const ProductSuggestionsManager = ({ token }) => {
                     <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Current Images:</span>
                     <div className="flex gap-2 flex-wrap">
                       {existingImages.map((src, i) => (
-                        <div key={i} className="relative w-14 h-14 rounded-lg overflow-hidden border border-slate-200 bg-white group">
-                          <img src={src} className="w-full h-full object-cover" alt="" />
+                        <div key={i} className="relative w-14 h-14 rounded-xl overflow-hidden border border-slate-200 bg-white p-1 flex items-center justify-center">
+                          <img src={src} className="w-full h-full object-contain" alt="" />
                           <button
                             type="button"
                             onClick={() => removeExistingImage(i)}
@@ -661,8 +662,8 @@ const ProductSuggestionsManager = ({ token }) => {
                     <span className="text-[10px] font-bold text-blue-600 uppercase block mb-1">New Files Staged:</span>
                     <div className="flex gap-2 flex-wrap">
                       {newImagesPreviews.map((src, i) => (
-                        <div key={i} className="w-14 h-14 rounded-lg overflow-hidden border border-blue-200 bg-white">
-                          <img src={src} className="w-full h-full object-cover" alt="" />
+                        <div key={i} className="w-14 h-14 rounded-xl overflow-hidden border border-blue-200 bg-white p-1 flex items-center justify-center">
+                          <img src={src} className="w-full h-full object-contain" alt="" />
                         </div>
                       ))}
                     </div>
@@ -703,21 +704,21 @@ const ProductSuggestionsManager = ({ token }) => {
   // VIEW: LIST / GALLERY
   // ==========================================
   return (
-    <div className="p-8 space-y-8 bg-[#F8FAFC] min-h-screen text-slate-700 antialiased font-sans max-w-[1700px] mx-auto">
+    <div className="p-4 sm:p-8 space-y-6 sm:space-y-8 bg-[#F8FAFC] min-h-screen text-slate-700 antialiased font-sans max-w-[1700px] mx-auto">
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-200 pb-5">
         <div>
-          <h1 className="text-3xl font-extrabold text-[#0F172A] flex items-center gap-3 tracking-tight">
-            <Package className="text-blue-600 w-8 h-8" /> Product Suggestions Catalog
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-[#0F172A] flex items-center gap-3 tracking-tight">
+            <Package className="text-blue-600 w-7 h-7 sm:w-8 sm:h-8" /> Product Suggestions Catalog
           </h1>
-          <p className="text-slate-500 text-sm mt-0.5">
+          <p className="text-slate-500 text-xs sm:text-sm mt-0.5">
             Curate master product templates. Merchants selecting these items bypass approval queues.
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 w-full sm:w-auto">
           <button
             onClick={fetchInitialData}
-            className="p-3 bg-white border border-slate-200 text-slate-500 hover:text-blue-600 rounded-xl transition shadow-sm hover:bg-slate-50 cursor-pointer"
+            className="p-3 bg-white border border-slate-200 text-slate-500 hover:text-blue-600 rounded-xl transition shadow-xs hover:bg-slate-50 cursor-pointer shrink-0"
             title="Refresh Dataset"
           >
             <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
@@ -727,7 +728,7 @@ const ProductSuggestionsManager = ({ token }) => {
               resetForm();
               setView("form");
             }}
-            className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 shadow-md transition-all cursor-pointer text-sm"
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-5 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 shadow-md transition-all cursor-pointer text-xs sm:text-sm"
           >
             <Plus size={18} strokeWidth={2.5} /> Create Master Suggestion
           </button>
@@ -735,7 +736,7 @@ const ProductSuggestionsManager = ({ token }) => {
       </div>
 
       {/* Stats Strip */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5">
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-5">
         <StatTickerBox
           title="Total Master Templates"
           val={computedMetrics.total}
@@ -763,7 +764,7 @@ const ProductSuggestionsManager = ({ token }) => {
       </div>
 
       {/* Filter Bar */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col xl:flex-row gap-4">
+      <div className="bg-white p-3 sm:p-4 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col xl:flex-row gap-3 sm:gap-4">
         <div className="relative flex-1">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
           <input
@@ -775,11 +776,11 @@ const ProductSuggestionsManager = ({ token }) => {
           />
         </div>
 
-        <div className="flex flex-wrap sm:flex-nowrap gap-3 text-xs font-bold text-slate-600">
-          <div className="flex items-center gap-2 px-3 bg-slate-50 border border-slate-200 rounded-xl">
-            <Filter size={14} className="text-slate-400" />
+        <div className="flex flex-wrap sm:flex-nowrap gap-2 sm:gap-3 text-xs font-bold text-slate-600">
+          <div className="flex-1 sm:flex-initial flex items-center gap-2 px-3 bg-slate-50 border border-slate-200 rounded-xl">
+            <Filter size={14} className="text-slate-400 shrink-0" />
             <select
-              className="bg-transparent text-xs font-bold outline-none py-2.5 cursor-pointer max-w-[180px]"
+              className="w-full sm:w-auto bg-transparent text-xs font-bold outline-none py-2.5 cursor-pointer max-w-[180px]"
               value={filterCategory}
               onChange={(e) => setFilterCategory(e.target.value)}
             >
@@ -792,10 +793,10 @@ const ProductSuggestionsManager = ({ token }) => {
             </select>
           </div>
 
-          <div className="flex items-center gap-2 px-3 bg-slate-50 border border-slate-200 rounded-xl">
-            <Power size={14} className="text-slate-400" />
+          <div className="flex-1 sm:flex-initial flex items-center gap-2 px-3 bg-slate-50 border border-slate-200 rounded-xl">
+            <Power size={14} className="text-slate-400 shrink-0" />
             <select
-              className="bg-transparent text-xs font-bold outline-none py-2.5 cursor-pointer"
+              className="w-full sm:w-auto bg-transparent text-xs font-bold outline-none py-2.5 cursor-pointer"
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
             >
@@ -807,8 +808,8 @@ const ProductSuggestionsManager = ({ token }) => {
         </div>
       </div>
 
-      {/* Grid of Catalog Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+      {/* Grid of Catalog Cards (Mobile-Optimized Responsive Aspect Ratio) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
         {loading && suggestions.length === 0 ? (
           <div className="col-span-full flex flex-col items-center justify-center py-24 text-blue-600">
             <Loader2 className="animate-spin mb-2" size={36} />
@@ -824,37 +825,40 @@ const ProductSuggestionsManager = ({ token }) => {
           paginatedSuggestions.map((item) => (
             <div
               key={item._id}
-              className="bg-white rounded-[24px] border border-slate-100 shadow-sm overflow-hidden group hover:shadow-md transition-all duration-300 flex flex-col justify-between"
+              className="bg-white rounded-[24px] border border-slate-100 shadow-xs overflow-hidden group hover:shadow-md transition-all duration-300 flex flex-col justify-between"
             >
               <div>
-                <div className="h-44 bg-slate-50 relative overflow-hidden flex items-center justify-center border-b border-slate-100">
+                {/* Responsive Image Aspect Box (prevents mobile squish/crop) */}
+                <div className="relative w-full aspect-square sm:aspect-[4/3] bg-slate-50 flex items-center justify-center p-3 sm:p-4 border-b border-slate-100 overflow-hidden">
                   {item.thumbnail ? (
                     <img
                       src={item.thumbnail}
-                      className="w-full h-full object-contain p-2 group-hover:scale-105 transition-transform duration-500"
+                      className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
                       alt={item.name}
+                      loading="lazy"
                     />
                   ) : (
-                    <ImageIcon size={28} className="text-slate-300" />
+                    <ImageIcon size={32} className="text-slate-300" />
                   )}
 
-                  <div className="absolute top-3 left-3 flex gap-1.5 flex-wrap font-black text-[9px] uppercase tracking-wider">
+                  {/* Overlaid Badges */}
+                  <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between gap-1 pointer-events-none font-black text-[9px] uppercase tracking-wider">
                     <span
-                      className={`px-2 py-0.5 rounded-md shadow-sm text-white ${
+                      className={`px-2 py-0.5 rounded-md shadow-xs text-white ${
                         item.is_active ? "bg-emerald-600" : "bg-slate-600"
                       }`}
                     >
                       {item.is_active ? "Active" : "Draft"}
                     </span>
                     {item.suggested_price && (
-                      <span className="px-2 py-0.5 bg-blue-600 text-white rounded-md shadow-sm">
+                      <span className="px-2 py-0.5 bg-blue-600 text-white rounded-md shadow-xs">
                         ₹{item.suggested_price}
                       </span>
                     )}
                   </div>
                 </div>
 
-                <div className="p-5 space-y-3">
+                <div className="p-4 sm:p-5 space-y-2.5 sm:space-y-3">
                   <h3 className="font-extrabold text-[#0F172A] line-clamp-1 text-sm group-hover:text-blue-600 transition-colors">
                     {item.name}
                   </h3>
@@ -863,9 +867,9 @@ const ProductSuggestionsManager = ({ token }) => {
                   </p>
 
                   <div className="space-y-1 text-[11px] font-bold text-slate-400">
-                    <div className="flex items-center gap-1.5">
-                      <Filter size={12} className="text-slate-300" />
-                      <span>
+                    <div className="flex items-center gap-1.5 truncate">
+                      <Filter size={12} className="text-slate-300 shrink-0" />
+                      <span className="truncate">
                         Category:{" "}
                         <strong className="text-blue-600">
                           {item.category_id?.[0]?.label ||
@@ -874,9 +878,9 @@ const ProductSuggestionsManager = ({ token }) => {
                         </strong>
                       </span>
                     </div>
-                    <div className="flex items-center gap-1.5">
-                      <Scale size={12} className="text-slate-300" />
-                      <span>
+                    <div className="flex items-center gap-1.5 truncate">
+                      <Scale size={12} className="text-slate-300 shrink-0" />
+                      <span className="truncate">
                         Size:{" "}
                         <strong className="text-slate-700">
                           {item.unit_size ||
@@ -904,7 +908,7 @@ const ProductSuggestionsManager = ({ token }) => {
               </div>
 
               {/* Action Buttons */}
-              <div className="px-5 pb-5 pt-1">
+              <div className="px-4 sm:px-5 pb-4 sm:pb-5 pt-1">
                 <div className="flex items-center justify-between border-t border-slate-50 pt-3 text-[11px] font-bold text-slate-400">
                   <span className="inline-flex items-center gap-1">
                     <Eye size={12} /> Adopted {item.usage_count || 0} times
@@ -945,8 +949,8 @@ const ProductSuggestionsManager = ({ token }) => {
 
       {/* Pagination Bar */}
       {!loading && totalItems > 0 && (
-        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4 text-xs font-bold text-slate-500">
-          <div className="flex items-center gap-3">
+        <div className="bg-white p-3 sm:p-4 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-4 text-xs font-bold text-slate-500">
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap justify-center sm:justify-start">
             <span>
               Showing{" "}
               <strong className="text-slate-800">
@@ -959,12 +963,12 @@ const ProductSuggestionsManager = ({ token }) => {
               of <strong className="text-slate-800">{totalItems}</strong> entries
             </span>
 
-            <div className="flex items-center gap-1.5 ml-2">
-              <span className="text-[11px] text-slate-400">Cards/page:</span>
+            <div className="flex items-center gap-1.5 ml-1 sm:ml-2">
+              <span className="text-[11px] text-slate-400">Per page:</span>
               <select
                 value={itemsPerPage}
                 onChange={(e) => setItemsPerPage(Number(e.target.value))}
-                className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 outline-none text-slate-700 cursor-pointer"
+                className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 outline-none text-slate-700 cursor-pointer text-xs"
               >
                 <option value={8}>8</option>
                 <option value={16}>16</option>
@@ -974,7 +978,7 @@ const ProductSuggestionsManager = ({ token }) => {
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1">
             <button
               onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
               disabled={currentPage === 1}
@@ -986,16 +990,16 @@ const ProductSuggestionsManager = ({ token }) => {
 
             {getPaginationNumbers().map((pageNum, idx) =>
               pageNum === "..." ? (
-                <span key={idx} className="px-2 text-slate-400 select-none">
+                <span key={idx} className="px-1.5 text-slate-400 select-none">
                   ...
                 </span>
               ) : (
                 <button
                   key={idx}
                   onClick={() => setCurrentPage(pageNum)}
-                  className={`w-8 h-8 rounded-xl font-bold transition cursor-pointer flex items-center justify-center ${
+                  className={`w-7 h-7 sm:w-8 sm:h-8 rounded-xl font-bold transition cursor-pointer flex items-center justify-center text-xs ${
                     currentPage === pageNum
-                      ? "bg-blue-600 text-white shadow-sm shadow-blue-200"
+                      ? "bg-blue-600 text-white shadow-xs shadow-blue-200"
                       : "text-slate-600 hover:bg-slate-100"
                   }`}
                 >
@@ -1020,12 +1024,12 @@ const ProductSuggestionsManager = ({ token }) => {
 };
 
 const StatTickerBox = ({ title, val, icon, theme }) => (
-  <div className="bg-white p-5 rounded-2xl border border-slate-200/60 shadow-sm flex items-center justify-between">
-    <div className="space-y-1">
-      <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">{title}</p>
-      <h3 className="text-xl font-black font-mono text-slate-800 leading-none pt-1">{val}</h3>
+  <div className="bg-white p-3.5 sm:p-5 rounded-2xl border border-slate-200/60 shadow-xs flex items-center justify-between">
+    <div className="space-y-0.5 sm:space-y-1">
+      <p className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-wider">{title}</p>
+      <h3 className="text-lg sm:text-xl font-black font-mono text-slate-800 leading-none pt-0.5 sm:pt-1">{val}</h3>
     </div>
-    <div className={`w-10 h-10 border rounded-xl flex items-center justify-center shadow-inner p-2 ${theme}`}>
+    <div className={`w-8 h-8 sm:w-10 sm:h-10 border rounded-xl flex items-center justify-center shadow-inner p-1.5 sm:p-2 shrink-0 ${theme}`}>
       {React.cloneElement(icon, { size: 16, strokeWidth: 2.5 })}
     </div>
   </div>

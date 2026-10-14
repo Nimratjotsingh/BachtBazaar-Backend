@@ -220,6 +220,7 @@ export const getActiveUserBanners = async (req, res) => {
     const liveBanners = await Banner.find(userFeedQuery)
       .sort({ sort_order: 1, createdAt: -1 })
       .lean();
+      
 
     return res.status(200).json({
       success: true,
