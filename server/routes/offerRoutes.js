@@ -16,7 +16,8 @@ import {
   getOffersStatsSummary,
   getMerchantSlotStatus,
   revivePastOffersBatch,
-  togglePauseOffer
+  togglePauseOffer,
+  createAllTypeOffer
 } from "../controllers/offerController.js";
 
 import { protectSuperAdmin } from "../middleware/superAuthMiddleware.js";
@@ -30,6 +31,7 @@ router.get("/admin/detail/:id", protectSuperAdmin, getOfferDetailWithMerchantAdm
 router.get('/merchant/slot-status',protectMerchant,getMerchantSlotStatus);
 // Base profile actions bound to authorization layers
 router.post("/", protectMerchant, upload.single("thumbnail"), createOffer);
+router.post("/all",protectMerchant,upload.single("thumbnail"),createAllTypeOffer)
 router.get("/", protectMerchant, getMerchantOffers);
 router.get("/search/:display_type", protectMerchant, searchOffersByDisplayType);
 router.patch("/merchant/revive/:id", protectMerchant, revivePastOffer);

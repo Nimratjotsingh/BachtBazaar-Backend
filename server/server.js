@@ -73,6 +73,8 @@ import tagSuggestionRoutes from './routes/tagSuggestionRoute.js';
 import callbackRoutes from './routes/callbackRoutes.js';
 import adminCallbackRoutes from './routes/adminCallbackRoutes.js';
 
+import adminOfferRoutes from './routes/adminOfferRoutes.js'
+
 dotenv.config();
 // console.log(process.env.MONGO_URI)
 import './utils/firebase.js';
@@ -116,6 +118,8 @@ app.use('/api/users/shop',userHome);
 app.use('/api/faqs',faqRoutes);
 app.use('/api/admin/product-suggestions',adminProductSuggestionRoutes);
 
+
+app.use("/api/admin/offers",adminOfferRoutes)
 app.use("/api/merchant/auth", merchantAuthRoutes);
 app.use("/api/merchants", merchantAuthRoutes);
 app.use('/api/super-admin',superAuth);

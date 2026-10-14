@@ -57,33 +57,29 @@ export const listCallbacksAdmin = async (req, res) => {
 export const updateCallbackStatusAdmin = async (req, res) => {
   try {
     const { id } = req.params;
-    const { status, adminNotes } = req.body;
-    const adminId = req.user._id;
-
-    if (!["pending", "resolved"].includes(status)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid status. Allowed values are 'pending' or 'resolved'.",
-      });
-    }
+    const { adminNotes } = req.body;
+    const adminId = req.admin._id;
 
     const updateFields = {
-      status,
-      adminNotes: adminNotes ?? undefined,
+      $set: {
+        status: "resolved",
+        resolvedBy: adminId,
+        resolvedAt: new Date(),
+      },
     };
 
-    if (status === "resolved") {
-      updateFields.resolvedBy = adminId;
-      updateFields.resolvedAt = new Date();
-    } else {
-      updateFields.resolvedBy = null;
-      updateFields.resolvedAt = null;
+    // Update adminNotes only if provided
+    if (adminNotes !== undefined) {
+      updateFields.$set.adminNotes = adminNotes;
     }
 
     const callback = await CallbackRequest.findByIdAndUpdate(
       id,
-      { set: updateFields },
-      { new: true, runValidators: true }
+      updateFields,
+      {
+        new: true,
+        runValidators: true,
+      }
     );
 
     if (!callback) {
@@ -95,11 +91,15 @@ export const updateCallbackStatusAdmin = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: `Callback marked as ${status}.`,
+      message: "Callback marked as resolved.",
       data: callback,
     });
   } catch (error) {
     console.error("Update Admin Callback Status Error:", error);
-    return res.status(500).json({ success: false, message: error.message });
+
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };

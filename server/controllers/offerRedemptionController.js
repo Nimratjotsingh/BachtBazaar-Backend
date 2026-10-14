@@ -83,8 +83,8 @@ export const redeemOffer = async (req, res) => {
       status: "redeemed"
     });
 
-    await trackDailyMetric2( offer.merchant_id, "redeems", { userId: req.user._id, offerId, redemptionCode });
-    await onOfferRedeemedHook(offer.merchant_id, req.user._id);
+    // await trackDailyMetric2( offer.merchant_id, "redeems", { userId: req.user._id, offerId, redemptionCode });
+    // await onOfferRedeemedHook(offer.merchant_id, req.user._id);
 
     
     
@@ -226,7 +226,10 @@ export const claimOfferInStore = async (req, res) => {
     const code  = redemption.redemptionCode;
     // 7. Fire metric tracking pipelines
     await onOfferClaimedHook(req.merchant._id, userId);
-    
+
+
+    await trackDailyMetric2( offer.merchant_id, "redeems", { userId: req.user._id, offerId, redemptionCode });
+  
     await trackOfferMetric(offerId, req.merchant._id, "claims", { userId: userId, code });
     await trackOfferMetric(offerId, req.merchant._id, "footfall", { userId: userId, code });
     await onFootfallVisitHook(req.merchant._id, userId);

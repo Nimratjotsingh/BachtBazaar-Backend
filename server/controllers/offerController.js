@@ -197,7 +197,7 @@ export const createOffer = async (req, res) => {
     const endOfToday = new Date();
     endOfToday.setUTCHours(23, 59, 59, 999);
 
-    const escapedTitle = trimmedTitle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const escapedTitle = trimmedTitle.replace(/[.*+?^${}()|[]]/g, "$&");
     const duplicateOfferToday = await Offer.findOne({
       merchant_id: merchantId,
       title: { $regex: new RegExp(`^${escapedTitle}$`, "i") },
@@ -448,6 +448,225 @@ export const createOffer = async (req, res) => {
   }
 };
 
+const parseBoolean = (val, fallback = false) => {
+  if (val === undefined || val === null) return fallback;
+  if (typeof val === "boolean") return val;
+  if (typeof val === "string") {
+    const lower = val.trim().toLowerCase();
+    if (lower === "true" || lower === "1") return true;
+    if (lower === "false" || lower === "0") return false;
+  }
+  return Boolean(val);
+};
+
+/**
+ * POST /api/offers/all
+ * Creates an offer with display_type: "all".
+ * Moderation rule:
+ *  - isCustomImage: true  -> approval_status: "pending", is_active: false (needs admin verification)
+ *  - isCustomImage: false -> approval_status: "approved", is_active: true (published immediately)
+ */
+export const createAllTypeOffer = async (req, res) => {
+  try {
+    const data = { ...req.body };
+    const merchantId = req.merchant._id;
+
+    // 0. Duplicate Title Guard for Today
+    const trimmedTitle = (data.title || "").trim();
+    if (!trimmedTitle) {
+      return res.status(400).json({
+        success: false,
+        message: "Offer title is required.",
+      });
+    }
+
+    const startOfToday = new Date();
+    startOfToday.setUTCHours(0, 0, 0, 0);
+
+    const endOfToday = new Date();
+    endOfToday.setUTCHours(23, 59, 59, 999);
+
+    const escapedTitle = trimmedTitle.replace(/[.*+?^${}()|[]]/g, "$&");
+    const duplicateOfferToday = await Offer.findOne({
+      merchant_id: merchantId,
+      title: { $regex: new RegExp(`^${escapedTitle}$`, "i") },
+      is_deleted: false,
+      createdAt: { $gte: startOfToday,$lte: endOfToday },
+    }).select("title createdAt");
+
+    if (duplicateOfferToday) {
+      return res.status(409).json({
+        success: false,
+        message: `An offer titled "${trimmedTitle}" has already been created by your account today. Please choose a different title or wait until tomorrow to reuse it.`,
+      });
+    }
+
+    // 1. Positional Coordinate Parameters Validation
+    const lat = req.query.lat || req.body.lat;
+    const lng = req.query.lng || req.body.lng;
+
+    if (lat === undefined || lng === undefined || lat === "" || lng === "") {
+      return res.status(400).json({
+        success: false,
+        message: "Explicit 'lat' and 'lng' positional coordinates are required to deploy this offer.",
+      });
+    }
+
+    const resolvedLat = Number(lat);
+    const resolvedLng = Number(lng);
+
+    if (isNaN(resolvedLat) || isNaN(resolvedLng)) {
+      return res.status(400).json({
+        success: false,
+        message: "Provided geographic coordinates are invalid numbers.",
+      });
+    }
+
+    // 2. Validate Operational Geofenced Area
+    const geoResults = await Area.aggregate([
+      {
+        $geoNear: {
+          near: {
+            type: "Point",
+            coordinates: [resolvedLng, resolvedLat], // [longitude, latitude]
+          },
+          distanceField: "distance_meters",
+          spherical: true,
+          query: { is_active: true },
+        },
+      },
+      { $limit: 1 },
+    ]);
+
+    if (!geoResults || geoResults.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "The provided coordinates do not fall within any active operational area boundary.",
+      });
+    }
+
+    // 3. Process Uploaded Asset or Template Image
+    if (req.file) {
+      data.thumbnail = `/uploads/${req.file.filename}`;
+    }
+
+    if (!data.thumbnail) {
+      return res.status(400).json({
+        success: false,
+        message: "A thumbnail image is required (upload an image file or provide a template image reference).",
+      });
+    }
+
+    // 4. Custom Image Moderation Branching
+    const isCustomImage = parseBoolean(data.isCustomImage, false);
+    const requiresVerification = isCustomImage === true;
+
+    // If verified by admin, starts as pending & offline; otherwise approved & live
+    const approval_status = requiresVerification ? "pending" : "approved";
+    const is_active = !requiresVerification;
+
+    // 5. Date Standardizations
+    const finalStartDate = data.start_date ? new Date(data.start_date) : new Date();
+    const finalEndDate = data.end_date ? new Date(data.end_date) : undefined;
+
+    finalStartDate.setUTCHours(0, 0, 0, 0);
+    if (finalEndDate) finalEndDate.setUTCHours(23, 59, 59, 999);
+
+    if (finalEndDate && finalStartDate > finalEndDate) {
+      return res.status(400).json({
+        success: false,
+        message: "The start date cannot be scheduled after the end date.",
+      });
+    }
+
+    // 6. Normalize Tags and Product Arrays
+    let resolvedTags = [];
+    if (typeof data.tags === "string") {
+      resolvedTags = data.tags.split(",").map((t) => t.trim()).filter(Boolean);
+    } else if (Array.isArray(data.tags)) {
+      resolvedTags = data.tags;
+    }
+
+    let resolvedProductIds = [];
+    if (data.product_id) {
+      if (typeof data.product_id === "string") {
+        resolvedProductIds = data.product_id
+          .split(",")
+          .map((id) => id.trim())
+          .filter(Boolean);
+      } else if (Array.isArray(data.product_id)) {
+        resolvedProductIds = data.product_id;
+      }
+    }
+
+    // 7. Instantiate and Save Offer
+    const newOffer = new Offer({
+      ...data,
+      merchant_id: merchantId,
+      display_type: "all", // Strictly locked to "all"
+      isCustomImage,
+      approval_status,
+      is_active,
+      title: trimmedTitle,
+      thumbnail: data.thumbnail,
+      start_date: finalStartDate,
+      end_date: finalEndDate,
+      tags: resolvedTags,
+      product_id: resolvedProductIds,
+      location: {
+        type: "Point",
+        coordinates: [resolvedLng, resolvedLat],
+      },
+      discount_percentage: data.discount_percentage ? Number(data.discount_percentage) : null,
+      discount_value: data.discount_value ? Number(data.discount_value) : null,
+      minimum_purchase_amount: data.minimum_purchase_amount ? Number(data.minimum_purchase_amount) : 0,
+      number_of_winners: data.number_of_winners ? Number(data.number_of_winners) : null,
+      free_quantity: data.free_quantity ? Number(data.free_quantity) : 1,
+      max_free_quantity: data.max_free_quantity ? Number(data.max_free_quantity) : 1,
+    });
+
+    await newOffer.save();
+
+    // 8. Push Notifications (Only if published immediately)
+    if (!requiresVerification) {
+      (async () => {
+        try {
+          if (typeof notifyNearbyUsersForNewOffer === "function") {
+            await notifyNearbyUsersForNewOffer({
+              offerId: newOffer._id,
+              offerTitle: newOffer.title,
+              discountPercentage: newOffer.discount_percentage,
+              discountValue: newOffer.discount_value,
+              merchantId,
+              lat: resolvedLat,
+              lng: resolvedLng,
+              targetRadiusKm: 15,
+            });
+          }
+        } catch (notifyErr) {
+          console.error("Async Nearby Offer Notification Error:", notifyErr.message);
+        }
+      })();
+    }
+
+    return res.status(201).json({
+      success: true,
+      message: requiresVerification
+        ? "Offer created with custom artwork. It has been routed to the admin verification queue before going live."
+        : "Offer created and published live immediately.",
+      approval_status: newOffer.approval_status,
+      is_active: newOffer.is_active,
+      data: newOffer,
+    });
+  } catch (error) {
+    console.error("Create Offer Type 'All' Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "An error occurred while creating the offer.",
+      error: error.message,
+    });
+  }
+};
 
 
 // Helper to normalize dates to strict UTC midnight

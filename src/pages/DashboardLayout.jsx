@@ -51,9 +51,10 @@ const navItems = [
     { label: "Offer Reviews from Merchants", to: "/dashboard/offer-reviews", icon: MessageSquareCheck },
     { label: "Product Suggestions", to: "/dashboard/product-suggestions", icon: MessageSquareCheck },
     { label: "Service Suggestions", to: "/dashboard/service-suggestions", icon: MessageSquareCheck },
-    { label: "Service Suggestions", to: "/dashboard/service-verification-suggestions", icon: MessageSquareCheck },
+    { label: "Service Verification Suggestions", to: "/dashboard/service-verification-suggestions", icon: MessageSquareCheck },
     { label: "Tag Suggestions", to: "/dashboard/tag-suggestions", icon: MessageSquareCheck },
     { label: "callbacks", to: "/dashboard/callback", icon: MessageSquareCheck },
+    { label: "Offer Review", to: "/dashboard/offer-review", icon: MessageSquareCheck },
   
   
 ];

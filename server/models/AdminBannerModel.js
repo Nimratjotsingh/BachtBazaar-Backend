@@ -12,6 +12,11 @@ const bannerSchema = new mongoose.Schema(
       trim: true,
       default: null,
     },
+    // Determines whether title/subtitle text overlay renders on the banner graphic
+    is_text_shown: {
+      type: Boolean,
+      default: false,
+    },
     // The storage path string or cloud URL for the image file
     image: {
       type: String,
@@ -56,7 +61,7 @@ const bannerSchema = new mongoose.Schema(
       lowercase: true,
       trim: true,
       index: true,
-    }
+    },
   },
   {
     timestamps: true,

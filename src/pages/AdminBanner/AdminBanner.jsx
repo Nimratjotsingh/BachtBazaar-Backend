@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { 
   Plus, Search, Edit2, Trash2, Calendar, Sliders, CheckCircle, 
-  XCircle, Globe, MapPin, Eye, Loader2, Upload, AlertCircle, X, Image, RefreshCw
+  XCircle, Globe, MapPin, Eye, Loader2, Upload, AlertCircle, X, 
+  Image, RefreshCw, Type
 } from "lucide-react";
-import { accountClient, buildAuthHeaders } from "../../lib/api"; // Your Axios instance setup
+import { accountClient, buildAuthHeaders } from "../../lib/api";
 
-const  AdminBannersDashboard = ({ token }) => {
+const AdminBannersDashboard = ({ token }) => {
   // --- Core Lifecycle States ---
   const [banners, setBanners] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -26,6 +27,7 @@ const  AdminBannersDashboard = ({ token }) => {
   const [formData, setFormData] = useState({
     title: "",
     subtitle: "",
+    is_text_shown: true,
     click_action_type: "none",
     target_destination: "",
     sort_order: 0,
@@ -87,7 +89,9 @@ const  AdminBannersDashboard = ({ token }) => {
 
       // Banners use multipart payload encodings due to file uploads
       const data = new FormData();
-      Object.keys(formData).forEach(key => data.append(key, formData[key]));
+      Object.keys(formData).forEach(key => {
+        data.append(key, formData[key]);
+      });
       if (imageFile) data.append("image", imageFile);
 
       let response;
@@ -99,7 +103,6 @@ const  AdminBannersDashboard = ({ token }) => {
         response = await accountClient.post("/adminbanners/create", data, {
           headers: { ...headers, "Content-Type": "multipart/form-data" }
         });
-        console.log(response)
       }
 
       if (response.data.success) {
@@ -117,11 +120,12 @@ const  AdminBannersDashboard = ({ token }) => {
   const handleEditTrigger = (banner) => {
     setIsEditing(true);
     setSelectedBannerId(banner._id);
-    setImagePreview(banner.image); // Displays original database image path route string
+    setImagePreview(banner.image);
     setImageFile(null);
     setFormData({
-      title: banner.title,
+      title: banner.title || "",
       subtitle: banner.subtitle || "",
+      is_text_shown: banner.is_text_shown ?? true,
       click_action_type: banner.click_action_type || "none",
       target_destination: banner.target_destination || "",
       sort_order: banner.sort_order || 0,
@@ -156,6 +160,7 @@ const  AdminBannersDashboard = ({ token }) => {
     setFormData({
       title: "",
       subtitle: "",
+      is_text_shown: true,
       click_action_type: "none",
       target_destination: "",
       sort_order: 0,
@@ -166,12 +171,16 @@ const  AdminBannersDashboard = ({ token }) => {
     });
   };
 
-  // --- Front-end Data Filtering Logic Arrays ---
+  // --- Front-end Data Filtering Logic ---
   const filteredBanners = useMemo(() => {
     return banners.filter(banner => {
-      const matchesSearch = banner.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                            (banner.subtitle && banner.subtitle.toLowerCase().includes(searchTerm.toLowerCase()));
-      const matchesCity = cityFilter === "all" || banner.target_city.toLowerCase() === cityFilter.toLowerCase();
+      const searchLower = searchTerm.toLowerCase();
+      const matchesSearch = 
+        banner.title?.toLowerCase().includes(searchLower) || 
+        (banner.subtitle && banner.subtitle.toLowerCase().includes(searchLower));
+      const matchesCity = 
+        cityFilter === "all" || 
+        banner.target_city?.toLowerCase() === cityFilter.toLowerCase();
       return matchesSearch && matchesCity;
     });
   }, [banners, searchTerm, cityFilter]);
@@ -196,11 +205,14 @@ const  AdminBannersDashboard = ({ token }) => {
           <h1 className="text-2xl font-black text-slate-900 flex items-center gap-2.5 tracking-tight">
             <Image className="text-indigo-600 w-7 h-7" /> Promotional Canvas Operations
           </h1>
-          <p className="text-slate-400 text-xs font-semibold mt-0.5">Configure app layout headers, geographic target carousels, and engagement action links</p>
+          <p className="text-slate-400 text-xs font-semibold mt-0.5">
+            Configure app layout headers, geographic target carousels, text overlays, and engagement action links
+          </p>
         </div>
         <button 
           onClick={fetchBanners}
           className="p-2.5 bg-white border border-slate-200 text-slate-400 hover:text-indigo-600 rounded-xl transition shadow-sm cursor-pointer"
+          title="Refresh Data"
         >
           <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
         </button>
@@ -226,10 +238,10 @@ const  AdminBannersDashboard = ({ token }) => {
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
               <input 
                 type="text" 
-                placeholder="Search banner headers..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-indigo-500/10 outline-none"
+                placeholder="Search banner headers..." 
+                value={searchTerm} 
+                onChange={(e) => setSearchTerm(e.target.value)} 
+                className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-indigo-500/10 outline-none" 
               />
             </div>
             <select
@@ -265,8 +277,13 @@ const  AdminBannersDashboard = ({ token }) => {
                 >
                   {/* Thumbnail & Description block metadata */}
                   <div className="flex items-center gap-4 min-w-0 flex-1">
-                    <div className="w-28 h-16 bg-slate-100 border border-slate-200 rounded-xl overflow-hidden shrink-0 shadow-inner">
+                    <div className="w-28 h-16 bg-slate-100 border border-slate-200 rounded-xl overflow-hidden shrink-0 shadow-inner relative group">
                       <img src={banner.image} className="w-full h-full object-cover" alt="Banner canvas asset representation" />
+                      {banner.is_text_shown && (
+                        <div className="absolute inset-0 bg-black/25 flex items-center justify-center pointer-events-none">
+                          <Type size={14} className="text-white drop-shadow" />
+                        </div>
+                      )}
                     </div>
                     <div className="min-w-0 space-y-1">
                       <div className="flex items-center gap-2 flex-wrap">
@@ -278,15 +295,26 @@ const  AdminBannersDashboard = ({ token }) => {
                           {banner.is_active ? <CheckCircle size={10}/> : <XCircle size={10}/>}
                           {banner.is_active ? "Live" : "Disabled"}
                         </span>
+                        
                         <span className="text-[9px] font-black uppercase bg-indigo-50 text-indigo-600 border border-indigo-100 rounded-md px-2 py-0.5 tracking-wider flex items-center gap-0.5">
-                          <MapPin size={10}/> {banner.target_city.toUpperCase()}
+                          <MapPin size={10}/> {banner.target_city?.toUpperCase()}
                         </span>
+
+                        {/* Text Overlay Indicator Badge */}
+                        <span className={`text-[9px] font-black uppercase rounded-md px-2 py-0.5 tracking-wider flex items-center gap-1 border ${
+                          banner.is_text_shown ?? true
+                            ? "bg-blue-50 text-blue-600 border-blue-100"
+                            : "bg-slate-50 text-slate-500 border-slate-200"
+                        }`}>
+                          <Type size={10}/> {banner.is_text_shown ?? true ? "Text: ON" : "Text: OFF"}
+                        </span>
+
                         <span className="text-[10px] font-bold text-slate-400 font-mono">Slot: {banner.sort_order}</span>
                       </div>
                       <h4 className="font-extrabold text-slate-900 text-sm truncate leading-snug">{banner.title}</h4>
                       {banner.subtitle && <p className="text-xs text-slate-400 font-medium truncate leading-none">{banner.subtitle}</p>}
                       <p className="text-[10px] text-slate-400 font-semibold flex items-center gap-1 pt-0.5">
-                        <Calendar size={11}/> Running window: {formatTimestamp(banner.start_date)} - {formatTimestamp(banner.end_date)}
+                        <Calendar size={11}/> Window: {formatTimestamp(banner.start_date)} - {formatTimestamp(banner.end_date)}
                       </p>
                     </div>
                   </div>
@@ -296,12 +324,14 @@ const  AdminBannersDashboard = ({ token }) => {
                     <button 
                       onClick={() => handleEditTrigger(banner)}
                       className="p-2 text-slate-500 hover:text-indigo-600 bg-slate-50 hover:bg-indigo-50 border border-slate-100 rounded-xl transition cursor-pointer"
+                      title="Edit Banner"
                     >
                       <Edit2 size={13} />
                     </button>
                     <button 
                       onClick={() => handleDeleteTrigger(banner._id)}
                       className="p-2 text-slate-500 hover:text-rose-600 bg-slate-50 hover:bg-rose-50 border border-slate-100 rounded-xl transition cursor-pointer"
+                      title="Delete Banner"
                     >
                       <Trash2 size={13} />
                     </button>
@@ -338,7 +368,16 @@ const  AdminBannersDashboard = ({ token }) => {
                 {imagePreview ? (
                   <>
                     <img src={imagePreview} className="w-full h-full object-cover" alt="Selected thumbnail draft parameters" />
-                    <label className="absolute inset-0 bg-slate-900/40 backdrop-blur-xs opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-white text-[10px] font-black uppercase tracking-widest cursor-pointer transition-all">
+                    
+                    {/* Live overlay preview inside editor when is_text_shown is true */}
+                    {formData.is_text_shown && (formData.title || formData.subtitle) && (
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent p-4 flex flex-col justify-end pointer-events-none text-white">
+                        <span className="font-black text-xs line-clamp-1 drop-shadow">{formData.title || "Headline Title"}</span>
+                        {formData.subtitle && <span className="text-[10px] text-slate-200 line-clamp-1 drop-shadow">{formData.subtitle}</span>}
+                      </div>
+                    )}
+
+                    <label className="absolute inset-0 bg-slate-900/40 backdrop-blur-xs opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-white text-[10px] font-black uppercase tracking-widest cursor-pointer transition-all z-10">
                       <Upload size={18} className="mb-1"/> Replace Layout Image
                       <input type="file" accept="image/*" onChange={handleFileChange} className="hidden" />
                     </label>
@@ -358,12 +397,46 @@ const  AdminBannersDashboard = ({ token }) => {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Headline Banner Title</label>
-                <input type="text" name="title" required value={formData.title} onChange={handleInputChange} placeholder="e.g., Bathinda Monsoon Extravaganza" className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/10 focus:bg-white transition-all text-slate-800" />
+                <input 
+                  type="text" 
+                  name="title" 
+                  required 
+                  value={formData.title} 
+                  onChange={handleInputChange} 
+                  placeholder="e.g., Bathinda Monsoon Extravaganza" 
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/10 focus:bg-white transition-all text-slate-800" 
+                />
               </div>
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Subtitle Caption Text</label>
-                <input type="text" name="subtitle" value={formData.subtitle} onChange={handleInputChange} placeholder="e.g., Flat 40% drops across premium catalogs stores" className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/10 focus:bg-white transition-all text-slate-800" />
+                <input 
+                  type="text" 
+                  name="subtitle" 
+                  value={formData.subtitle} 
+                  onChange={handleInputChange} 
+                  placeholder="e.g., Flat 40% drops across premium catalogs stores" 
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/10 focus:bg-white transition-all text-slate-800" 
+                />
               </div>
+            </div>
+
+            {/* Typography Overlay Toggle Field */}
+            <div className="flex items-center justify-between p-3 bg-indigo-50/40 rounded-xl border border-indigo-100/60">
+              <div className="flex items-center gap-2">
+                <Type size={16} className="text-indigo-600 shrink-0" />
+                <div>
+                  <span className="text-xs font-extrabold text-slate-800 block">Render Text Overlay</span>
+                  <p className="text-[10px] text-slate-400 font-medium">Uncheck if the banner graphic already has embedded typography</p>
+                </div>
+              </div>
+              <input 
+                type="checkbox" 
+                id="is_text_shown" 
+                name="is_text_shown" 
+                checked={formData.is_text_shown} 
+                onChange={handleInputChange} 
+                className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500/20 cursor-pointer shrink-0" 
+              />
             </div>
 
             {/* Target Navigation click event configuration actions matrix parameters slots */}
@@ -417,7 +490,7 @@ const  AdminBannersDashboard = ({ token }) => {
 
             {/* Visibility checkbox activation node controller */}
             <div className="flex items-center gap-2 p-1 pt-2 border-t border-slate-50">
-              <input type="checkbox" id="is_active" name="is_active" checked={formData.is_active} onChange={handleInputChange} className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500/20" />
+              <input type="checkbox" id="is_active" name="is_active" checked={formData.is_active} onChange={handleInputChange} className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500/20 cursor-pointer" />
               <label htmlFor="is_active" className="text-xs font-extrabold text-slate-700 select-none cursor-pointer">Activate changes instantly across client app streams catalogs</label>
             </div>
 

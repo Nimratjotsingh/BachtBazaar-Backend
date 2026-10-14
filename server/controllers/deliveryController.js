@@ -4,6 +4,7 @@ import MerchantShop from "../models/merchantShopModel.js";
 import User from "../models/userModel.js";
 import Product from "../models/productModel.js";
 import { sendDeliveryNotification } from "../utils/deliveryNotificationHelper.js";
+import mongoose from "mongoose";
 
 // ==========================================
 // PRICING CALCULATION HELPERS
@@ -79,14 +80,8 @@ const calculateDistanceKm = (lat1, lon1, lat2, lon2) => {
 // 1. USER ENDPOINTS
 // ==========================================
 
-
-
 /**
  * GET /api/delivery/estimate-fee
- * Query Params:
- *  - merchantId (or shopId)
- *  - latitude  (optional, defaults to req.user.latitude)
- *  - longitude (optional, defaults to req.user.longitude)
  */
 export const getUserDeliveryFeeEstimate = async (req, res) => {
   try {
@@ -99,7 +94,7 @@ export const getUserDeliveryFeeEstimate = async (req, res) => {
       });
     }
 
-    // 1. Resolve user coordinates (from query params or profile)
+    // 1. Resolve user coordinates
     let userLat = latitude !== undefined && latitude !== null ? Number(latitude) : req.user?.latitude;
     let userLng = longitude !== undefined && longitude !== null ? Number(longitude) : req.user?.longitude;
 
@@ -194,7 +189,6 @@ export const getUserDeliveryFeeEstimate = async (req, res) => {
       tierReason = `Peak rush hours rate applied (${peak.startTime} - ${peak.endTime})`;
     }
 
-    // 1 KM = X ₹ formula
     const rawDeliveryFee = (distanceKm * appliedRatePerKm) + baseFee + flatSurcharge;
     const finalDeliveryFee = Math.max(minimumFee, Math.round(rawDeliveryFee));
     const platformFee = Number(process.env.DEFAULT_PLATFORM_FEE) || 10;
@@ -229,11 +223,15 @@ export const getUserDeliveryFeeEstimate = async (req, res) => {
   }
 };
 
+/**
+ * POST /api/delivery/create
+ */
 export const createDeliveryOrder = async (req, res) => {
   try {
     const userId = req.user._id;
     const {
       merchantId,
+      gift_product_id,
       items,
       productId,
       customItemName,
@@ -277,7 +275,27 @@ export const createDeliveryOrder = async (req, res) => {
       return res.status(404).json({ success: false, message: "User record not found." });
     }
 
-    // 1. Normalize and resolve inventory items
+    // 1. Verify gift product if provided
+    let resolvedGiftProductId = null;
+    if (gift_product_id) {
+      if (!mongoose.Types.ObjectId.isValid(gift_product_id)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid gift_product_id format.",
+        });
+      }
+
+      const giftProduct = await Product.findOne({
+        _id: gift_product_id,
+        is_deleted: false,
+      }).select("_id name stock").lean();
+
+      if (giftProduct) {
+        resolvedGiftProductId = giftProduct._id;
+      }
+    }
+
+    // 2. Normalize and resolve inventory items
     const rawItemsList = Array.isArray(items) && items.length > 0
       ? items
       : [{ productId, productName: customItemName, quantity, unitPrice: itemPrice, variantInfo }];
@@ -318,7 +336,7 @@ export const createDeliveryOrder = async (req, res) => {
       });
     }
 
-    // 2. Geolocation & Distance Calculation
+    // 3. Geolocation & Distance Calculation
     const finalAddress = deliveryAddress || user.address;
     const finalPhone = contactPhone || user.phone || user.mobile;
     const userLat = finalAddress?.latitude ?? user.latitude;
@@ -328,7 +346,6 @@ export const createDeliveryOrder = async (req, res) => {
     if (shop?.latitude && shop?.longitude && userLat && userLng) {
       distanceKm = calculateDistanceKm(shop.latitude, shop.longitude, userLat, userLng);
 
-      // Check merchant configured service radius
       const maxAllowedRadius = shop.visibilityRadiusKm || 15;
       if (distanceKm > maxAllowedRadius) {
         return res.status(400).json({
@@ -338,7 +355,7 @@ export const createDeliveryOrder = async (req, res) => {
       }
     }
 
-    // 3. Dynamic Delivery Fee Evaluation (Base + Per KM + Peak / Night)
+    // 4. Dynamic Delivery Fee Evaluation
     const { deliveryFee, breakdown } = calculateDeliveryFee(
       merchant.deliveryPricing,
       distanceKm,
@@ -347,10 +364,11 @@ export const createDeliveryOrder = async (req, res) => {
 
     const platformFee = Number(process.env.DEFAULT_PLATFORM_FEE) || 10;
 
-    // 4. Create and persist single DeliveryOrder document
+    // 5. Create and persist DeliveryOrder document
     const newOrder = new DeliveryOrder({
       userId,
       merchantId,
+      gift_product_id: resolvedGiftProductId,
       items: resolvedItems,
       deliveryAddress: finalAddress,
       contactPhone: finalPhone,
@@ -373,11 +391,13 @@ export const createDeliveryOrder = async (req, res) => {
       recipientType: "Merchant",
       recipientId: merchantId,
       title: "📦 New Delivery Order Received!",
-      body: `${user.name || "A customer"} placed an order with ${resolvedItems.length} item(s). Delivery: ₹${deliveryFee} (${breakdown.tierApplied}).`,
+      body: `${user.name || "A customer"} placed an order with ${resolvedItems.length} item(s)${resolvedGiftProductId ? " + 1 Free Gift" : ""}. Delivery: ₹${deliveryFee} (${breakdown.tierApplied}).`,
       type: "DELIVERY_ORDER_NEW",
       orderId: newOrder._id,
       extraData: {
         totalItems: String(resolvedItems.length),
+        hasGift: String(Boolean(resolvedGiftProductId)),
+        giftProductId: resolvedGiftProductId ? String(resolvedGiftProductId) : "",
         customerName: user.name || "Customer",
         tierApplied: breakdown.tierApplied,
       },
@@ -398,6 +418,9 @@ export const createDeliveryOrder = async (req, res) => {
   }
 };
 
+/**
+ * PATCH /api/delivery/:orderId/cancel
+ */
 export const cancelDeliveryOrder = async (req, res) => {
   try {
     const userId = req.user._id;
@@ -449,6 +472,9 @@ export const cancelDeliveryOrder = async (req, res) => {
 // 2. MERCHANT ENDPOINTS
 // ==========================================
 
+/**
+ * PATCH /api/delivery/:orderId/respond
+ */
 export const respondToDeliveryOrder = async (req, res) => {
   try {
     const merchantId = req.merchant._id;
@@ -533,6 +559,9 @@ export const respondToDeliveryOrder = async (req, res) => {
   }
 };
 
+/**
+ * PATCH /api/delivery/:orderId/status
+ */
 export const updateDeliveryOrderStatus = async (req, res) => {
   try {
     const merchantId = req.merchant._id;
@@ -543,6 +572,8 @@ export const updateDeliveryOrderStatus = async (req, res) => {
     if (!order) {
       return res.status(404).json({ success: false, message: "Delivery order not found." });
     }
+
+    const previousStatus = order.status;
 
     if (status) {
       const allowedStatuses = ["dispatched", "delivered"];
@@ -572,6 +603,47 @@ export const updateDeliveryOrderStatus = async (req, res) => {
     }
 
     await order.save();
+
+    // ========================================================
+    // INVENTORY DEDUCTION ON "DELIVERED" (ITEMS + GIFT PRODUCT)
+    // ========================================================
+    if (status === "delivered" && previousStatus !== "delivered") {
+      const stockUpdates = (order.items || [])
+        .filter((item) => item.productId)
+        .map((item) => {
+          const qtyToDeduct = Math.max(1, Number(item.quantity) || 1);
+
+          return Product.updateOne(
+            { _id: item.productId, stock: { $gte: qtyToDeduct } },
+            { $inc: { stock: -qtyToDeduct } }
+          ).then(async (result) => {
+            if (result.modifiedCount === 0) {
+              await Product.updateOne(
+                { _id: item.productId },
+                { $set: { stock: 0 } }
+              );
+            }
+          });
+        });
+
+      // Deduct 1 unit for promotional gift product if attached
+      if (order.gift_product_id) {
+        stockUpdates.push(
+          Product.updateOne(
+            { _id: order.gift_product_id, stock: { $gte: 1 } }, {$inc: { stock: -1 } }
+          ).then(async (result) => {
+            if (result.modifiedCount === 0) {
+              await Product.updateOne(
+                { _id: order.gift_product_id },
+                { $set: { stock: 0 } }
+              );
+            }
+          })
+        );
+      }
+
+      await Promise.allSettled(stockUpdates);
+    }
 
     const merchant = await Merchant.findById(merchantId).select("name shop_name");
     const shopDisplayName = merchant?.shop_name || merchant?.name || "The store";
@@ -611,6 +683,9 @@ export const updateDeliveryOrderStatus = async (req, res) => {
   }
 };
 
+/**
+ * GET /api/delivery/merchant/orders
+ */
 export const getMerchantDeliveryOrders = async (req, res) => {
   try {
     const merchantId = req.merchant._id;
@@ -621,6 +696,7 @@ export const getMerchantDeliveryOrders = async (req, res) => {
 
     const orders = await DeliveryOrder.find(query)
       .populate("userId", "name phone email")
+      .populate("gift_product_id", "name thumbnail price discounted_price unit_size")
       .populate("items.productId", "name thumbnail category_id price discounted_price")
       .sort({ createdAt: -1 })
       .lean();
@@ -640,6 +716,9 @@ export const getMerchantDeliveryOrders = async (req, res) => {
   }
 };
 
+/**
+ * GET /api/delivery/:orderId
+ */
 export const getDeliveryOrderById = async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -653,6 +732,7 @@ export const getDeliveryOrderById = async (req, res) => {
     const order = await DeliveryOrder.findOne(accessQuery)
       .populate("userId", "name phone email")
       .populate("merchantId", "name shop_name phone logo address")
+      .populate("gift_product_id", "name thumbnail price discounted_price unit_size")
       .populate("items.productId", "name thumbnail category_id price discounted_price")
       .lean();
 
@@ -695,6 +775,9 @@ export const getDeliveryOrderById = async (req, res) => {
   }
 };
 
+/**
+ * GET /api/delivery/user/orders
+ */
 export const getDeliveryOrders = async (req, res) => {
   try {
     const userId = req.user._id;
@@ -705,6 +788,7 @@ export const getDeliveryOrders = async (req, res) => {
 
     const orders = await DeliveryOrder.find(query)
       .populate("merchantId", "name shop_name phone logo address")
+      .populate("gift_product_id", "name thumbnail price discounted_price unit_size")
       .populate("items.productId", "name thumbnail category_id price discounted_price")
       .sort({ createdAt: -1 })
       .lean();

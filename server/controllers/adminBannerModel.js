@@ -1,28 +1,41 @@
 import Banner from "../models/AdminBannerModel.js";
 import mongoose from "mongoose";
 
+// Helper to reliably parse booleans from multipart/form-data
+const parseBoolean = (value, fallback = true) => {
+  if (value === undefined || value === null) return fallback;
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    const lower = value.trim().toLowerCase();
+    if (lower === "true" || lower === "1") return true;
+    if (lower === "false" || lower === "0") return false;
+  }
+  return Boolean(value);
+};
+
 // ====================================================================
 // --- 1. CREATE NEW BANNER (Admin Only) ------------------------------
 // ====================================================================
 export const createBanner = async (req, res) => {
   try {
-    const { 
-      title, 
-      subtitle, 
-      click_action_type, 
-      target_destination, 
-      sort_order, 
-      start_date, 
-      end_date, 
+    const {
+      title,
+      subtitle,
+      is_text_shown,
+      click_action_type,
+      target_destination,
+      sort_order,
+      start_date,
+      end_date,
       target_city,
-      is_active 
+      is_active,
     } = req.body;
 
     // Validate that a file payload artifact was actually processed by middleware
     if (!req.file) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "A structural graphic layout banner image file asset is required." 
+      return res.status(400).json({
+        success: false,
+        message: "A structural graphic layout banner image file asset is required.",
       });
     }
 
@@ -30,29 +43,29 @@ export const createBanner = async (req, res) => {
     const imagePath = `/uploads/${req.file.filename}`;
 
     const newBanner = await Banner.create({
-      title,
-      subtitle,
+      title: title?.trim(),
+      subtitle: subtitle ? subtitle.trim() : null,
+      is_text_shown: parseBoolean(is_text_shown, true),
       image: imagePath,
-      click_action_type,
-      target_destination,
+      click_action_type: click_action_type || "none",
+      target_destination: target_destination || null,
       sort_order: Number(sort_order) || 0,
       start_date: new Date(start_date),
       end_date: new Date(end_date),
       target_city: target_city ? target_city.toLowerCase().trim() : "all",
-      is_active: is_active !== undefined ? is_active : true
+      is_active: parseBoolean(is_active, true),
     });
 
     return res.status(201).json({
       success: true,
       message: "Administrative campaign banner created successfully.",
-      data: newBanner
+      data: newBanner,
     });
-
   } catch (error) {
     console.error("Create Banner Error:", error);
     return res.status(500).json({
       success: false,
-      message: "An internal server error occurred while registering the banner."
+      message: error.message || "An internal server error occurred while registering the banner.",
     });
   }
 };
@@ -68,13 +81,13 @@ export const getAllBannersAdmin = async (req, res) => {
     return res.status(200).json({
       success: true,
       count: banners.length,
-      data: banners
+      data: banners,
     });
   } catch (error) {
     console.error("Get Admin Banners Error:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to collect complete system banner matrices."
+      message: "Failed to collect complete system banner matrices.",
     });
   }
 };
@@ -92,11 +105,35 @@ export const updateBanner = async (req, res) => {
 
     const banner = await Banner.findById(id);
     if (!banner) {
-      return res.status(404).json({ success: false, message: "Promotional banner target registry file not found." });
+      return res.status(404).json({
+        success: false,
+        message: "Promotional banner target registry file not found.",
+      });
     }
 
     // Construct modification map fields directly from input payloads
     const fieldsToUpdate = { ...req.body };
+
+    // Handle boolean coercion from multipart string values
+    if (fieldsToUpdate.is_text_shown !== undefined) {
+      fieldsToUpdate.is_text_shown = parseBoolean(fieldsToUpdate.is_text_shown, banner.is_text_shown);
+    }
+
+    if (fieldsToUpdate.is_active !== undefined) {
+      fieldsToUpdate.is_active = parseBoolean(fieldsToUpdate.is_active, banner.is_active);
+    }
+
+    if (fieldsToUpdate.sort_order !== undefined) {
+      fieldsToUpdate.sort_order = Number(fieldsToUpdate.sort_order) || 0;
+    }
+
+    if (fieldsToUpdate.start_date) {
+      fieldsToUpdate.start_date = new Date(fieldsToUpdate.start_date);
+    }
+
+    if (fieldsToUpdate.end_date) {
+      fieldsToUpdate.end_date = new Date(fieldsToUpdate.end_date);
+    }
 
     // If an alternate image payload exists, switch the tracking reference string
     if (req.file) {
@@ -116,14 +153,13 @@ export const updateBanner = async (req, res) => {
     return res.status(200).json({
       success: true,
       message: "Administrative campaign properties updated successfully.",
-      data: updatedBanner
+      data: updatedBanner,
     });
-
   } catch (error) {
     console.error("Update Banner Error:", error);
     return res.status(500).json({
       success: false,
-      message: "An error occurred while modifying asset parameters."
+      message: error.message || "An error occurred while modifying asset parameters.",
     });
   }
 };
@@ -141,20 +177,21 @@ export const deleteBanner = async (req, res) => {
 
     const deletedBanner = await Banner.findByIdAndDelete(id);
     if (!deletedBanner) {
-      return res.status(404).json({ success: false, message: "Banner item context missing from database target records." });
+      return res.status(404).json({
+        success: false,
+        message: "Banner item context missing from database target records.",
+      });
     }
-
-    // Optional: Add an file system module integration rule 'fs.unlink' here to erase the file from your local disk array
 
     return res.status(200).json({
       success: true,
-      message: "Administrative campaign banner wiped permanently from layout directory slots."
+      message: "Administrative campaign banner wiped permanently from layout directory slots.",
     });
   } catch (error) {
     console.error("Delete Banner Error:", error);
     return res.status(500).json({
       success: false,
-      message: "An error occurred during transaction execution processing paths."
+      message: "An error occurred during transaction execution processing paths.",
     });
   }
 };
@@ -171,7 +208,7 @@ export const getActiveUserBanners = async (req, res) => {
     const userFeedQuery = {
       is_active: true,
       start_date: { $lte: rightNow },
-      end_date: { $gte: rightNow }
+      end_date: { $gte: rightNow },
     };
 
     // If city is requested, pull matching city items or items designated as global "all" fallbacks
@@ -179,21 +216,21 @@ export const getActiveUserBanners = async (req, res) => {
       userFeedQuery.target_city = { $in: [city.trim().toLowerCase(), "all"] };
     }
 
-    const liveBanners = await Banner.find()
+    // Passes userFeedQuery to find active banners
+    const liveBanners = await Banner.find(userFeedQuery)
       .sort({ sort_order: 1, createdAt: -1 })
       .lean();
 
     return res.status(200).json({
       success: true,
       totalLiveItems: liveBanners.length,
-      data: liveBanners
+      data: liveBanners,
     });
-
   } catch (error) {
     console.error("Get Active Feed User Banners Error:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to assemble live carousel graphics stream."
+      message: "Failed to assemble live carousel graphics stream.",
     });
   }
 };

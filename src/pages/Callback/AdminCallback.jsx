@@ -30,10 +30,12 @@ const CallbackAdminPage = ({ token }) => {
   const fetchCallbacks = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await accountClient.get("/admin/callbacks", {
+      const res = await accountClient.get("/admin/callback", {
         headers,
         params: { limit: 100 },
-      });
+      }) 
+
+      console.log(res.data)
       setCallbacks(res.data.data || res.data.callbacks || []);
     } catch (err) {
       console.error("Error fetching callback requests:", err);
@@ -50,6 +52,7 @@ const CallbackAdminPage = ({ token }) => {
   // PIPELINE 2: STATUS MUTATIONS
   // ==========================================
   const handleUpdateStatus = async (id, targetStatus, notes = "") => {
+    
     try {
       setActionLoading(true);
       const payload = {
@@ -57,9 +60,11 @@ const CallbackAdminPage = ({ token }) => {
         adminNotes: notes,
       };
 
-      const res = await accountClient.patch(`/admin/callbacks/${id}/status`, payload, {
+      const res = await accountClient.patch(`/admin/callback/${id}/status`, payload, {
         headers,
       });
+
+      console.log(res.data)
 
       if (res.data.success) {
         setCallbacks((prev) =>
@@ -344,6 +349,7 @@ const CallbackAdminPage = ({ token }) => {
                         >
                           <Eye size={16} />
                         </button>
+                        
 
                         {item.status === "pending" ? (
                           <button
@@ -358,6 +364,7 @@ const CallbackAdminPage = ({ token }) => {
                             <Check size={16} />
                           </button>
                         ) : (
+                          
                           <button
                             onClick={() => handleUpdateStatus(item._id, "pending")}
                             className="p-2 text-slate-400 hover:text-amber-600 hover:bg-amber-50 border border-transparent hover:border-amber-100 rounded-xl transition cursor-pointer"

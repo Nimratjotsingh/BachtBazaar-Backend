@@ -8,7 +8,7 @@ import mongoose from "mongoose";
 import Area from "../models/AreaModel.js";
 import Review from '../models/ReviewModel.js'
 import Wishlist from "../models/wishlistModel.js";
-import {trackDailyMetric,trackDailyMetric2, trackOfferMetric} from '../utils/analyticsTracker.js';
+import {trackDailyMetric,trackDailyMetric2, trackFullAnalytics, trackOfferMetric} from '../utils/analyticsTracker.js';
 import { onOfferClickedHook } from "../hooks/mileStoneProgressHooks.js";
 import MerchantDailyAnalytics from "../models/MerchantDailyAnalytics.js";
 
@@ -427,11 +427,18 @@ export const getShopDetails = async (req, res) => {
     const todayUTC = new Date();
     todayUTC.setUTCHours(0, 0, 0, 0);
 
-    MerchantDailyAnalytics.findOneAndUpdate(
-      { merchantId, shopId: shopDoc._id, date: todayUTC },
-      { $inc: { shopViews: 1, totalImpressions: 1 } },
-      { upsert: true, setDefaultsOnInsert: true }
-    ).catch((err) => console.error("Merchant Daily Analytics tracking error:", err.message));
+    // MerchantDailyAnalytics.findOneAndUpdate(
+    //   { merchantId, shopId: shopDoc._id, date: todayUTC },
+    //   { $inc: { shopViews: 1, totalImpressions: 1 } },
+    //   { upsert: true, setDefaultsOnInsert: true }
+    // ).catch((err) => console.error("Merchant Daily Analytics tracking error:", err.message));
+
+        await trackFullAnalytics({
+      merchantId,
+      shopId: shop._id,
+      metric: "store_click", // Increments totalViewers (deduplicated per user per day)
+      userData: { userId: req.user._id },
+    });
 
     // 7. Return synchronized response payload
     return res.status(200).json({
@@ -1708,6 +1715,7 @@ export const getNearbyShops15KmForUser = async (req, res) => {
         Offer.find({
           merchant_id: { $in: merchantIds },
           is_active: true,
+          is_paused:false,
           is_deleted: false,
           start_date: { $lte: now },
           $or: [

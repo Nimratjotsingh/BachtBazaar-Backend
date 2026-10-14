@@ -63,6 +63,14 @@ const deliveryOrderSchema = new mongoose.Schema(
       index: true,
     },
 
+    // --- PROMOTIONAL GIFT / COMPLIMENTARY ADD-ON ---
+    gift_product_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Product",
+      default: null,
+      index: true,
+    },
+
     items: {
       type: [deliveryOrderItemSchema],
       validate: [

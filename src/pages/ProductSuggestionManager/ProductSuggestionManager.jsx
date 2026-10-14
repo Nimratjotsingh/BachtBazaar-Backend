@@ -3,9 +3,12 @@ import {
   Package, Plus, Edit3, Trash2, Save, Loader2, ArrowLeft,
   Image as ImageIcon, Search, Filter, Eye, Tag, X, Layers,
   Box, Sparkles, Tags, RefreshCw, ChevronDown, CheckCircle2,
-  DollarSign, Scale, Droplets, Power
+  DollarSign, Scale, Droplets, Power, ChevronLeft, ChevronRight, Hash
 } from "lucide-react";
 import { accountClient, buildAuthHeaders } from "../../lib/api";
+
+const LAST_CATEGORY_KEY = "admin_last_suggestion_cat";
+const LAST_SUBCATEGORY_KEY = "admin_last_suggestion_subcat";
 
 const ProductSuggestionsManager = ({ token }) => {
   // --- Core Lifecycle States ---
@@ -26,24 +29,35 @@ const ProductSuggestionsManager = ({ token }) => {
   const [filterCategory, setFilterCategory] = useState("all");
   const [filterStatus, setFilterStatus] = useState("all");
 
+  // --- Pagination States ---
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(8);
+
+  // --- Tag Input Field State ---
+  const [tagInput, setTagInput] = useState("");
+
   // --- Form State ---
-  const initialFormState = {
+  const getSavedTaxonomy = () => ({
+    category_id: localStorage.getItem(LAST_CATEGORY_KEY) || "",
+    subcategory_id: localStorage.getItem(LAST_SUBCATEGORY_KEY) || ""
+  });
+
+  const [formData, setFormData] = useState({
     name: "",
     description: "",
-    category_id: "",
-    subcategory_id: "",
+    category_id: getSavedTaxonomy().category_id,
+    subcategory_id: getSavedTaxonomy().subcategory_id,
     suggested_price: "",
     unit_size: "",
     weightValue: "",
     weightUnit: "g",
     volumeValue: "",
     volumeUnit: "ml",
-    tags: "",
+    tags: [],
     thumbnailFile: null,
     newImagesFiles: [],
     is_active: true,
-  };
-  const [formData, setFormData] = useState(initialFormState);
+  });
 
   const headers = useMemo(() => buildAuthHeaders(token), [token]);
 
@@ -73,8 +87,43 @@ const ProductSuggestionsManager = ({ token }) => {
     fetchInitialData();
   }, [fetchInitialData]);
 
+  // Reset page when filter changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, filterCategory, filterStatus, itemsPerPage]);
+
+  // Dynamic subcategories based on chosen category
+  const relevantSubCategories = useMemo(() => {
+    if (!formData.category_id) return [];
+    return subCategories.filter((sub) => {
+      const parentId = (sub.categoryId?._id || sub.categoryId || sub.category_id)?.toString();
+      return parentId === formData.category_id.toString();
+    });
+  }, [subCategories, formData.category_id]);
+
   // ==========================================
-  // PIPELINE 2: MEDIA HANDLERS
+  // PIPELINE 2: TAG CHIP MANAGEMENT
+  // ==========================================
+  const handleAddTag = (e) => {
+    if (e.key === "Enter" || e.key === ",") {
+      e.preventDefault();
+      const cleanTag = tagInput.trim().toLowerCase().replace(/^#/, "");
+      if (cleanTag && !formData.tags.includes(cleanTag)) {
+        setFormData(prev => ({ ...prev, tags: [...prev.tags, cleanTag] }));
+      }
+      setTagInput("");
+    }
+  };
+
+  const handleRemoveTag = (tagToRemove) => {
+    setFormData(prev => ({
+      ...prev,
+      tags: prev.tags.filter(t => t !== tagToRemove)
+    }));
+  };
+
+  // ==========================================
+  // PIPELINE 3: MEDIA HANDLERS
   // ==========================================
   const handleThumbnailChange = (e) => {
     const file = e.target.files?.[0];
@@ -97,7 +146,7 @@ const ProductSuggestionsManager = ({ token }) => {
   };
 
   // ==========================================
-  // PIPELINE 3: EDIT TRIGGER & FORM POPULATION
+  // PIPELINE 4: EDIT TRIGGER & FORM POPULATION
   // ==========================================
   const handleOpenEdit = (item) => {
     setSelectedSuggestion(item);
@@ -125,7 +174,7 @@ const ProductSuggestionsManager = ({ token }) => {
       weightUnit: item.weight?.unit || "g",
       volumeValue: item.volume?.value ?? "",
       volumeUnit: item.volume?.unit || "ml",
-      tags: Array.isArray(item.tags) ? item.tags.join(", ") : item.tags || "",
+      tags: Array.isArray(item.tags) ? item.tags : (item.tags ? [item.tags] : []),
       thumbnailFile: null,
       newImagesFiles: [],
       is_active: item.is_active ?? true,
@@ -134,11 +183,12 @@ const ProductSuggestionsManager = ({ token }) => {
     setThumbnailPreview(item.thumbnail || null);
     setExistingImages(Array.isArray(item.images) ? item.images : []);
     setNewImagesPreviews([]);
+    setTagInput("");
     setView("form");
   };
 
   // ==========================================
-  // PIPELINE 4: PERSISTENCE & MUTATIONS
+  // PIPELINE 5: PERSISTENCE & MUTATIONS
   // ==========================================
   const handleSave = async (e) => {
     e.preventDefault();
@@ -151,6 +201,16 @@ const ProductSuggestionsManager = ({ token }) => {
     if (!selectedSuggestion && !formData.thumbnailFile) {
       alert("A master thumbnail image is required.");
       return;
+    }
+
+    // Persist last selected category & subcategory to localStorage
+    if (formData.category_id) {
+      localStorage.setItem(LAST_CATEGORY_KEY, formData.category_id);
+    }
+    if (formData.subcategory_id) {
+      localStorage.setItem(LAST_SUBCATEGORY_KEY, formData.subcategory_id);
+    } else {
+      localStorage.removeItem(LAST_SUBCATEGORY_KEY);
     }
 
     const data = new FormData();
@@ -171,12 +231,9 @@ const ProductSuggestionsManager = ({ token }) => {
       data.append("unit_size", formData.unit_size.trim());
     }
 
-    if (formData.tags) {
-      const parsedTags = formData.tags
-        .split(",")
-        .map((t) => t.trim())
-        .filter(Boolean);
-      data.append("tags", JSON.stringify(parsedTags));
+    // Append tags array
+    if (formData.tags && formData.tags.length > 0) {
+      data.append("tags", JSON.stringify(formData.tags));
     }
 
     if (formData.weightValue !== "") {
@@ -199,17 +256,14 @@ const ProductSuggestionsManager = ({ token }) => {
       );
     }
 
-    // Handle single thumbnail (new file upload vs retaining existing string)
     if (formData.thumbnailFile) {
       data.append("thumbnail", formData.thumbnailFile);
     } else if (selectedSuggestion && selectedSuggestion.thumbnail) {
       data.append("existingThumbnail", selectedSuggestion.thumbnail);
     }
 
-    // Retained images array for existing records
     data.append("existingImages", JSON.stringify(existingImages));
 
-    // Append newly selected image files
     formData.newImagesFiles.forEach((file) => {
       data.append("images", file);
     });
@@ -270,7 +324,24 @@ const ProductSuggestionsManager = ({ token }) => {
   };
 
   const resetForm = () => {
-    setFormData(initialFormState);
+    const saved = getSavedTaxonomy();
+    setFormData({
+      name: "",
+      description: "",
+      category_id: saved.category_id,
+      subcategory_id: saved.subcategory_id,
+      suggested_price: "",
+      unit_size: "",
+      weightValue: "",
+      weightUnit: "g",
+      volumeValue: "",
+      volumeUnit: "ml",
+      tags: [],
+      thumbnailFile: null,
+      newImagesFiles: [],
+      is_active: true,
+    });
+    setTagInput("");
     setThumbnailPreview(null);
     setExistingImages([]);
     setNewImagesPreviews([]);
@@ -278,7 +349,7 @@ const ProductSuggestionsManager = ({ token }) => {
   };
 
   // ==========================================
-  // DERIVED DATA & FILTERS
+  // DERIVED DATA & PAGINATION
   // ==========================================
   const computedMetrics = useMemo(() => {
     return {
@@ -307,13 +378,33 @@ const ProductSuggestionsManager = ({ token }) => {
     });
   }, [suggestions, searchTerm, filterCategory, filterStatus]);
 
-  const relevantSubCategories = useMemo(() => {
-    if (!formData.category_id) return [];
-    return subCategories.filter((sub) => {
-      const parentId = (sub.categoryId?._id || sub.categoryId || sub.category_id)?.toString();
-      return parentId === formData.category_id.toString();
-    });
-  }, [subCategories, formData.category_id]);
+  const totalItems = filteredSuggestions.length;
+  const totalPages = Math.ceil(totalItems / itemsPerPage) || 1;
+
+  const paginatedSuggestions = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return filteredSuggestions.slice(startIndex, startIndex + itemsPerPage);
+  }, [filteredSuggestions, currentPage, itemsPerPage]);
+
+  const getPaginationNumbers = () => {
+    const delta = 1;
+    const range = [];
+    for (
+      let i = Math.max(2, currentPage - delta);
+      i <= Math.min(totalPages - 1, currentPage + delta);
+      i++
+    ) {
+      range.push(i);
+    }
+
+    if (currentPage - delta > 2) range.unshift("...");
+    if (currentPage + delta < totalPages - 1) range.push("...");
+
+    range.unshift(1);
+    if (totalPages > 1) range.push(totalPages);
+
+    return range;
+  };
 
   // ==========================================
   // VIEW: FORM (CREATE / EDIT)
@@ -332,9 +423,16 @@ const ProductSuggestionsManager = ({ token }) => {
         </button>
 
         <div className="bg-white p-8 rounded-[32px] border border-slate-200/70 shadow-2xl space-y-6">
-          <h2 className="text-xl font-black text-[#0F172A] uppercase tracking-tight">
-            {selectedSuggestion ? "Modify Master Product Suggestion" : "Create Master Product Suggestion"}
-          </h2>
+          <div className="flex justify-between items-center border-b border-slate-100 pb-4">
+            <h2 className="text-xl font-black text-[#0F172A] uppercase tracking-tight">
+              {selectedSuggestion ? "Modify Master Product Suggestion" : "Create Master Product Suggestion"}
+            </h2>
+            {formData.category_id && (
+              <span className="text-[10px] font-bold text-slate-400 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-100">
+                Taxonomy Saved for Next Entry
+              </span>
+            )}
+          </div>
 
           <form onSubmit={handleSave} className="space-y-5">
             {/* Title */}
@@ -366,7 +464,7 @@ const ProductSuggestionsManager = ({ token }) => {
               />
             </div>
 
-            {/* Category & Subcategory */}
+            {/* Category & Subcategory (With Auto-Save on change) */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
@@ -377,13 +475,16 @@ const ProductSuggestionsManager = ({ token }) => {
                     required
                     className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-600 outline-none appearance-none cursor-pointer focus:ring-2 focus:ring-blue-500/20 focus:bg-white transition-all"
                     value={formData.category_id}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      const newCatId = e.target.value;
+                      localStorage.setItem(LAST_CATEGORY_KEY, newCatId);
+                      localStorage.removeItem(LAST_SUBCATEGORY_KEY);
                       setFormData({
                         ...formData,
-                        category_id: e.target.value,
+                        category_id: newCatId,
                         subcategory_id: "",
-                      })
-                    }
+                      });
+                    }}
                   >
                     <option value="">Select Category</option>
                     {categories.map((cat) => (
@@ -405,11 +506,13 @@ const ProductSuggestionsManager = ({ token }) => {
                     disabled={!formData.category_id}
                     className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-600 outline-none appearance-none cursor-pointer focus:ring-2 focus:ring-blue-500/20 focus:bg-white transition-all disabled:opacity-50"
                     value={formData.subcategory_id}
-                    onChange={(e) =>
-                      setFormData({ ...formData, subcategory_id: e.target.value })
-                    }
+                    onChange={(e) => {
+                      const newSubId = e.target.value;
+                      localStorage.setItem(LAST_SUBCATEGORY_KEY, newSubId);
+                      setFormData({ ...formData, subcategory_id: newSubId });
+                    }}
                   >
-                    <option value="">None</option>
+                    <option value="">None / Universal Subcategory</option>
                     {relevantSubCategories.map((sub) => (
                       <option key={sub._id} value={sub._id}>
                         {sub.label || sub.name}
@@ -421,115 +524,78 @@ const ProductSuggestionsManager = ({ token }) => {
               </div>
             </div>
 
-            {/* Price & Unit Display */}
-            {/* <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Suggested Pricing & Unit Size */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
-                  Suggested Price / Benchmark (₹)
+                  Suggested Retail Price (₹)
                 </label>
-                <input
-                  type="number"
-                  min="0"
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500/20 focus:bg-white transition-all text-slate-800"
-                  value={formData.suggested_price}
-                  onChange={(e) =>
-                    setFormData({ ...formData, suggested_price: e.target.value })
-                  }
-                  placeholder="e.g., 60"
-                />
+                <div className="relative">
+                  <DollarSign size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    className="w-full pl-9 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20 focus:bg-white text-slate-800"
+                    value={formData.suggested_price}
+                    onChange={(e) => setFormData({ ...formData, suggested_price: e.target.value })}
+                    placeholder="e.g., 45"
+                  />
+                </div>
               </div>
 
               <div className="space-y-1.5">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
-                  Pack / Unified Size String
+                  Unit Size Packaging Text
                 </label>
                 <input
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500/20 focus:bg-white transition-all text-slate-800"
+                  type="text"
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500/20 focus:bg-white text-slate-800"
                   value={formData.unit_size}
-                  onChange={(e) =>
-                    setFormData({ ...formData, unit_size: e.target.value })
-                  }
-                  placeholder="e.g., 280 g, 1 L, 12 pcs"
+                  onChange={(e) => setFormData({ ...formData, unit_size: e.target.value })}
+                  placeholder="e.g., Pack of 4, 280g Pouch"
                 />
               </div>
             </div>
 
-           
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-100">
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
-                  Weight (Optional)
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    type="number"
-                    min="0"
-                    placeholder="Value"
-                    value={formData.weightValue}
-                    onChange={(e) =>
-                      setFormData({ ...formData, weightValue: e.target.value })
-                    }
-                    className="w-2/3 px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold outline-none"
-                  />
-                  <select
-                    value={formData.weightUnit}
-                    onChange={(e) =>
-                      setFormData({ ...formData, weightUnit: e.target.value })
-                    }
-                    className="w-1/3 px-2 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold outline-none cursor-pointer"
-                  >
-                    <option value="g">g</option>
-                    <option value="kg">kg</option>
-                    <option value="mg">mg</option>
-                    <option value="lb">lb</option>
-                  </select>
-                </div>
-              </div>
+            {/* Interactive Tags Multi-Chip Input */}
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
+                Suggested Search Tags (Type and press Enter or Comma)
+              </label>
 
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
-                  Volume (Optional)
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    type="number"
-                    min="0"
-                    placeholder="Value"
-                    value={formData.volumeValue}
-                    onChange={(e) =>
-                      setFormData({ ...formData, volumeValue: e.target.value })
-                    }
-                    className="w-2/3 px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold outline-none"
-                  />
-                  <select
-                    value={formData.volumeUnit}
-                    onChange={(e) =>
-                      setFormData({ ...formData, volumeUnit: e.target.value })
-                    }
-                    className="w-1/3 px-2 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold outline-none cursor-pointer"
-                  >
-                    <option value="ml">ml</option>
-                    <option value="l">L</option>
-                    <option value="fl_oz">fl oz</option>
-                  </select>
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl min-h-[90px] space-y-3 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-500/20 transition-all">
+                <div className="flex flex-wrap gap-2">
+                  {formData.tags.map((tag) => (
+                    <span
+                      key={tag}
+                      className="inline-flex items-center gap-1.5 px-3 py-1 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 shadow-sm"
+                    >
+                      <Hash size={12} className="text-blue-500" />
+                      {tag}
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveTag(tag)}
+                        className="text-slate-400 hover:text-red-500 cursor-pointer ml-0.5"
+                      >
+                        <X size={13} />
+                      </button>
+                    </span>
+                  ))}
                 </div>
+
+                <input
+                  type="text"
+                  value={tagInput}
+                  onChange={(e) => setTagInput(e.target.value)}
+                  onKeyDown={handleAddTag}
+                  placeholder="Add tags (e.g. noodles, snack, quick-meal) and hit Enter..."
+                  className="w-full bg-transparent border-none text-xs font-semibold outline-none text-slate-700 px-1 placeholder:text-slate-400"
+                />
               </div>
             </div>
 
-           
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
-                Metadata Search Tags (Comma Separated)
-              </label>
-              <input
-                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500/20 focus:bg-white transition-all text-slate-800"
-                value={formData.tags}
-                onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
-                placeholder="e.g., instant food, breakfast, grocery, maggi"
-              />
-            </div> */}
-
-            {/* Thumbnail Upload & Current Image Preview */}
+            {/* Thumbnail Upload */}
             <div className="space-y-1.5">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
                 Master Thumbnail Upload {selectedSuggestion ? "(Leave blank to keep existing)" : "*"}
@@ -570,7 +636,6 @@ const ProductSuggestionsManager = ({ token }) => {
                   className="text-xs font-bold text-slate-500 file:mr-4 file:py-1.5 file:px-3.5 file:rounded-xl file:border-0 file:text-[10px] file:font-black file:uppercase file:tracking-wider file:bg-white file:text-blue-600 file:border file:border-blue-100 file:shadow-sm hover:file:bg-blue-50 cursor-pointer w-full"
                 />
 
-                {/* Retained existing remote images with removal buttons */}
                 {existingImages.length > 0 && (
                   <div>
                     <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Current Images:</span>
@@ -591,7 +656,6 @@ const ProductSuggestionsManager = ({ token }) => {
                   </div>
                 )}
 
-                {/* Local newly selected previews */}
                 {newImagesPreviews.length > 0 && (
                   <div>
                     <span className="text-[10px] font-bold text-blue-600 uppercase block mb-1">New Files Staged:</span>
@@ -757,7 +821,7 @@ const ProductSuggestionsManager = ({ token }) => {
             No master product templates matched your filtered parameters.
           </div>
         ) : (
-          filteredSuggestions.map((item) => (
+          paginatedSuggestions.map((item) => (
             <div
               key={item._id}
               className="bg-white rounded-[24px] border border-slate-100 shadow-sm overflow-hidden group hover:shadow-md transition-all duration-300 flex flex-col justify-between"
@@ -878,6 +942,79 @@ const ProductSuggestionsManager = ({ token }) => {
           ))
         )}
       </div>
+
+      {/* Pagination Bar */}
+      {!loading && totalItems > 0 && (
+        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4 text-xs font-bold text-slate-500">
+          <div className="flex items-center gap-3">
+            <span>
+              Showing{" "}
+              <strong className="text-slate-800">
+                {(currentPage - 1) * itemsPerPage + 1}
+              </strong>{" "}
+              to{" "}
+              <strong className="text-slate-800">
+                {Math.min(currentPage * itemsPerPage, totalItems)}
+              </strong>{" "}
+              of <strong className="text-slate-800">{totalItems}</strong> entries
+            </span>
+
+            <div className="flex items-center gap-1.5 ml-2">
+              <span className="text-[11px] text-slate-400">Cards/page:</span>
+              <select
+                value={itemsPerPage}
+                onChange={(e) => setItemsPerPage(Number(e.target.value))}
+                className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 outline-none text-slate-700 cursor-pointer"
+              >
+                <option value={8}>8</option>
+                <option value={16}>16</option>
+                <option value={24}>24</option>
+                <option value={32}>32</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+              disabled={currentPage === 1}
+              className="p-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 disabled:opacity-40 disabled:hover:bg-transparent transition cursor-pointer disabled:cursor-not-allowed"
+              title="Previous Page"
+            >
+              <ChevronLeft size={16} />
+            </button>
+
+            {getPaginationNumbers().map((pageNum, idx) =>
+              pageNum === "..." ? (
+                <span key={idx} className="px-2 text-slate-400 select-none">
+                  ...
+                </span>
+              ) : (
+                <button
+                  key={idx}
+                  onClick={() => setCurrentPage(pageNum)}
+                  className={`w-8 h-8 rounded-xl font-bold transition cursor-pointer flex items-center justify-center ${
+                    currentPage === pageNum
+                      ? "bg-blue-600 text-white shadow-sm shadow-blue-200"
+                      : "text-slate-600 hover:bg-slate-100"
+                  }`}
+                >
+                  {pageNum}
+                </button>
+              )
+            )}
+
+            <button
+              onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+              disabled={currentPage === totalPages}
+              className="p-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 disabled:opacity-40 disabled:hover:bg-transparent transition cursor-pointer disabled:cursor-not-allowed"
+              title="Next Page"
+            >
+              <ChevronRight size={16} />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

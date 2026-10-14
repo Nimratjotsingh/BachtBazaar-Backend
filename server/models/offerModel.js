@@ -23,6 +23,23 @@ const offerSchema = new mongoose.Schema(
       ref: "SubOfferType",
       index: true,
     },
+    // --- VERIFICATION & CUSTOM IMAGE MODERATION ---
+    isCustomImage: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    approval_status: {
+      type: String,
+      enum: ["approved", "pending", "rejected"],
+      default: "approved",
+      index: true,
+    },
+    rejection_reason: {
+      type: String,
+      trim: true,
+      default: null,
+    },
     banner_type_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "BannerType",
