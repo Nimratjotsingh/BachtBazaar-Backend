@@ -191,7 +191,7 @@ export const getUserDeliveryFeeEstimate = async (req, res) => {
 
     const rawDeliveryFee = (distanceKm * appliedRatePerKm) + baseFee + flatSurcharge;
     const finalDeliveryFee = Math.max(minimumFee, Math.round(rawDeliveryFee));
-    const platformFee = Number(process.env.DEFAULT_PLATFORM_FEE) || 10;
+    const platformFee = Number(process.env.DEFAULT_PLATFORM_FEE) || 0;
 
     return res.status(200).json({
       success: true,

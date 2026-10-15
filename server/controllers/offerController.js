@@ -49,7 +49,8 @@ export const getMerchantSlotStatus = async (req, res) => {
       resolvedLat = Number(lat);
       resolvedLng = Number(lng);
     } else {
-      const shop = await MerchantShop.findOne({ merchantId }).select("center_location location area_id");
+      // Support both area_id and areaId schema variations
+      const shop = await MerchantShop.findOne({ merchantId }).select("center_location location area_id areaId");
       
       if (!shop) {
         return res.status(404).json({
@@ -70,7 +71,6 @@ export const getMerchantSlotStatus = async (req, res) => {
       fallbackUsed = true;
     }
 
-    // Sanity validation checking on numerical coordinate transformations
     if (isNaN(resolvedLat) || isNaN(resolvedLng)) {
       return res.status(400).json({
         success: false,
@@ -79,15 +79,14 @@ export const getMerchantSlotStatus = async (req, res) => {
     }
 
     // =========================================================
-    // PIPELINE 2: FIXED GEOGRAPHIC GEOMAPPING VIA AGGREGATION
+    // PIPELINE 2: GEOMAPPING VIA AGGREGATION
     // =========================================================
-    // Using $geoNear stage directly guarantees MongoDB explicitly binds onto the Area index
     const geoResults = await Area.aggregate([
       {
         $geoNear: {
           near: {
             type: "Point",
-            coordinates: [resolvedLng, resolvedLat] // [longitude, latitude]
+            coordinates: [resolvedLng, resolvedLat]
           },
           distanceField: "distance_meters",
           spherical: true,
@@ -116,26 +115,39 @@ export const getMerchantSlotStatus = async (req, res) => {
     const targetAreaId = closestArea._id;
 
     // =========================================================
-    // PIPELINE 3: ALLOCATION METRICS COMPILATION
+    // PIPELINE 3: ALLOCATION METRICS COMPILATION (SYNCHRONIZED WITH ADMIN)
     // =========================================================
     const fallbackDefaultLimit = 5;
 
+    // Fetch area merchant IDs safely, supporting both area_id and areaId schema fields
+    let areaMerchantIds = await MerchantShop.distinct("merchantId", { area_id: targetAreaId });
+    if (!areaMerchantIds || areaMerchantIds.length === 0) {
+      areaMerchantIds = await MerchantShop.distinct("merchantId", { areaId: targetAreaId });
+    }
+
+    // Create start and end range for the exact day to catch timezone offset variations
+    const dayStart = new Date(targetDate);
+    dayStart.setUTCHours(0, 0, 0, 0);
+    const dayEnd = new Date(targetDate);
+    dayEnd.setUTCHours(23, 59, 59, 999);
+
     const [dateRule, totalAreaOffers, merchantSpecificOffers] = await Promise.all([
-      CalendarConfig.findOne({ area_id: targetAreaId, date: targetDate }).lean(),
+      CalendarConfig.findOne({ 
+        $or: [{ area_id: targetAreaId }, { areaId: targetAreaId }], 
+        date: targetDate 
+      }).lean(),
 
       Offer.countDocuments({
         display_type: "calendar",
-        start_date: targetDate,
+        start_date: { $gte: dayStart, $lte: dayEnd },
         is_deleted: false,
         is_active: true,
-        merchant_id: { 
-          $in: await mongoose.model("MerchantShop").find({ area_id: targetAreaId }).distinct("merchantId") 
-        }
+        merchant_id: { $in: areaMerchantIds }
       }),
 
       Offer.countDocuments({
         display_type: "calendar",
-        start_date: targetDate,
+        start_date: { $gte: dayStart, $lte: dayEnd },
         merchant_id: merchantId,
         is_deleted: false,
         is_active: true
@@ -144,7 +156,14 @@ export const getMerchantSlotStatus = async (req, res) => {
 
     const maxAllowedSlots = dateRule ? dateRule.max_allowed_offers : fallbackDefaultLimit;
     const isLockedByAdmin = dateRule ? dateRule.is_locked : false;
-    const slotsRemaining = Math.max(0, maxAllowedSlots - totalAreaOffers);
+    
+    // Fallback sync with current_booked_count if explicitly tracked in CalendarConfig
+    const bookedVolume = Math.max(
+      totalAreaOffers, 
+      dateRule ? dateRule.current_booked_count || 0 : 0
+    );
+    
+    const slotsRemaining = isLockedByAdmin ? 0 : Math.max(0, maxAllowedSlots - bookedVolume);
 
     return res.status(200).json({
       success: true,
@@ -162,9 +181,9 @@ export const getMerchantSlotStatus = async (req, res) => {
         resolved_via: fallbackUsed ? "merchant_shop_fallback" : "explicit_params"
       },
       data: {
-        max_slots: maxAllowedSlots,                 
-        total_booked: totalAreaOffers,              
-        slots_remaining: isLockedByAdmin ? 0 : slotsRemaining, 
+        max_slots: maxAllowedSlots,                    
+        total_booked: bookedVolume,                  
+        slots_remaining: slotsRemaining, 
         merchant_booked_count: merchantSpecificOffers 
       }
     });
@@ -173,7 +192,8 @@ export const getMerchantSlotStatus = async (req, res) => {
     console.error("Merchant Slot Query Coordinates Processing Error:", error);
     return res.status(500).json({
       success: false,
-      message: "An error occurred while compiling regional calendar parameters using geospatial coordinates."
+      message: "An error occurred while compiling regional calendar parameters using geospatial coordinates.",
+      error: error.message
     });
   }
 };
