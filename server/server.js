@@ -119,7 +119,7 @@ app.use('/api/users/shop',userHome);
 app.use('/api/faqs',faqRoutes);
 app.use('/api/admin/product-suggestions',adminProductSuggestionRoutes);
 
-app.use("/api//admin/entity/",imageUpdateRoute)
+app.use("/api/admin/entity/",imageUpdateRoute)
 app.use("/api/admin/offers",adminOfferRoutes)
 app.use("/api/merchant/auth", merchantAuthRoutes);
 app.use("/api/merchants", merchantAuthRoutes);

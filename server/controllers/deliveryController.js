@@ -337,7 +337,7 @@ export const createDeliveryOrder = async (req, res) => {
     }
 
     // 3. Geolocation & Distance Calculation
-    const finalAddress = deliveryAddress || user.address;
+    const finalAddress = deliveryAddress;
     const finalPhone = contactPhone || user.phone || user.mobile;
     const userLat = finalAddress?.latitude ?? user.latitude;
     const userLng = finalAddress?.longitude ?? user.longitude;
@@ -370,7 +370,9 @@ export const createDeliveryOrder = async (req, res) => {
       merchantId,
       gift_product_id: resolvedGiftProductId,
       items: resolvedItems,
-      deliveryAddress: finalAddress,
+      deliveryAddress: {
+        street: finalAddress
+      },
       contactPhone: finalPhone,
       note: note ? note.trim() : "",
       distanceKm,

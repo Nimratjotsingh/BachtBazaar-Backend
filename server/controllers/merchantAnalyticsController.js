@@ -165,23 +165,24 @@ export const getMerchantDailyAnalytics = async (req, res) => {
       .sort({ date: 1 })
       .lean();
 
-    // 4. Compute aggregated totals
+    // Get calculated merchant stats overview (which includes New & Repeat customers)
+    const merchantStatsOverview = await getMerchantStatsOverview(merchantId, startDate);
+
+    // 4. Compute aggregated totals (replacing totalViewers with unique customer metrics in summary)
     const summaryTotals = analyticsLogs.reduce(
       (acc, log) => {
-        acc.totalViewers += log.totalViewers || 0;
         acc.offerClicks += log.offerClicks || 0;
         acc.redeems += log.redeems || 0;
         acc.footfall += log.footfall || 0;
         return acc;
       },
-      { totalViewers: 0, offerClicks: 0, redeems: 0, footfall: 0 }
+      { offerClicks: 0, redeems: 0, footfall: 0 }
     );
 
     // 5. Consolidate logs into day-by-day aggregated user activity profiles
     const formattedLogs = analyticsLogs.map((log) => {
       const userMap = new Map();
 
-      // Helper function to consolidate user records per day
       const processUserArray = (array, flagName, timeField) => {
         (array || []).forEach((item) => {
           if (!item.userId || !item.userId._id) return;
@@ -240,14 +241,13 @@ export const getMerchantDailyAnalytics = async (req, res) => {
       ? ((summaryTotals.footfall / summaryTotals.redeems) * 100).toFixed(1) + "%"
       : "0%";
 
-    // Get calculated merchant stats overview
-    const merchantStatsOverview = await getMerchantStatsOverview(merchantId, startDate);
-
     return res.status(200).json({
       success: true,
       timeframeDays,
       summary: {
         ...summaryTotals,
+        newCustomers: merchantStatsOverview.NEW_CUSTOMERS,
+        repeatCustomers: merchantStatsOverview.REPEAT_CUSTOMERS,
         conversionRates: {
           clickToRedeem: clickToRedeemRate,
           redeemToClaimFootfall: redeemToClaimFootfallRate
