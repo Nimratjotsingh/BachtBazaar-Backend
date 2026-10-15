@@ -93,6 +93,9 @@ export const getAllShops = async (req, res) => {
         } else {
           shop.distanceKm = null;
         }
+
+        // Attach populated merchant blue tick verification status directly onto shop object for easy client access
+        shop.isBlueTickEnabled = shop.merchantId?.isBlueTickEnabled || false;
       });
 
       shops.sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity));
@@ -116,10 +119,8 @@ export const getAllShops = async (req, res) => {
       .sort({ createdAt: -1 })
       .lean();
 
-      // Index current running items safely matching your merchant parameters
       const offersByMerchantMap = {};
       liveOffers.forEach(offer => {
-        // ✓ FIX: Safety check ensures broken/corrupted offer entries do not crash string assignment loops
         if (!offer.merchant_id) return; 
 
         const mId = offer.merchant_id.toString();
@@ -129,12 +130,10 @@ export const getAllShops = async (req, res) => {
         offersByMerchantMap[mId].push(offer);
       });
 
-      // Bind records cleanly back to parent storefront collections objects
       shops.forEach(shop => {
         const actualMerchantId = shop.merchantId?._id || shop.merchantId;
         const lookupKey = actualMerchantId ? actualMerchantId.toString() : null;
         
-        // ✓ FIX: Standardized fallback guarantees structural consistency for your frontend JSON maps
         shop.offers = lookupKey ? (offersByMerchantMap[lookupKey] || []) : [];
       });
     }
@@ -1633,7 +1632,7 @@ export const getNearbyShops15KmForUser = async (req, res) => {
 
     // Fetch candidate list within the bounding box
     const rawShops = await MerchantShop.find(query)
-      .populate("merchantId", "name email profileImage status isBlocked")
+      .populate("merchantId", "name email profileImage status isBlocked isBlueTickEnabled")
       .populate("categoryId", "label")
       .populate("subCategoryId", "label")
       .select("-logo.data -banner.data")
@@ -1699,6 +1698,10 @@ export const getNearbyShops15KmForUser = async (req, res) => {
         if (distanceKm <= effectiveMaxRadius) {
           shop.distanceKm = Number(distanceKm.toFixed(2));
           shop.effectiveRadiusKm = merchantConfiguredRadius;
+          
+          // Attach blue tick verification status directly on the shop object
+          shop.isBlueTickEnabled = shop.merchantId?.isBlueTickEnabled || false;
+
           validShopsInRadius.push(shop);
         }
       }
