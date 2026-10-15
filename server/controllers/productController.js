@@ -625,7 +625,7 @@ export const getPendingProductsAdmin = async (req, res) => {
 export const reviewProductAdmin = async (req, res) => {
   try {
     const { id } = req.params;
-    const { status, rejection_reason } = req.body;
+    const { status, rejection_reason, name, description, price } = req.body;
 
     if (!["approved", "rejected", "pending"].includes(status)) {
       return res.status(400).json({
@@ -641,6 +641,7 @@ export const reviewProductAdmin = async (req, res) => {
       });
     }
 
+    // Base review update payload
     const reviewPayload = {
       approval_status: status,
       approved_by: status === "approved" ? (req.superAdmin?._id || req.admin?._id) : null,
@@ -648,6 +649,19 @@ export const reviewProductAdmin = async (req, res) => {
       rejection_reason: status === "rejected" ? rejection_reason.trim() : "",
       ...(status === "rejected" && { is_active: false }),
     };
+
+    // Include optional quick-edit text fields if provided
+    if (name && name.trim()) reviewPayload.name = name.trim();
+    if (description !== undefined) reviewPayload.description = description.trim();
+    if (price !== undefined && !isNaN(Number(price))) reviewPayload.price = Number(price);
+
+    // 1. Handle Thumbnail Upload (Matching createProduct pattern)
+    if (req.files?.thumbnail) {
+      reviewPayload.thumbnail = `/uploads/${req.files.thumbnail[0].filename}`;
+    } else if (req.file) {
+      // Handles single upload middleware (e.g. upload.single('thumbnail') or upload.single('image'))
+      reviewPayload.thumbnail = req.file.path ? req.file.path : `/uploads/${req.file.filename}`;
+    }
 
     const verifiedProduct = await Product.findOneAndUpdate(
       { _id: id, is_deleted: false },
@@ -663,8 +677,11 @@ export const reviewProductAdmin = async (req, res) => {
       success: true,
       message: `Product has been successfully marked as ${status}.`,
       product: verifiedProduct,
+      data: verifiedProduct, // Compatible with frontend data expectations
+      thumbnail: verifiedProduct.thumbnail
     });
   } catch (error) {
+    console.error("Admin Product Review & Upload Exception:", error);
     return res.status(400).json({ success: false, message: error.message });
   }
 };

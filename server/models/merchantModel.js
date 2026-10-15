@@ -23,6 +23,12 @@ const merchantSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    // --- VERIFIED BADGE / BLUE TICK FEATURE ---
+    isBlueTickEnabled: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
     role: {
       type: String,
       enum: [ROLES.MERCHANT, ROLES.SUPER_ADMIN],

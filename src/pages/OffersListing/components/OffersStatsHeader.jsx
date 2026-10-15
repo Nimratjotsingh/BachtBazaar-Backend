@@ -12,10 +12,8 @@ import {
 } from 'lucide-react';
 
 const OffersStatsHeader = ({ stats, loading, dateRange, setDateRange }) => {
-  // --- Local UI Layout Managers ---
   const [isDateDropdownOpen, setIsDateDropdownOpen] = useState(false);
 
-  // Dynamic trend badge sub-render component
   const TrendBadge = ({ trendData }) => {
     if (!trendData) return null;
     const { value, isPositive } = trendData;
@@ -27,7 +25,6 @@ const OffersStatsHeader = ({ stats, loading, dateRange, setDateRange }) => {
     );
   };
 
-  // Safe fallback wrapper for data nodes to gracefully handle initial rendering delays
   const currentStats = stats || {
     totalOffers: 0,
     activeOffers: 0,
@@ -42,9 +39,9 @@ const OffersStatsHeader = ({ stats, loading, dateRange, setDateRange }) => {
   };
 
   return (
-    <div className="w-full space-y-6 antialiased font-sans text-slate-800 bg-[#FBFBFE]">
+    <div className="w-full space-y-6 antialiased font-sans text-slate-800 bg-transparent">
       
-      {/* --- DASHBOARD BREADCRUMB HEADER --- */}
+      {/* DASHBOARD BREADCRUMB HEADER */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-[#1E293B] tracking-tight">Offers Management</h1>
@@ -55,11 +52,11 @@ const OffersStatsHeader = ({ stats, loading, dateRange, setDateRange }) => {
           </div>
         </div>
 
-        {/* --- DYNAMIC DATE SELECTION DROPDOWN --- */}
+        {/* DATE SELECTION DROPDOWN */}
         <div className="relative">
           <button
             onClick={() => setIsDateDropdownOpen(!isDateDropdownOpen)}
-            className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 hover:border-slate-300 rounded-xl shadow-sm text-xs font-bold text-slate-600 transition-all cursor-pointer"
+            className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 hover:border-slate-300 rounded-xl shadow-xs text-xs font-bold text-slate-600 transition-all cursor-pointer"
           >
             <Calendar size={15} className="text-slate-400" />
             <span>
@@ -94,25 +91,25 @@ const OffersStatsHeader = ({ stats, loading, dateRange, setDateRange }) => {
         </div>
       </div>
 
-      {/* --- STATISTICAL DATAGRID LAYER CARD BLOCKS --- */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-5">
+      {/* STATISTICAL CARDS */}
+      <div className="grid grid-cols-2 md:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-5">
         
         {/* Card 1: Total Offers */}
-        <div className="bg-white p-5 rounded-[20px] border border-slate-100 shadow-sm flex items-center justify-between hover:shadow-md transition-all duration-300 relative overflow-hidden">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-[#EFF6FF] text-[#2563EB] rounded-2xl flex items-center justify-center shadow-sm shrink-0 border border-blue-50">
+        <div className="bg-white p-4 sm:p-5 rounded-[20px] border border-slate-200/80 shadow-xs flex items-center justify-between hover:shadow-md transition-all duration-300">
+          <div className="flex items-center gap-3 sm:gap-4">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-[#EFF6FF] text-[#2563EB] rounded-2xl flex items-center justify-center shadow-xs shrink-0 border border-blue-50">
               <Tag size={20} />
             </div>
             <div>
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Total Offers</p>
+              <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide">Total Offers</p>
               {loading ? (
                 <Loader2 className="animate-spin text-slate-300 mt-1" size={18} />
               ) : (
-                <h3 className="text-2xl font-extrabold text-slate-800 tracking-tight mt-0.5">
+                <h3 className="text-xl sm:text-2xl font-extrabold text-slate-800 tracking-tight mt-0.5">
                   {currentStats.totalOffers.toLocaleString('en-IN')}
                 </h3>
               )}
-              <p className="text-[10px] font-semibold text-slate-400 mt-1">vs last 30 days</p>
+              <p className="text-[9px] sm:text-[10px] font-semibold text-slate-400 mt-0.5">vs last 30 days</p>
             </div>
           </div>
           <div className="self-center">
@@ -121,21 +118,21 @@ const OffersStatsHeader = ({ stats, loading, dateRange, setDateRange }) => {
         </div>
 
         {/* Card 2: Active Offers */}
-        <div className="bg-white p-5 rounded-[20px] border border-slate-100 shadow-sm flex items-center justify-between hover:shadow-md transition-all duration-300 relative overflow-hidden">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-[#ECFDF5] text-[#059669] rounded-2xl flex items-center justify-center shadow-sm shrink-0 border border-emerald-50">
+        <div className="bg-white p-4 sm:p-5 rounded-[20px] border border-slate-200/80 shadow-xs flex items-center justify-between hover:shadow-md transition-all duration-300">
+          <div className="flex items-center gap-3 sm:gap-4">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-[#ECFDF5] text-[#059669] rounded-2xl flex items-center justify-center shadow-xs shrink-0 border border-emerald-50">
               <Gift size={20} />
             </div>
             <div>
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Active Offers</p>
+              <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide">Active Offers</p>
               {loading ? (
                 <Loader2 className="animate-spin text-slate-300 mt-1" size={18} />
               ) : (
-                <h3 className="text-2xl font-extrabold text-slate-800 tracking-tight mt-0.5">
+                <h3 className="text-xl sm:text-2xl font-extrabold text-slate-800 tracking-tight mt-0.5">
                   {currentStats.activeOffers.toLocaleString('en-IN')}
                 </h3>
               )}
-              <p className="text-[10px] font-semibold text-slate-400 mt-1">vs last 30 days</p>
+              <p className="text-[9px] sm:text-[10px] font-semibold text-slate-400 mt-0.5">vs last 30 days</p>
             </div>
           </div>
           <div className="self-center">
@@ -144,21 +141,21 @@ const OffersStatsHeader = ({ stats, loading, dateRange, setDateRange }) => {
         </div>
 
         {/* Card 3: Hot Offers */}
-        <div className="bg-white p-5 rounded-[20px] border border-slate-100 shadow-sm flex items-center justify-between hover:shadow-md transition-all duration-300 relative overflow-hidden">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-[#F5F3FF] text-[#7C3AED] rounded-2xl flex items-center justify-center shadow-sm shrink-0 border border-purple-50">
+        <div className="bg-white p-4 sm:p-5 rounded-[20px] border border-slate-200/80 shadow-xs flex items-center justify-between hover:shadow-md transition-all duration-300">
+          <div className="flex items-center gap-3 sm:gap-4">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-[#F5F3FF] text-[#7C3AED] rounded-2xl flex items-center justify-center shadow-xs shrink-0 border border-purple-50">
               <Flame size={20} />
             </div>
             <div>
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Hot Offers</p>
+              <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide">Hot Offers</p>
               {loading ? (
                 <Loader2 className="animate-spin text-slate-300 mt-1" size={18} />
               ) : (
-                <h3 className="text-2xl font-extrabold text-slate-800 tracking-tight mt-0.5">
+                <h3 className="text-xl sm:text-2xl font-extrabold text-slate-800 tracking-tight mt-0.5">
                   {currentStats.hotOffers.toLocaleString('en-IN')}
                 </h3>
               )}
-              <p className="text-[10px] font-semibold text-slate-400 mt-1">vs last 30 days</p>
+              <p className="text-[9px] sm:text-[10px] font-semibold text-slate-400 mt-0.5">vs last 30 days</p>
             </div>
           </div>
           <div className="self-center">
@@ -167,30 +164,27 @@ const OffersStatsHeader = ({ stats, loading, dateRange, setDateRange }) => {
         </div>
 
         {/* Card 4: Offers Redeemed */}
-        <div className="bg-white p-5 rounded-[20px] border border-slate-100 shadow-sm flex items-center justify-between hover:shadow-md transition-all duration-300 relative overflow-hidden">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-[#FFF7ED] text-[#EA580C] rounded-2xl flex items-center justify-center shadow-sm shrink-0 border border-orange-50">
+        <div className="bg-white p-4 sm:p-5 rounded-[20px] border border-slate-200/80 shadow-xs flex items-center justify-between hover:shadow-md transition-all duration-300">
+          <div className="flex items-center gap-3 sm:gap-4">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-[#FFF7ED] text-[#EA580C] rounded-2xl flex items-center justify-center shadow-xs shrink-0 border border-orange-50">
               <TicketCheck size={20} />
             </div>
             <div>
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Offers Redeemed</p>
+              <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide">Offers Redeemed</p>
               {loading ? (
                 <Loader2 className="animate-spin text-slate-300 mt-1" size={18} />
               ) : (
-                <h3 className="text-2xl font-extrabold text-slate-800 tracking-tight mt-0.5">
+                <h3 className="text-xl sm:text-2xl font-extrabold text-slate-800 tracking-tight mt-0.5">
                   {currentStats.offersRedeemed.toLocaleString('en-IN')}
                 </h3>
               )}
-              <p className="text-[10px] font-semibold text-slate-400 mt-1">vs last 30 days</p>
+              <p className="text-[9px] sm:text-[10px] font-semibold text-slate-400 mt-0.5">vs last 30 days</p>
             </div>
           </div>
           <div className="self-center">
             {!loading && <TrendBadge trendData={currentStats.trends?.redeemed} />}
           </div>
         </div>
-
-        {/* Card 5: Grid Layout Spacer Placeholder Box */}
-        <div className="hidden xl:block bg-gradient-to-br from-slate-50/40 to-slate-100/20 border border-dashed border-slate-200 rounded-[20px] shadow-sm relative overflow-hidden" />
 
       </div>
     </div>

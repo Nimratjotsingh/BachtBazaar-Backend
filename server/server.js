@@ -72,6 +72,7 @@ import adminTagSuggestion from './routes/adminTagSuggestionRoutes.js';
 import tagSuggestionRoutes from './routes/tagSuggestionRoute.js';
 import callbackRoutes from './routes/callbackRoutes.js';
 import adminCallbackRoutes from './routes/adminCallbackRoutes.js';
+import imageUpdateRoute from './routes/imageUpdateRoutes.js';
 
 import adminOfferRoutes from './routes/adminOfferRoutes.js'
 
@@ -118,7 +119,7 @@ app.use('/api/users/shop',userHome);
 app.use('/api/faqs',faqRoutes);
 app.use('/api/admin/product-suggestions',adminProductSuggestionRoutes);
 
-
+app.use("/api//admin/entity/",imageUpdateRoute)
 app.use("/api/admin/offers",adminOfferRoutes)
 app.use("/api/merchant/auth", merchantAuthRoutes);
 app.use("/api/merchants", merchantAuthRoutes);
@@ -136,6 +137,7 @@ app.use("/api/merchants/shop", merchantShopRoutes);
 app.use("/api/categories", categoryRoutes);
 app.use('/api/offer-types', offerType)
 app.use("/api/admin", adminRoutes);
+
 app.use("/api/profile", profileRoutes);
 app.use("/api/kyc", kycRoutes);
 app.use('/api/templates',templateRoute);

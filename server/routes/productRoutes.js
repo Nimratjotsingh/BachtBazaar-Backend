@@ -24,7 +24,7 @@ router.get("/", protectMerchant,listProducts);
 router.get('/all',listProductsAll)
 
 router.get("/review-queue", protectSuperAdmin, getPendingProductsAdmin);
-router.patch("/:id/review", protectSuperAdmin, reviewProductAdmin);
+router.patch("/:id/review",protectSuperAdmin,upload.fields([{name:"thumbnail",maxCount:1}]), reviewProductAdmin);
 
 router.get("/suggestions", protectMerchant, getProductSuggestionsForMerchant);
 

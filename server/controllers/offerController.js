@@ -1001,6 +1001,8 @@ export const getActiveOffersForToday = async (req, res) => {
 // ==========================================
 
 // --- 1. Read Master Offers Queue (Admin Dashboard view) ---
+
+
 export const getAllOffersAdmin = async (req, res) => {
   try {
     const { 
@@ -1008,67 +1010,153 @@ export const getAllOffersAdmin = async (req, res) => {
       limit = 10, 
       search = "", 
       display_type, 
-      status // e.g. 'active' or 'expired'
+      status, // 'active' | 'scheduled' | 'expired' | 'paused' | 'draft'
+      category_id,
+      merchant_id,
+      startDate,
+      endDate
     } = req.query;
 
-    // Base query filter tracking non-deleted system entries
-    let query = { is_deleted: false };
+    const andConditions = [{ is_deleted: false }];
 
-    // Handle optional text queries matching title parameters or tag flags
+    // 1. Text Search across Title, Description, and Tags
     if (search && search.trim() !== "") {
-      const searchRegex = new RegExp(search.trim(), "i");
-      query.$or = [
-        { title: { $regex: searchRegex } },
-        { description: { $regex: searchRegex } },
-        { tags: { $in: [search.trim().toLowerCase()] } }
-      ];
+      const cleanSearch = search.trim();
+      const searchRegex = new RegExp(cleanSearch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+      andConditions.push({
+        $or: [
+          { title: { $regex: searchRegex } },
+          { description: { $regex: searchRegex } },
+          { tags: { $in: [new RegExp(cleanSearch, "i")] } }
+        ]
+      });
     }
 
-    // Apply layout presentation constraints if passed
+    // 2. Placement Layout Filtering
     if (display_type && display_type !== "all") {
-      query.display_type = display_type;
+      andConditions.push({ display_type });
     }
 
-    // Filter by live temporal execution timelines
+    // 3. Category & Merchant Relational Filters
+    if (category_id && mongoose.Types.ObjectId.isValid(category_id)) {
+      andConditions.push({
+        $or: [
+          { category_id: category_id },
+          { offer_type_id: category_id }
+        ]
+      });
+    }
+
+    if (merchant_id && mongoose.Types.ObjectId.isValid(merchant_id)) {
+      andConditions.push({ merchant_id });
+    }
+
+    // 4. Temporal & Lifecycle Status Filtering
     const now = new Date();
+
     if (status === "active") {
-      query.is_active = true;
-      query.start_date = { $lte: now };
-      query.end_date = { $gte: now };
+      andConditions.push({
+        is_active: true,
+        is_paused: false,
+        is_draft: false,
+        start_date: { $lte: now },
+        end_date: { $gte: now }
+      });
+    } else if (status === "scheduled") {
+      andConditions.push({
+        is_active: true,
+        is_paused: false,
+        is_draft: false,
+        start_date: { $gt: now }
+      });
     } else if (status === "expired") {
-      query.$or = [
-        { is_active: false },
-        { end_date: { $lt: now } }
-      ];
+      andConditions.push({
+        $or: [
+          { is_active: false },
+          { end_date: { $lt: now } }
+        ]
+      });
+    } else if (status === "paused") {
+      andConditions.push({ is_paused: true });
+    } else if (status === "draft") {
+      andConditions.push({ is_draft: true });
     }
 
-    const skip = (Math.max(1, Number(page)) - 1) * Number(limit);
+    // 5. Date Range Filtering (Inclusive)
+    if (startDate && endDate) {
+      const start = new Date(startDate);
+      start.setUTCHours(0, 0, 0, 0);
 
-    // Run parallel aggregation tasks to prevent bottleneck queries
+      const end = new Date(endDate);
+      end.setUTCHours(23, 59, 59, 999);
+
+      andConditions.push({
+        createdAt: { $gte: start, $lte: end }
+      });
+    }
+
+    const query = { $and: andConditions };
+
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 10));
+    const skip = (pageNum - 1) * limitNum;
+
+    // Concurrently fetch records and count
     const [offers, totalCount] = await Promise.all([
       Offer.find(query)
-        .populate("merchant_id", "name email phone logo")
-        .populate("offer_type_id", "label value")
+        .populate({
+          path: "merchant_id",
+          select: "name email phone city isVerified isBlueTickEnabled status deliveryPricing"
+        })
+        .populate({
+          path: "offer_type_id",
+          select: "label value icon"
+        })
+        .populate({
+          path: "category_id",
+          select: "label name value image"
+        })
+        .populate({
+          path: "sub_offer_type_id",
+          select: "label value icon"
+        })
+        .populate({
+          path: "product_id",
+          select: "name price discounted_price thumbnail sku"
+        })
         .sort({ createdAt: -1 })
         .skip(skip)
-        .limit(Number(limit)),
+        .limit(limitNum)
+        .lean(),
       Offer.countDocuments(query)
     ]);
 
-    res.status(200).json({
+    const totalPages = Math.ceil(totalCount / limitNum) || 1;
+
+    return res.status(200).json({
       success: true,
       count: offers.length,
+      total: totalCount,
+      pages: totalPages,
       pagination: {
+        total: totalCount,
         totalItems: totalCount,
-        totalPages: Math.ceil(totalCount / limit) || 1,
-        currentPage: Number(page)
+        totalPages,
+        pages: totalPages,
+        currentPage: pageNum,
+        page: pageNum,
+        limit: limitNum
       },
       data: offers
     });
 
   } catch (error) {
     console.error("Admin Catalog Retrieval Error:", error);
-    res.status(500).json({ success: false, message: error.message });
+    return res.status(500).json({ 
+      success: false, 
+      message: "An internal server error occurred while retrieving offers.", 
+      error: error.message 
+    });
   }
 };
 

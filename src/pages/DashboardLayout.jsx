@@ -36,7 +36,13 @@ const navItems = [
   { label: "Areas", to: "/dashboard/area", icon: Building2Icon },
   { label: "Calender", to: "/dashboard/calendar", icon: Calendar },
   { label: "Product", to: "/dashboard/products", icon: ToyBrick },
+  { label: "Product Suggestions", to: "/dashboard/product-suggestions", icon: MessageSquareCheck },
+  { label: "Service Verification Suggestions", to: "/dashboard/service-verification-suggestions", icon: MessageSquareCheck },
+  { label: "Service Suggestions", to: "/dashboard/service-suggestions", icon: MessageSquareCheck },
+  { label: "Tag Suggestions", to: "/dashboard/tag-suggestions", icon: MessageSquareCheck },
   { label: "Offers", to: "/dashboard/offers", icon: LucideActivity },
+  { label: "Offer Reviews from Merchants", to: "/dashboard/offer-reviews", icon: MessageSquareCheck },
+    { label: "Offer Review", to: "/dashboard/offer-review", icon: MessageSquareCheck },
   { label: "AdminBanner", to: "/dashboard/adminbanner", icon: LucideActivity },
   { label: "Banner Types", to: "/dashboard/bannerTypes", icon: LucideActivity },
   { label: "Quick Offer Merchant Bid", to: "/dashboard/quickOffer", icon: LucideActivity },
@@ -48,13 +54,13 @@ const navItems = [
     { label: "Quest", to: "/dashboard/quest", icon: Coins },
     { label: "Help & Support", to: "/dashboard/help-support", icon: Coins },
     { label: "QR Template Management", to: "/dashboard/qr-template", icon: Coins },
-    { label: "Offer Reviews from Merchants", to: "/dashboard/offer-reviews", icon: MessageSquareCheck },
-    { label: "Product Suggestions", to: "/dashboard/product-suggestions", icon: MessageSquareCheck },
-    { label: "Service Suggestions", to: "/dashboard/service-suggestions", icon: MessageSquareCheck },
-    { label: "Service Verification Suggestions", to: "/dashboard/service-verification-suggestions", icon: MessageSquareCheck },
-    { label: "Tag Suggestions", to: "/dashboard/tag-suggestions", icon: MessageSquareCheck },
+    
+    
+    
+    
+    
     { label: "callbacks", to: "/dashboard/callback", icon: MessageSquareCheck },
-    { label: "Offer Review", to: "/dashboard/offer-review", icon: MessageSquareCheck },
+  
   
   
 ];

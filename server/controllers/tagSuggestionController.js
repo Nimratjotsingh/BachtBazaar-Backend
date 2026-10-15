@@ -81,31 +81,49 @@ export const getAllTagSuggestions = async (req, res) => {
     if (category_id) filter.category_id = category_id;
     if (subcategory_id) filter.subcategory_id = subcategory_id;
     if (typeof is_active !== "undefined") filter.is_active = is_active === "true";
-    if (search) {
+    if (search && search.trim()) {
       filter.tags = { $in: [new RegExp(search.trim(), "i")] };
     }
 
-    const skip = (Number(page) - 1) * Number(limit);
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 10));
+    const skip = (pageNum - 1) * limitNum;
 
     const [items, total] = await Promise.all([
       TagSuggestion.find(filter)
-        .populate("category_id", "name")
-        .populate("subcategory_id", "name")
+        .populate("category_id", "label name value")
+        .populate("subcategory_id", "label name value")
         .sort({ createdAt: -1 })
         .skip(skip)
-        .limit(Number(limit))
+        .limit(limitNum)
         .lean(),
       TagSuggestion.countDocuments(filter),
     ]);
 
+    // Format items to explicitly surface category_name & subcategory_name
+    const formattedData = items.map((item) => {
+      // Handles both direct object references and array-wrapped references
+      const cat = Array.isArray(item.category_id) ? item.category_id[0] : item.category_id;
+      const subCat = Array.isArray(item.subcategory_id) ? item.subcategory_id[0] : item.subcategory_id;
+
+      const categoryName = cat?.label || cat?.name || "General";
+      const subcategoryName = subCat?.label || subCat?.name || "Universal";
+
+      return {
+        ...item,
+        category_name: categoryName,
+        subcategory_name: subcategoryName,
+      };
+    });
+
     return res.status(200).json({
       success: true,
-      data: items,
+      data: formattedData,
       meta: {
         total,
-        page: Number(page),
-        limit: Number(limit),
-        totalPages: Math.ceil(total / Number(limit)),
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum) || 1,
       },
     });
   } catch (error) {

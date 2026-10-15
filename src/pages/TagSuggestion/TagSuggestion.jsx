@@ -45,6 +45,8 @@ const TagSuggestionAdminPage = ({ token }) => {
         accountClient.get("/subcategories", { headers }),
       ]);
 
+      console.log(suggRes)
+
       setSuggestions(suggRes.data.data || suggRes.data.suggestions || []);
       setCategories(catRes.data.categories || catRes.data || []);
       setSubCategories(subRes.data.subCategories || subRes.data || []);

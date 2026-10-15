@@ -1,6 +1,7 @@
 import MerchantShop from "../models/merchantShopModel.js";
 import MerchantPersonalDoc from "../models/merchantPersonalDocModel.js";
 import MerchantBusinessDoc from "../models/merchantBusinessDocModel.js";
+import mongoose from 'mongoose'
 
 // List all merchants (with pagination, search, filters)
 export const listMerchants = async (req, res) => {
@@ -153,6 +154,66 @@ export const updateMerchant = async (req, res) => {
       return res.status(400).json({ message: error.message });
     }
     return res.status(500).json({ message: "Failed to update merchant" });
+  }
+};
+
+export const updateMerchantBlueTick = async (req, res) => {
+  try {
+    const { merchantId } = req.params;
+    const { isBlueTickEnabled } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(merchantId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid Merchant ID parameter format.",
+      });
+    }
+
+    const merchant = await Merchant.findOne({ _id: merchantId, isDeleted: false });
+    if (!merchant) {
+      return res.status(404).json({
+        success: false,
+        message: "Merchant profile not found or account has been deleted.",
+      });
+    }
+
+    // Determine target state: if provided explicitly, parse it; otherwise toggle current value
+    let targetStatus;
+    if (isBlueTickEnabled !== undefined && isBlueTickEnabled !== null) {
+      if (typeof isBlueTickEnabled === "string") {
+        targetStatus = isBlueTickEnabled.toLowerCase() === "true";
+      } else {
+        targetStatus = Boolean(isBlueTickEnabled);
+      }
+    } else {
+      targetStatus = !merchant.isBlueTickEnabled;
+    }
+
+    merchant.isBlueTickEnabled = targetStatus;
+    await merchant.save();
+
+    return res.status(200).json({
+      success: true,
+      message: targetStatus
+        ? `Verified blue tick badge granted to ${merchant.name || "merchant"}.`
+        : `Verified blue tick badge revoked from ${merchant.name || "merchant"}.`,
+      data: {
+        _id: merchant._id,
+        name: merchant.name,
+        phone: merchant.phone,
+        email: merchant.email,
+        isVerified: merchant.isVerified,
+        isBlueTickEnabled: merchant.isBlueTickEnabled,
+        status: merchant.status,
+      },
+    });
+  } catch (error) {
+    console.error("Update Merchant Blue Tick Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "An internal server error occurred while updating the verification badge.",
+      error: error.message,
+    });
   }
 };
 

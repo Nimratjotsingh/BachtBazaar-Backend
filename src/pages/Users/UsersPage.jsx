@@ -4,21 +4,28 @@ import {
   Search, RotateCcw, Ban, Trash2, 
   ChevronLeft, ChevronRight, ShieldAlert, Loader2,
   X, Mail, MapPin, Calendar, Smartphone, Eye, 
-  User as UserIcon, ShieldCheck, Hash, UserCircle, AlertCircle
+  User as UserIcon, ShieldCheck, Hash, UserCircle, AlertCircle,
+  Download, Maximize2
 } from "lucide-react";
 import UserIntelligenceDashboard from "./components/UserInetelligenceDashboard";
 import UserDetailsSidebar from "./components/UserDetailedSidebar";
 
 // --- Helper: Convert Buffer to Base64 ---
 const getImageUrl = (imageObj) => {
-  if (!imageObj || !imageObj.data || !imageObj.data.data) return null;
-  const base64String = btoa(
-    new Uint8Array(imageObj.data.data).reduce(
-      (data, byte) => data + String.fromCharCode(byte),
-      ''
-    )
-  );
-  return `data:${imageObj.contentType};base64,${base64String}`;
+  if (!imageObj) return null;
+  if (typeof imageObj === "string" && imageObj.trim().length > 0) return imageObj;
+  if (!imageObj.data || !imageObj.data.data) return null;
+  try {
+    const base64String = btoa(
+      new Uint8Array(imageObj.data.data).reduce(
+        (data, byte) => data + String.fromCharCode(byte),
+        ''
+      )
+    );
+    return `data:${imageObj.contentType};base64,${base64String}`;
+  } catch (err) {
+    return null;
+  }
 };
 
 // --- Sub-Component: Info Card ---
@@ -51,6 +58,9 @@ function UsersPage({ token }) {
   const [banReasonInput, setBanReasonInput] = useState("");
   const [submittingAction, setSubmittingAction] = useState(false);
 
+  // Fullscreen Image Lightbox Modal State
+  const [lightboxImage, setLightboxImage] = useState(null); // { src, label }
+
   const headers = useMemo(() => buildAuthHeaders(token), [token]);
 
   const loadUsers = async () => {
@@ -60,11 +70,11 @@ function UsersPage({ token }) {
         headers,
         params: { page, limit: 10, search }
       });
-      setItems(response.data.users || []);
-      setTotalPages(response.data.pages || 1);
+      setItems(response.data.users || response.data.data || []);
+      setTotalPages(response.data.pages || response.data.totalPages || 1);
       
       if (selectedUser) {
-        const freshUserData = (response.data.users || []).find(u => u._id === selectedUser._id);
+        const freshUserData = (response.data.users || response.data.data || []).find(u => u._id === selectedUser._id);
         if (freshUserData) setSelectedUser(freshUserData);
       }
     } catch (err) {
@@ -90,15 +100,12 @@ function UsersPage({ token }) {
     }
   };
 
-  // Triggers the decision flow step logic safely
   const handleSecurityStatusToggle = () => {
     if (selectedUser.status === "banned") {
-      // If user is already banned, unban directly without asking for a justification reason
       runAction(() => 
         adminClient.put(`/users/${selectedUser._id}/status`, { status: "active" }, { headers })
       );
     } else {
-      // Open the administrative reason context input modal overlay
       setBanReasonInput("");
       setIsBanModalOpen(true);
     }
@@ -150,8 +157,9 @@ function UsersPage({ token }) {
             <p className="text-xl font-black text-slate-900">{items.length * totalPages}</p>
           </div>
           <button 
-            onClick={() => {setSearch(""); setPage(1); loadUsers();}} 
+            onClick={() => { setSearch(""); setPage(1); loadUsers(); }} 
             className="p-4 bg-white border border-slate-200 rounded-2xl hover:bg-slate-50 text-indigo-600 transition shadow-sm cursor-pointer"
+            title="Refresh Users"
           >
             <RotateCcw size={20} />
           </button>
@@ -211,7 +219,20 @@ function UsersPage({ token }) {
                     <tr key={user._id} className="group hover:bg-indigo-50/30 transition-all">
                       <td className="px-10 py-6">
                         <div className="flex items-center gap-5">
-                          <div className="h-14 w-14 rounded-2xl bg-white border border-slate-200 overflow-hidden flex items-center justify-center text-indigo-600 font-black text-xl shadow-sm group-hover:border-indigo-200 group-hover:scale-105 transition-all">
+                          {/* Interactive Avatar with Hover Zoom Trigger */}
+                          <div 
+                            onClick={() => {
+                              if (userImg) {
+                                setLightboxImage({ src: userImg, label: `${user.name} - Profile Photo` });
+                              }
+                            }}
+                            className={`relative h-14 w-14 rounded-2xl bg-white border border-slate-200 overflow-hidden flex items-center justify-center text-indigo-600 font-black text-xl shadow-sm transition-all ${
+                              userImg 
+                                ? "cursor-zoom-in hover:ring-2 hover:ring-indigo-500 hover:scale-105" 
+                                : ""
+                            }`}
+                            title={userImg ? "Click to inspect fullscreen" : ""}
+                          >
                             {userImg ? (
                               <img src={userImg} alt={user.name} className="w-full h-full object-cover" />
                             ) : (
@@ -248,11 +269,13 @@ function UsersPage({ token }) {
 
         {/* --- Platform Pagination --- */}
         <div className="bg-slate-50/80 px-10 py-6 flex items-center justify-between border-t border-slate-100">
-           <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Identities {((page - 1) * 10) + 1} - {page * items.length}</span>
-           <div className="flex gap-3">
-             <button disabled={page === 1} onClick={() => setPage(p => p - 1)} className="p-3 bg-white border border-slate-200 rounded-xl disabled:opacity-30 hover:bg-slate-50 shadow-sm transition-all cursor-pointer"><ChevronLeft size={20}/></button>
-             <button disabled={page === totalPages} onClick={() => setPage(p => p + 1)} className="p-3 bg-white border border-slate-200 rounded-xl disabled:opacity-30 hover:bg-slate-50 shadow-sm transition-all cursor-pointer"><ChevronRight size={20}/></button>
-           </div>
+          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+            Showing Page {page} of {totalPages}
+          </span>
+          <div className="flex gap-3">
+            <button disabled={page === 1} onClick={() => setPage(p => p - 1)} className="p-3 bg-white border border-slate-200 rounded-xl disabled:opacity-30 hover:bg-slate-50 shadow-sm transition-all cursor-pointer"><ChevronLeft size={20}/></button>
+            <button disabled={page === totalPages} onClick={() => setPage(p => p + 1)} className="p-3 bg-white border border-slate-200 rounded-xl disabled:opacity-30 hover:bg-slate-50 shadow-sm transition-all cursor-pointer"><ChevronRight size={20}/></button>
+          </div>
         </div>
       </div>
 
@@ -272,13 +295,29 @@ function UsersPage({ token }) {
               </button>
             </div>
 
-            {/* Profile Avatar Section */}
+            {/* Profile Avatar Section with Lightbox Zoom Click */}
             <div className="relative group">
               <div className="absolute -inset-1 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-[3rem] blur opacity-20 group-hover:opacity-40 transition duration-1000"></div>
               <div className="relative flex flex-col items-center p-10 bg-white rounded-[2.8rem] border border-slate-100 shadow-xl">
-                <div className="h-28 w-28 rounded-[2.2rem] bg-indigo-600 overflow-hidden flex items-center justify-center text-white text-5xl font-black mb-6 shadow-2xl shadow-indigo-200 ring-8 ring-indigo-50">
+                <div 
+                  onClick={() => {
+                    const userImg = getImageUrl(selectedUser.profileImage);
+                    if (userImg) {
+                      setLightboxImage({ src: userImg, label: `${selectedUser.name} - Profile Photo` });
+                    }
+                  }}
+                  className={`h-28 w-28 rounded-[2.2rem] bg-indigo-600 overflow-hidden flex items-center justify-center text-white text-5xl font-black mb-6 shadow-2xl shadow-indigo-200 ring-8 ring-indigo-50 relative group/avatar ${
+                    getImageUrl(selectedUser.profileImage) ? "cursor-zoom-in" : ""
+                  }`}
+                  title={getImageUrl(selectedUser.profileImage) ? "Click to inspect fullscreen" : ""}
+                >
                   {getImageUrl(selectedUser.profileImage) ? (
-                    <img src={getImageUrl(selectedUser.profileImage)} alt={selectedUser.name} className="w-full h-full object-cover" />
+                    <>
+                      <img src={getImageUrl(selectedUser.profileImage)} alt={selectedUser.name} className="w-full h-full object-cover transition-transform duration-300 group-hover/avatar:scale-110" />
+                      <div className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover/avatar:opacity-100 transition-opacity flex items-center justify-center">
+                        <Maximize2 size={24} className="text-white" />
+                      </div>
+                    </>
                   ) : (
                     selectedUser.name?.[0]?.toUpperCase()
                   )}
@@ -328,28 +367,28 @@ function UsersPage({ token }) {
 
             {/* Platform Security Console */}
             <div className="bg-slate-900 rounded-[2.5rem] p-8 space-y-6 shadow-2xl">
-               <div className="space-y-1">
-                  <h4 className="text-white font-black text-lg">Security Console</h4>
-                  <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">Administrative Enforcement</p>
-               </div>
-               
-               <div className="flex gap-4">
-                  <button 
-                    onClick={handleSecurityStatusToggle}
-                    className={`flex-1 flex flex-col items-center justify-center gap-3 py-6 rounded-3xl border-2 transition-all cursor-pointer ${selectedUser.status === 'banned' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-500 hover:bg-emerald-600 hover:text-white hover:border-emerald-600' : 'border-rose-500/30 bg-rose-500/10 text-rose-500 hover:bg-rose-500 hover:text-white hover:border-rose-500'}`}
-                  >
-                    <Ban size={24}/> 
-                    <span className="text-[10px] font-black uppercase tracking-widest">{selectedUser.status === 'banned' ? 'Revoke Ban' : 'Enforce Ban'}</span>
-                  </button>
-                  
-                  <button 
-                    onClick={() => { if(window.confirm("FATAL ACTION: Delete identity permanently?")) runAction(() => adminClient.delete(`/users/${selectedUser._id}`, { headers })).then(() => setIsDrawerOpen(false)); }}
-                    className="w-24 flex flex-col items-center justify-center gap-3 py-6 border-2 border-white/10 rounded-3xl text-white/30 hover:bg-rose-600 hover:text-white hover:border-rose-600 transition-all cursor-pointer"
-                  >
-                    <Trash2 size={24}/>
-                    <span className="text-[10px] font-black uppercase tracking-widest">Delete User</span>
-                  </button>
-               </div>
+              <div className="space-y-1">
+                <h4 className="text-white font-black text-lg">Security Console</h4>
+                <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">Administrative Enforcement</p>
+              </div>
+              
+              <div className="flex gap-4">
+                <button 
+                  onClick={handleSecurityStatusToggle}
+                  className={`flex-1 flex flex-col items-center justify-center gap-3 py-6 rounded-3xl border-2 transition-all cursor-pointer ${selectedUser.status === 'banned' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-500 hover:bg-emerald-600 hover:text-white hover:border-emerald-600' : 'border-rose-500/30 bg-rose-500/10 text-rose-500 hover:bg-rose-500 hover:text-white hover:border-rose-500'}`}
+                >
+                  <Ban size={24}/> 
+                  <span className="text-[10px] font-black uppercase tracking-widest">{selectedUser.status === 'banned' ? 'Revoke Ban' : 'Enforce Ban'}</span>
+                </button>
+                
+                <button 
+                  onClick={() => { if(window.confirm("FATAL ACTION: Delete identity permanently?")) runAction(() => adminClient.delete(`/users/${selectedUser._id}`, { headers })).then(() => setIsDrawerOpen(false)); }}
+                  className="w-24 flex flex-col items-center justify-center gap-3 py-6 border-2 border-white/10 rounded-3xl text-white/30 hover:bg-rose-600 hover:text-white hover:border-rose-600 transition-all cursor-pointer"
+                >
+                  <Trash2 size={24}/>
+                  <span className="text-[10px] font-black uppercase tracking-widest">Delete User</span>
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -410,7 +449,53 @@ function UsersPage({ token }) {
           </form>
         </div>
       )}
-      {/* <UserDetailsSidebar /> */}
+
+      {/* =========================================================
+          FULLSCREEN IMAGE LIGHTBOX MODAL
+         ========================================================= */}
+      {lightboxImage && (
+        <div className="fixed inset-0 z-[300] bg-slate-950/95 backdrop-blur-md flex flex-col items-center justify-center p-4 animate-in fade-in duration-200">
+          {/* Lightbox Controls Toolbar */}
+          <div className="absolute top-4 inset-x-4 flex items-center justify-between z-10 max-w-5xl mx-auto">
+            <span className="text-white font-black text-sm uppercase tracking-wider truncate max-w-md bg-black/40 px-4 py-2 rounded-xl border border-white/10 backdrop-blur-sm">
+              {lightboxImage.label}
+            </span>
+            <div className="flex items-center gap-2">
+              <a
+                href={lightboxImage.src}
+                download={`${lightboxImage.label || 'user-profile'}.jpg`}
+                target="_blank"
+                rel="noreferrer"
+                className="p-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl transition border border-white/10 cursor-pointer"
+                title="Download Full Resolution Asset"
+              >
+                <Download size={18} />
+              </a>
+              <button
+                onClick={() => setLightboxImage(null)}
+                className="p-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl transition border border-white/10 cursor-pointer"
+                title="Close Fullscreen View"
+              >
+                <X size={18} />
+              </button>
+            </div>
+          </div>
+
+          {/* Scaled Centered Image */}
+          <div 
+            className="w-full h-full flex items-center justify-center p-4 max-w-5xl max-h-[85vh]"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setLightboxImage(null);
+            }}
+          >
+            <img
+              src={lightboxImage.src}
+              alt={lightboxImage.label}
+              className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl border border-white/10 select-none animate-in zoom-in-95 duration-200"
+            />
+          </div>
+        </div>
+      )}
 
       {/* --- Backdrop Blur for Drawer --- */}
       {isDrawerOpen && <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[90] animate-in fade-in" onClick={() => setIsDrawerOpen(false)} />}
