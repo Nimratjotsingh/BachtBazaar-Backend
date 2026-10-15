@@ -167,7 +167,7 @@ export const getUserDeliveryFeeEstimate = async (req, res) => {
     const pricing = merchant.deliveryPricing || {};
     const baseFee = pricing.baseFee ?? 20;
     const standardRate = pricing.ratePerKm ?? 10;
-    const minimumFee = pricing.minimumDeliveryFee ?? 20;
+    const minimumFee = pricing.ratePerKm ?? 20;
 
     const night = pricing.nightConfig || {};
     const peak = pricing.peakConfig || {};
