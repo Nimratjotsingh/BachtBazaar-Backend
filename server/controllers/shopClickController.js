@@ -66,9 +66,9 @@ import { trackOfferRedemption } from "../utils/offerRedeemTracker.js";
 /**
  * Records a successful offer redemption by a user at a merchant/shop.
  */
-export const recordOfferRedemptionUser = async (req, res) => {
+export const recordOfferRedemptionUserOnly = async (req, res) => {
   try {
-    const { offerId,  shopId,redemptionCode } = req.body;
+    const { offerId,  shopId } = req.body;
     const userId = req.user?._id; // Authenticated merchant or staff
 
     if (!offerId ) {
@@ -88,7 +88,7 @@ export const recordOfferRedemptionUser = async (req, res) => {
       offerId, 
       offer.merchant_id, 
       userId,
-      redemptionCode,  
+       
       shopId || null
     );
 
@@ -107,10 +107,10 @@ export const recordOfferRedemption = async (req, res) => {
     const { offerId, userId,  shopId,redemptionCode } = req.body;
     const merchantId = req.merchant?._id; // Authenticated merchant or staff
 
-    if (!offerId || !userId || !redemptionCode) {
+    if (!offerId || !userId) {
       return res.status(400).json({
         success: false,
-        message: "Missing required redemption parameters (offerId, userId, redemptionCode).",
+        message: "Missing required redemption parameters (offerId, userId).",
       });
     }
 

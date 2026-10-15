@@ -8,9 +8,9 @@ import OfferRedeem from "../models/offerRedeemModel.js";
  * @param {String} redemptionCode 
  * @param {String|ObjectId} [shopId=null] 
  */
-export const trackOfferRedemption = async (offerId, merchantId, userId, redemptionCode, shopId = null) => {
+export const trackOfferRedemption = async (offerId, merchantId, userId,  shopId = null) => {
   try {
-    if (!offerId || !merchantId || !userId || !redemptionCode) return;
+    if (!offerId || !merchantId || !userId ) return;
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
