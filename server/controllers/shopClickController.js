@@ -68,7 +68,7 @@ import { trackOfferRedemption } from "../utils/offerRedeemTracker.js";
  */
 export const recordOfferRedemptionUser = async (req, res) => {
   try {
-    const { offerId,  shopId } = req.body;
+    const { offerId,  shopId,redemptionCode } = req.body;
     const userId = req.user?._id; // Authenticated merchant or staff
 
     if (!offerId ) {
@@ -87,7 +87,8 @@ export const recordOfferRedemptionUser = async (req, res) => {
     await trackOfferRedemption(
       offerId, 
       offer.merchant_id, 
-      userId,  
+      userId,
+      redemptionCode,  
       shopId || null
     );
 
@@ -103,7 +104,7 @@ export const recordOfferRedemptionUser = async (req, res) => {
 
 export const recordOfferRedemption = async (req, res) => {
   try {
-    const { offerId, userId,  shopId } = req.body;
+    const { offerId, userId,  shopId,redemptionCode } = req.body;
     const merchantId = req.merchant?._id; // Authenticated merchant or staff
 
     if (!offerId || !userId || !redemptionCode) {
@@ -123,6 +124,7 @@ export const recordOfferRedemption = async (req, res) => {
       offerId, 
       merchantId || offer.merchant_id, 
       userId, 
+      redemptionCode,
        
       shopId || null
     );
