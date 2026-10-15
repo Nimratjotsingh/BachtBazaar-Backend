@@ -228,11 +228,11 @@ export const claimOfferInStore = async (req, res) => {
     await onOfferClaimedHook(req.merchant._id, userId);
 
 
-    await trackDailyMetric2( offer.merchant_id, "redeems", { userId: req.user._id, offerId, redemptionCode });
+    //await trackDailyMetric2( offer.merchant_id, "redeems", { userId: req.user._id, offerId, redemptionCode });
   
-    await trackOfferMetric(offerId, req.merchant._id, "claims", { userId: userId, code });
-    await trackOfferMetric(offerId, req.merchant._id, "footfall", { userId: userId, code });
-    await onFootfallVisitHook(req.merchant._id, userId);
+     await trackOfferMetric(offerId, req.merchant._id, "claims", { userId: userId, code });
+     await trackOfferMetric(offerId, req.merchant._id, "footfall", { userId: userId, code });
+    // await onFootfallVisitHook(req.merchant._id, userId);
    
 
     return res.status(200).json({

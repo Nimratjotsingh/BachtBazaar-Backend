@@ -71,7 +71,7 @@ export const getAllShops = async (req, res) => {
     const total = await MerchantShop.countDocuments(query);
     
     const shops = await MerchantShop.find(query)
-      .populate("merchantId", "name email profileImage")
+      .populate("merchantId", "name email profileImage isBlueTickEnabled")
       .populate("categoryId", "label")
       .populate("subCategoryId", "label")
       .select("-logo.data -banner.data")
@@ -295,7 +295,7 @@ export const getShopDetails = async (req, res) => {
     const shopDoc = await MerchantShop.findById(id)
       .populate(
         "merchantId",
-        "name email phone profileImage status isBlocked isDeliveryEnabled deliveryPricing"
+        "name email phone profileImage status isBlocked isDeliveryEnabled isBlueTickEnabled deliveryPricing"
       )
       .populate("categoryId", "label")
       .populate("subCategoryId", "label")
