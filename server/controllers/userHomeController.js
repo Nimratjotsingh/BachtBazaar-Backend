@@ -1580,8 +1580,7 @@ export const getNearbyShops15KmForUser = async (req, res) => {
     ) {
       return res.status(400).json({
         success: false,
-        message:
-          "Please update your profile location or enable device GPS to discover nearby shops.",
+        message: "Please update your profile location or enable device GPS to discover nearby shops.",
       });
     }
 
@@ -1589,7 +1588,6 @@ export const getNearbyShops15KmForUser = async (req, res) => {
     const FALLBACK_DEFAULT_RADIUS_KM = 15;
     const MAX_SEARCH_CEILING_KM = 50;
 
-    // Hierarchy: Query param (?radius / ?distance) -> User's configured defaultRadius -> Global fallback (15km)
     const userConfiguredRadius = Number(req.user.defaultRadius);
     const parsedQueryRadius = Number(radius ?? distance);
 
@@ -1602,7 +1600,6 @@ export const getNearbyShops15KmForUser = async (req, res) => {
       targetUserRadiusKm = FALLBACK_DEFAULT_RADIUS_KM;
     }
 
-    // Expand bounding box dynamically to match whichever radius is larger
     const boundingRadiusKm = Math.max(targetUserRadiusKm, FALLBACK_DEFAULT_RADIUS_KM);
 
     const kmPerDegreeLat = 111.1;
@@ -1611,9 +1608,16 @@ export const getNearbyShops15KmForUser = async (req, res) => {
     const latDelta = boundingRadiusKm / kmPerDegreeLat;
     const lngDelta = boundingRadiusKm / kmPerDegreeLng;
 
+    const now = new Date();
+
+    // 3. Build Query Filter (Excluding Force-Closed Shops)
     const query = {
       latitude: { $gte: centerLat - latDelta, $lte: centerLat + latDelta },
       longitude: { $gte: centerLng - lngDelta, $lte: centerLng + lngDelta },
+      $or: [
+        { "manualOverride.status": { $ne: "FORCE_CLOSED" } },
+        { "manualOverride.status": "FORCE_CLOSED", "manualOverride.closedUntil": { $ne: null, $lte: now } }
+      ]
     };
 
     if (search) {
@@ -1647,7 +1651,7 @@ export const getNearbyShops15KmForUser = async (req, res) => {
       });
     }
 
-    // 3. Haversine Calculation (User Radius vs Merchant Visibility Radius)
+    // 4. Haversine Calculation & Secondary Status Filter
     const validShopsInRadius = [];
 
     rawShops.forEach((shop) => {
@@ -1658,6 +1662,13 @@ export const getNearbyShops15KmForUser = async (req, res) => {
         shop.merchantId?.isBlocked === true
       ) {
         return;
+      }
+
+      // Double-check manual override status in-memory for safety
+      if (shop.manualOverride?.status === "FORCE_CLOSED") {
+        if (!shop.manualOverride.closedUntil || now < new Date(shop.manualOverride.closedUntil)) {
+          return; // Skip force closed shops
+        }
       }
 
       if (shop.latitude !== null && shop.longitude !== null) {
@@ -1680,11 +1691,9 @@ export const getNearbyShops15KmForUser = async (req, res) => {
         const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
         const distanceKm = R * c;
 
-        // Respect the merchant's configured visibility limit
         const merchantConfiguredRadius =
           Number(shop.visibilityRadiusKm) || FALLBACK_DEFAULT_RADIUS_KM;
 
-        // Effective reach is the intersection of both the user's radius and the merchant's radius
         const effectiveMaxRadius = Math.min(targetUserRadiusKm, merchantConfiguredRadius);
 
         if (distanceKm <= effectiveMaxRadius) {
@@ -1698,14 +1707,12 @@ export const getNearbyShops15KmForUser = async (req, res) => {
     // Sort closest proximity first
     validShopsInRadius.sort((a, b) => a.distanceKm - b.distanceKm);
 
-    // 4. Pagination slice
+    // 5. Pagination slice
     const totalWithinRadius = validShopsInRadius.length;
     const paginatedShops = validShopsInRadius.slice(skip, skip + currentLimit);
 
-    // 5. Wishlist, Offers & Live Status Stitching
+    // 6. Wishlist, Offers & Live Status Stitching
     if (paginatedShops.length > 0) {
-      const now = new Date();
-
       const merchantIds = paginatedShops
         .map((shop) => shop.merchantId?._id || shop.merchantId)
         .filter(Boolean);
@@ -1715,7 +1722,7 @@ export const getNearbyShops15KmForUser = async (req, res) => {
         Offer.find({
           merchant_id: { $in: merchantIds },
           is_active: true,
-          is_paused:false,
+          is_paused: false,
           is_deleted: false,
           start_date: { $lte: now },
           $or: [
