@@ -287,6 +287,8 @@ export const requestFssaiVerification = async (req, res) => {
  */
 
 
+import MerchantVerificationLog from "../models/MerchantVerificationLogModel.js";
+
 export const checkTaskStatus = async (req, res) => {
   try {
     const { requestId } = req.params;
@@ -422,7 +424,66 @@ export const checkTaskStatus = async (req, res) => {
       { new: true, upsert: true }
     );
 
-    // 5. Build clean, sanitized response payload
+    // =========================================================================
+    // 5. EXTRACT NAME, DOCUMENT NUMBER & DOB ACROSS DIFFERENT ID TYPES
+    // =========================================================================
+    let extractedName = null;
+    let extractedDocNumber = null;
+    let extractedDob = null;
+
+    if (taskResult.type === "ind_pan") {
+      extractedName = taskResult.registeredName || taskResult.sourceOutput?.input_details?.input_name || null;
+      extractedDocNumber = taskResult.panNumber || null;
+      extractedDob = taskResult.sourceOutput?.input_details?.input_dob || null;
+    } else if (taskResult.type === "ind_driving_license") {
+      extractedName = taskResult.holderName || null;
+      extractedDocNumber = taskResult.dlNumber || null;
+      extractedDob = taskResult.dateOfBirth || null;
+    } else if (taskResult.type === "ind_gst_certificate") {
+      extractedName = taskResult.legalName || taskResult.tradeName || null;
+      extractedDocNumber = taskResult.gstin || null;
+    } else if (taskResult.type === "ind_fssai") {
+      extractedName = taskResult.companyName || null;
+      extractedDocNumber = taskResult.licenseNumber || null;
+    } else if (taskResult.type === "ind_aadhaar") {
+      extractedName = taskResult.name || null;
+    }
+
+    // Fallback search in raw response if specific fields weren't caught
+    if (!extractedDocNumber) {
+      extractedDocNumber = 
+        taskResult.panNumber || 
+        taskResult.licenseNumber || 
+        taskResult.dlNumber || 
+        taskResult.gstin || 
+        null;
+    }
+
+    // =========================================================================
+    // 6. SAVE INTO THE VERIFICATION LOG MODEL WITH EXTRACTED FIELDS
+    // =========================================================================
+    await MerchantVerificationLog.findOneAndUpdate(
+      { requestId },
+      {
+        merchantId,
+        requestId,
+        taskId: taskResult.taskId || null,
+        groupId: taskResult.groupId || null,
+        type: taskResult.type,
+        status: taskResult.status,
+        action: taskResult.action || "verify_with_source",
+        isValid: isVerified,
+        name: extractedName,
+        documentNumber: extractedDocNumber,
+        dob: extractedDob,
+        resultOutput: taskResult.sourceOutput || taskResult.rawResponse?.result?.source_output || {},
+        rawApiResponse: taskResult.rawResponse || {},
+        completedAt: taskResult.completedAt ? new Date(taskResult.completedAt) : new Date(),
+      },
+      { upsert: true, new: true }
+    );
+
+    // 7. Build clean, sanitized response payload
     const responseData = {
       type: taskResult.type,
       status: taskResult.status,

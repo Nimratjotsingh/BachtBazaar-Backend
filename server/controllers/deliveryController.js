@@ -167,7 +167,7 @@ export const getUserDeliveryFeeEstimate = async (req, res) => {
     const pricing = merchant.deliveryPricing || {};
     const baseFee = pricing.baseFee ?? 20;
     const standardRate = pricing.ratePerKm ?? 10;
-    const minimumFee = pricing.ratePerKm ?? 20;
+    let minimumFee = pricing.ratePerKm ?? 20;
 
     const night = pricing.nightConfig || {};
     const peak = pricing.peakConfig || {};
@@ -179,11 +179,13 @@ export const getUserDeliveryFeeEstimate = async (req, res) => {
 
     if (night.isEnabled && isTimeInWindow(night.startTime, night.endTime, now)) {
       appliedRatePerKm = night.ratePerKm ?? standardRate;
+      minimumFee= night.ratePerKm ?? standardRate
       flatSurcharge = night.flatSurcharge ?? 0;
       tierApplied = "NIGHT";
       tierReason = `Night hours delivery rate applied (${night.startTime} - ${night.endTime})`;
     } else if (peak.isEnabled && isTimeInWindow(peak.startTime, peak.endTime, now)) {
       appliedRatePerKm = peak.ratePerKm ?? standardRate;
+      minimumFee= peak.ratePerKm ?? standardRate
       flatSurcharge = peak.flatSurcharge ?? 0;
       tierApplied = "PEAK";
       tierReason = `Peak rush hours rate applied (${peak.startTime} - ${peak.endTime})`;

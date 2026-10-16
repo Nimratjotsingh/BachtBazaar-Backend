@@ -2,6 +2,7 @@ import MerchantShop from "../models/merchantShopModel.js";
 import MerchantPersonalDoc from "../models/merchantPersonalDocModel.js";
 import MerchantBusinessDoc from "../models/merchantBusinessDocModel.js";
 import mongoose from 'mongoose'
+import MerchantVerificationLog from "../models/MerchantVerificationLogModel.js";
 
 // List all merchants (with pagination, search, filters)
 export const listMerchants = async (req, res) => {
@@ -132,7 +133,16 @@ export const getAdminShopDetailById = async (req, res) => {
       });
     }
 
-    // 2. Robustly format opening hours for all 7 days of the week
+    // 2. Fetch merchant verification logs if merchantId exists
+    let verificationLogs = [];
+    const merchantId = shop.merchantId?._id || shop.merchantId;
+    if (merchantId) {
+      verificationLogs = await MerchantVerificationLog.find({ merchantId })
+        .sort({ createdAt: -1 })
+        .lean();
+    }
+
+    // 3. Robustly format opening hours for all 7 days of the week
     const standardDays = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
     const formattedOpeningHours = {};
 
@@ -154,14 +164,14 @@ export const getAdminShopDetailById = async (req, res) => {
       };
     });
 
-    // 3. Compute live open status
+    // 4. Compute live open status
     const shopDoc = new MerchantShop(shop);
     const liveStatus = shopDoc.calculateIsOpen(new Date());
 
-    // 4. Construct unified response payload with formatted base64 images
+    // 5. Construct unified response payload with base64 images and verification logs
     return res.status(200).json({
       success: true,
-      message: "Merchant shop dossier retrieved successfully.",
+      message: "Merchant shop dossier and verification logs retrieved successfully.",
       data: {
         shopInfo: {
           _id: shop._id,
@@ -193,6 +203,7 @@ export const getAdminShopDetailById = async (req, res) => {
           weeklySchedule: formattedOpeningHours,
         },
         merchantProfile: shop.merchantId || null,
+        verificationLogs: verificationLogs, // Attached merchant verification records
         timestamps: {
           createdAt: shop.createdAt,
           updatedAt: shop.updatedAt,

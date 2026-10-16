@@ -4,7 +4,7 @@ import { accountClient, buildAuthHeaders } from "../../lib/api";
 import { 
   Store, User, Mail, Phone, MapPin, Clock, ShieldCheck, 
   Sliders, Loader2, AlertCircle, ArrowLeft, Navigation, Radio, 
-  ExternalLink, Maximize2, Image as ImageIcon, Download, X
+  ExternalLink, Maximize2, Image as ImageIcon, Download, X, FileCheck, CheckCircle2, XCircle, Tag, Calendar
 } from "lucide-react";
 
 const AdminShopDetailView = ({ token }) => {
@@ -62,7 +62,7 @@ const AdminShopDetailView = ({ token }) => {
     );
   }
 
-  const { shopInfo, taxonomy, operationalStatus, merchantProfile, timestamps } = shopData;
+  const { shopInfo, taxonomy, operationalStatus, merchantProfile, verificationLogs = [], timestamps } = shopData;
   const { latitude, longitude } = shopInfo.coordinates || {};
 
   // Standardized week structure ensuring all 7 days display correctly
@@ -86,7 +86,7 @@ const AdminShopDetailView = ({ token }) => {
               <Store className="text-indigo-600" size={26} /> {shopInfo.shopName}
             </h1>
             <p className="text-slate-400 text-xs font-medium mt-0.5">
-              Comprehensive Storefront Audit Dossier & Operational Controls
+              Comprehensive Storefront Audit Dossier & Regulatory Compliance
             </p>
           </div>
         </div>
@@ -104,7 +104,7 @@ const AdminShopDetailView = ({ token }) => {
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         
-        {/* LEFT COLUMN: MEDIA ASSETS, LOCATION, & TAXONOMY */}
+        {/* LEFT COLUMN: MEDIA ASSETS, LOCATION, TIMINGS, & VERIFICATION AUDIT LOGS */}
         <div className="lg:col-span-8 space-y-6">
           
           {/* --- STORE MEDIA ASSETS CAROUSEL / GRID --- */}
@@ -231,9 +231,82 @@ const AdminShopDetailView = ({ token }) => {
             </div>
           </div>
 
+          {/* --- GOVERNMENT & REGULATORY VERIFICATION AUDIT LOGS --- */}
+          <div className="bg-white p-6 rounded-[24px] border border-slate-200/80 shadow-xs space-y-4">
+            <h3 className="text-xs font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
+              <FileCheck size={15} className="text-indigo-600" /> Regulatory Verification Audit Logs (IDfy)
+            </h3>
+
+            {verificationLogs.length === 0 ? (
+              <p className="text-xs font-medium text-slate-400 italic py-4 text-center bg-slate-50 rounded-2xl border border-slate-100">
+                No government verification audit logs recorded for this merchant profile yet.
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {verificationLogs.map((log, idx) => (
+                  <div key={log._id || idx} className="p-4 bg-slate-50 rounded-2xl border border-slate-200/70 space-y-3 text-xs">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="font-black uppercase tracking-wider text-indigo-900 bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-100 text-[10px]">
+                          {log.type}
+                        </span>
+                        <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider ${
+                          log.isValid ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-rose-50 text-rose-700 border border-rose-200"
+                        }`}>
+                          {log.isValid ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
+                          {log.isValid ? "Verified Valid" : "Verification Failed"}
+                        </span>
+                      </div>
+                      <span className="text-[10px] font-mono text-slate-400">
+                        {log.completedAt ? new Date(log.completedAt).toLocaleString("en-IN") : "Pending"}
+                      </span>
+                    </div>
+
+                    {/* Extracted Top-Level Details (Name, Document Number, DOB) */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 p-3 bg-white rounded-xl border border-slate-200/80">
+                      <div>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase block">Entity Name</span>
+                        <strong className="text-slate-800 text-xs">{log.name || "N/A"}</strong>
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase block">Document Number</span>
+                        <strong className="font-mono text-indigo-600 text-xs">{log.documentNumber || "N/A"}</strong>
+                      </div>
+                      {/* <div>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase block">Date of Birth / Reg.</span>
+                        <strong className="font-mono text-slate-800 text-xs">{log.dob || "N/A"}</strong>
+                      </div> */}
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 font-mono text-[11px] text-slate-600">
+                      <div><strong className="text-slate-400 font-sans">Request ID:</strong> {log.requestId}</div>
+                      <div><strong className="text-slate-400 font-sans">Status:</strong> {log.status}</div>
+                    </div>
+
+                    {/* Result Output Details */}
+                    {log.resultOutput && Object.keys(log.resultOutput).length > 0 && (
+                      <div className="mt-2 p-2.5 bg-white rounded-xl border border-slate-200 text-[11px] font-mono text-slate-700 space-y-1">
+                        <span className="text-[10px] font-black font-sans uppercase text-slate-400 block mb-1">Registry Output Summary</span>
+                        {Object.entries(log.resultOutput).map(([key, val], i) => {
+                          if (typeof val === "object" && val !== null) return null;
+                          return (
+                            <div key={i} className="flex justify-between border-b border-slate-50 py-0.5">
+                              <span className="text-slate-400">{key}:</span>
+                              <span className="font-bold text-slate-800 truncate max-w-[250px]">{String(val)}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
         </div>
 
-        {/* RIGHT COLUMN: MERCHANT PROFILE, READ-ONLY OVERRIDE STATUS, & TIMESTAMPS */}
+        {/* RIGHT COLUMN: MERCHANT PROFILE, OVERRIDE STATUS, & TIMESTAMPS */}
         <div className="lg:col-span-4 space-y-6">
           
           {/* --- READ-ONLY OPERATIONAL OVERRIDE STATUS BOX --- */}

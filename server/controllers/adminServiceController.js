@@ -83,7 +83,14 @@ export const getServiceDetailsAdmin = async (req, res) => {
 export const verifyServiceListing = async (req, res) => {
   try {
     const { id } = req.params;
-    const { action, rejection_reason, addToMasterCatalog = true } = req.body;
+    const { 
+      action, 
+      rejection_reason, 
+      addToMasterCatalog = true, 
+      title, 
+      description, 
+      price 
+    } = req.body;
 
     if (!["approve", "reject"].includes(action)) {
       return res.status(400).json({
@@ -108,6 +115,23 @@ export const verifyServiceListing = async (req, res) => {
       service.approval_status = "approved";
       service.is_active = true;
       service.rejection_reason = null;
+
+      // --- APPLY OPTIONAL ADMIN EDITS IF PROVIDED ---
+      if (title !== undefined && title.trim() !== "") {
+        service.title = title.trim();
+      }
+      if (description !== undefined && description.trim() !== "") {
+        service.description = description.trim();
+      }
+      if (price !== undefined && !isNaN(price)) {
+        service.price = Number(price);
+      }
+
+      // --- HANDLE OPTIONAL IMAGE/THUMBNAIL REPLACEMENT VIA MULTER ---
+      if (req.file) {
+        // Adjust property based on whether you save file path, url, or buffer
+        service.thumbnail  = `/uploads/${req.file.filename}`;;
+      }
 
       // Update or promote the associated reference in master suggestions
       if (service.service_id) {
@@ -137,6 +161,7 @@ export const verifyServiceListing = async (req, res) => {
       service,
     });
   } catch (error) {
+    console.error("Verify Service Listing Error:", error);
     return res.status(500).json({
       success: false,
       message: "Failed to update service status.",

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import {
+import { 
   ShieldCheck, CheckCircle2, XCircle, Clock, Search, Filter,
   RefreshCw, Eye, ArrowLeft, Image as ImageIcon, User, Tag,
   Layers, DollarSign, Briefcase, Award, AlertCircle, Check,
@@ -76,9 +76,9 @@ const ServiceVerificationManager = ({ token }) => {
       if (thumbnailFile) {
         formData.append("thumbnail", thumbnailFile);
       }
-      if (updatedData.name) formData.append("name", updatedData.name);
+      if (updatedData.name) formData.append("title", updatedData.name);
       if (updatedData.description) formData.append("description", updatedData.description);
-      if (updatedData.price) formData.append("price", updatedData.price);
+      if (updatedData.price !== undefined) formData.append("price", updatedData.price);
 
       const res = await accountClient.patch(
         `/admin/services/${serviceId}/verify`,
@@ -92,12 +92,16 @@ const ServiceVerificationManager = ({ token }) => {
       );
 
       if (res.data.success) {
-        const updatedObj = res.data.data || {
+        const updatedService = res.data.service || {};
+        const updatedObj = {
           ...selectedService,
           approval_status: "approved",
           is_active: true,
           rejection_reason: null,
-          ...(thumbnailFile ? { thumbnail: res.data.thumbnail || selectedService.thumbnail } : {})
+          name: updatedService.title || updatedData.name || selectedService?.name,
+          description: updatedService.description || updatedData.description || selectedService?.description,
+          price: updatedService.price !== undefined ? updatedService.price : (updatedData.price ?? selectedService?.price),
+          thumbnail: updatedService.thumbnail || selectedService?.thumbnail,
         };
 
         setServices((prev) =>
@@ -381,9 +385,9 @@ const ServiceVerificationManager = ({ token }) => {
                   No services found under the current filter selection.
                 </div>
               ) : (
-                filteredServices.map((service) => (
+                filteredServices.map((service, idx) => (
                   <div
-                    key={service._id}
+                    key={`${service._id || 'grid-srv'}-${idx}`}
                     onClick={() => openServiceDetails(service)}
                     className="bg-white rounded-[24px] border border-slate-200/80 shadow-xs overflow-hidden flex flex-col justify-between group hover:border-blue-300 hover:shadow-md transition-all duration-300 cursor-pointer"
                   >
@@ -498,7 +502,7 @@ const ServiceVerificationManager = ({ token }) => {
                                 {service.service_provider.name}
                               </p>
                               <p className="text-slate-400 text-[10px] leading-tight truncate">
-                                {service.service_provider.designation || "Assigned Specialist"} • {service.service_provider.experience || 0} yrs exp
+                                {service.service_provider.designation || "Specialist"} • {service.service_provider.experience || 0} yrs exp
                               </p>
                             </div>
                           </div>
@@ -603,9 +607,9 @@ const ServiceVerificationManager = ({ token }) => {
                         </td>
                       </tr>
                     ) : (
-                      filteredServices.map((service) => (
+                      filteredServices.map((service, idx) => (
                         <tr 
-                          key={service._id} 
+                          key={`${service._id || 'tbl-srv'}-${idx}`}
                           onClick={() => openServiceDetails(service)}
                           className="hover:bg-slate-50/60 transition-colors group cursor-pointer"
                         >
@@ -875,7 +879,7 @@ const ServiceDetailsView = ({
               </button>
               <button
                 onClick={() => {
-                  if (isEditing) {
+                  if (isEditing || newThumbnailFile) {
                     handleSaveAndApprove();
                   } else {
                     onApprove(service._id, null, {});
@@ -885,7 +889,7 @@ const ServiceDetailsView = ({
                 className="flex items-center gap-1.5 px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition cursor-pointer disabled:opacity-50"
               >
                 {actionLoading ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
-                {isEditing ? "Save Edits & Approve" : "Approve & Publish"}
+                {isEditing || newThumbnailFile ? "Save Edits & Approve" : "Approve & Publish"}
               </button>
             </>
           ) : (
@@ -943,6 +947,7 @@ const ServiceDetailsView = ({
 
             {thumbnailPreviewUrl && (
               <button
+                type="button"
                 onClick={() => onOpenLightbox(thumbnailPreviewUrl, `${service.name} - Asset Preview`)}
                 className="flex items-center gap-1.5 px-3.5 py-2 bg-black/60 hover:bg-black/80 text-white rounded-xl backdrop-blur-md text-xs font-bold transition cursor-pointer shadow-lg"
               >
@@ -1086,7 +1091,7 @@ const ServiceDetailsView = ({
                   {service.service_provider.specialisation?.length > 0 && (
                     <div className="flex gap-1.5 flex-wrap pt-1">
                       {service.service_provider.specialisation.map((spec, i) => (
-                        <span key={i} className="px-2 py-0.5 bg-blue-50 border border-blue-100 text-blue-700 rounded-md text-[10px] font-bold">
+                        <span key={`spec-${i}`} className="px-2 py-0.5 bg-blue-50 border border-blue-100 text-blue-700 rounded-md text-[10px] font-bold">
                           {spec}
                         </span>
                       ))}

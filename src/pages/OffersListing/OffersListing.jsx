@@ -68,10 +68,6 @@ const AdminOffersDashboard = ({ token }) => {
 
       const res = await accountClient.get("/offers/stats-summary", {
         headers,
-        params: {
-          startDate: dateRange.startDate,
-          endDate: dateRange.endDate,
-        },
       });
 
       if (res.data.success) {

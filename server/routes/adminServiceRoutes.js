@@ -22,7 +22,7 @@ router.use(protectSuperAdmin);
 
 router.get("/", getAllServicesAdmin);
 router.get("/:id", getServiceDetailsAdmin);
-router.patch("/:id/verify", verifyServiceListing);
+router.patch("/:id/verify", upload.single("thumbnail"),verifyServiceListing);
 router.put("/:id", serviceUploadFields, updateServiceAdmin);
 router.delete("/:id", deleteServiceAdmin);
 
