@@ -89,6 +89,20 @@ const convertToBase64 = (file) => {
   return `data:${file.contentType};base64,${file.data.toString("base64")}`;
 };
 
+// Helper to convert Mongoose buffer image schema to base64 data URI string
+const formatBufferImage = (imageObj) => {
+  if (!imageObj || !imageObj.data) return "";
+  try {
+    const buffer = Buffer.isBuffer(imageObj.data) 
+      ? imageObj.data 
+      : Buffer.from(imageObj.data.buffer || imageObj.data);
+    const contentType = imageObj.contentType || "image/jpeg";
+    return `data:${contentType};base64,${buffer.toString("base64")}`;
+  } catch (e) {
+    console.error("Buffer image conversion error:", e);
+    return "";
+  }
+};
 
 export const getAdminShopDetailById = async (req, res) => {
   try {
@@ -133,11 +147,10 @@ export const getAdminShopDetailById = async (req, res) => {
         }
       }
 
-      // Ensure every day has a safe fallback structure
       formattedOpeningHours[day] = {
         open: dayData?.open || "09:00",
         close: dayData?.close || "21:00",
-        isClosed: dayData?.isClosed ?? (dayData ? false : true), // Default to closed if missing
+        isClosed: dayData?.isClosed ?? (dayData ? false : true),
       };
     });
 
@@ -145,7 +158,7 @@ export const getAdminShopDetailById = async (req, res) => {
     const shopDoc = new MerchantShop(shop);
     const liveStatus = shopDoc.calculateIsOpen(new Date());
 
-    // 4. Construct unified response payload
+    // 4. Construct unified response payload with formatted base64 images
     return res.status(200).json({
       success: true,
       message: "Merchant shop dossier retrieved successfully.",
@@ -163,6 +176,10 @@ export const getAdminShopDetailById = async (req, res) => {
           visibilityRadiusKm: shop.visibilityRadiusKm || 15,
           description: shop.description || "",
           phone: shop.phone || "",
+          // --- CONVERTED BUFFER IMAGES TO BASE64 STRINGS ---
+          logoUrl: formatBufferImage(shop.logo),
+          bannerUrl: formatBufferImage(shop.banner),
+          storeFrontUrl: formatBufferImage(shop.storeFront),
         },
         taxonomy: {
           category: shop.categoryId || null,
@@ -173,7 +190,7 @@ export const getAdminShopDetailById = async (req, res) => {
           reason: liveStatus.reason,
           isManualOverride: liveStatus.isManualOverride,
           manualOverrideConfig: shop.manualOverride || { status: "AUTO" },
-          weeklySchedule: formattedOpeningHours, // Guaranteed 7 days object
+          weeklySchedule: formattedOpeningHours,
         },
         merchantProfile: shop.merchantId || null,
         timestamps: {

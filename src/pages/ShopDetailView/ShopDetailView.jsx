@@ -115,7 +115,7 @@ const AdminShopDetailView = ({ token }) => {
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               {[
-                { label: "Store Facade / Photo", src: shopInfo.storeFrontUrl || shopInfo.logoUrl },
+                { label: "Store Facade / Photo", src: shopInfo.storeFrontUrl },
                 { label: "Banner Artwork", src: shopInfo.bannerUrl },
                 { label: "Brand Logo", src: shopInfo.logoUrl },
               ].map((asset, i) => (
