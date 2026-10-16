@@ -78,9 +78,9 @@ const OffersManagementGrid = ({
             { label: "Scheduled", key: "scheduled", count: offers.filter(o => o.status === 'scheduled').length },
             { label: "Expired", key: "expired", count: offers.filter(o => o.status === 'expired').length },
             { label: "Paused", key: "paused", count: offers.filter(o => o.status === 'paused').length }
-          ].map((tab) => (
+          ].map((tab, idx) => (
             <button
-              key={tab.key}
+              key={`${tab.key}-${idx}`}
               onClick={() => handleTabSwitch(tab.key)}
               className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
                 activeTab === tab.key 
@@ -116,7 +116,7 @@ const OffersManagementGrid = ({
               className="px-2.5 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-600 outline-none cursor-pointer hover:border-slate-300"
             >
               <option value="">Categories</option>
-              {categoriesList.map(c => <option key={c._id} value={c._id}>{c.label}</option>)}
+              {categoriesList.map((c, idx) => <option key={`${c._id || 'cat'}-${idx}`} value={c._id}>{c.label}</option>)}
             </select>
 
             <select 
@@ -125,7 +125,7 @@ const OffersManagementGrid = ({
               className="px-2.5 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-600 outline-none cursor-pointer hover:border-slate-300"
             >
               <option value="">Merchants</option>
-              {merchantsList.map(m => <option key={m._id} value={m._id}>{m.name}</option>)}
+              {merchantsList.map((m, idx) => <option key={`${m._id || 'mer'}-${idx}`} value={m._id}>{m.name}</option>)}
             </select>
 
             <button 
@@ -179,9 +179,9 @@ const OffersManagementGrid = ({
                 No campaign offers matched your filtered parameters.
               </div>
             ) : (
-              offers.map((offer) => (
+              offers.map((offer, idx) => (
                 <div
-                  key={offer._id}
+                  key={`${offer._id || 'offer'}-${idx}`}
                   onClick={() => onActionTrigger && onActionTrigger("inspect_offer_row", offer)}
                   className={`bg-white rounded-[24px] border transition-all duration-300 overflow-hidden group cursor-pointer flex flex-col justify-between ${
                     selectedOfferDetail?._id === offer._id 
@@ -296,9 +296,9 @@ const OffersManagementGrid = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50 text-xs font-semibold">
-                {offers.map((offer) => (
+                {offers.map((offer, idx) => (
                   <tr 
-                    key={offer._id} 
+                    key={`${offer._id || 'tbl-offer'}-${idx}`}
                     onClick={() => onActionTrigger && onActionTrigger("inspect_offer_row", offer)}
                     className={`transition-colors border-b border-slate-100 cursor-pointer ${selectedOfferDetail?._id === offer._id ? "bg-indigo-50/40" : "hover:bg-slate-50/60"}`}
                   >
@@ -306,7 +306,6 @@ const OffersManagementGrid = ({
                       <div className="flex items-center gap-3">
                         <div 
                           onClick={(e) => {
-                            console.log(offer)
                             if (offer.thumbnail) {
                               e.stopPropagation();
                               onActionTrigger && onActionTrigger("open_lightbox", { src: offer.thumbnail, label: `${offer.title} - Banner` });
@@ -508,7 +507,7 @@ const OffersManagementGrid = ({
               </div>
               <div className="space-y-3">
                 {topPerforming.map((top, idx) => (
-                  <div key={top._id || idx} className="flex items-center justify-between gap-2 p-2 bg-slate-50/50 border border-slate-100 rounded-xl">
+                  <div key={`${top._id || 'top-offer'}-${idx}`} className="flex items-center justify-between gap-2 p-2 bg-slate-50/50 border border-slate-100 rounded-xl">
                     <div className="flex items-center gap-2.5 min-w-0">
                       <span className="text-xs font-black text-slate-400 w-4">{idx + 1}</span>
                       <div className="w-8 h-8 rounded-lg bg-slate-900 overflow-hidden shrink-0 border border-slate-800 p-0.5">
