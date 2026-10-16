@@ -16,6 +16,7 @@ import { protectMerchant } from "../middleware/authMiddleware.js";
 import {protectSuperAdmin} from '../middleware/superAuthMiddleware.js';
 import upload from '../middleware/uploadSec.js'
 import { createProductSuggestion, getProductSuggestionsForMerchant } from "../controllers/productSuggestionController.js";
+import { toggleProductToSuggestion } from "../controllers/adminProductSuggestionController.js";
 
 const router = express.Router();
 
@@ -24,6 +25,7 @@ router.get("/", protectMerchant,listProducts);
 router.get('/all',listProductsAll)
 
 router.get("/review-queue", protectSuperAdmin, getPendingProductsAdmin);
+router.patch("/:productId/toggle-suggestion", protectSuperAdmin,toggleProductToSuggestion);
 router.patch("/:id/review",protectSuperAdmin,upload.fields([{name:"thumbnail",maxCount:1}]), reviewProductAdmin);
 
 router.get("/suggestions", protectMerchant, getProductSuggestionsForMerchant);

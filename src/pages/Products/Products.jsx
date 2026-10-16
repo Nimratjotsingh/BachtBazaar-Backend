@@ -4,7 +4,7 @@ import {
   Loader2, ChevronLeft, ChevronRight, MessageSquare, Tag, Info, 
   RotateCcw, Eye, Store, Package, Scale, Droplets, Calendar, 
   ExternalLink, IndianRupee, Image as ImageIcon, CheckCircle2, XCircle,
-  LayoutGrid, List, Maximize2, Download, Upload, Edit3, Save
+  LayoutGrid, List, Maximize2, Download, Upload, Edit3, Save, Sparkles
 } from "lucide-react";
 import { accountClient, buildAuthHeaders } from "../../lib/api";
 
@@ -106,7 +106,6 @@ const AdminProductDashboard = ({ token }) => {
       formData.append("status", status);
       if (reason) formData.append("rejection_reason", reason);
       if (thumbnailFile) {
-        // Explicitly matches Multer single upload field name expected on backend
         formData.append("thumbnail", thumbnailFile);
       }
       if (updatedData.name) formData.append("name", updatedData.name);
@@ -131,7 +130,6 @@ const AdminProductDashboard = ({ token }) => {
         ...updatedData
       };
 
-      // Update state locally if the product is being viewed in drawer
       if (inspectedProduct && inspectedProduct._id === productId) {
         setInspectedProduct(prev => ({
           ...prev,
@@ -268,9 +266,9 @@ const AdminProductDashboard = ({ token }) => {
               <p className="text-sm">No product entities matched current criteria.</p>
             </div>
           ) : (
-            products.map((product) => (
+            products.map((product, idx) => (
               <div
-                key={product._id}
+                key={`${product._id || 'prod'}-${idx}`}
                 onClick={() => handleOpenDetails(product)}
                 className="bg-white rounded-[24px] border border-slate-200/80 hover:border-blue-300 shadow-xs hover:shadow-md transition-all duration-300 overflow-hidden group cursor-pointer flex flex-col justify-between"
               >
@@ -448,8 +446,8 @@ const AdminProductDashboard = ({ token }) => {
                     </td>
                   </tr>
                 ) : (
-                  products.map((product) => (
-                    <tr key={product._id} className="hover:bg-slate-50/40 transition-colors">
+                  products.map((product, idx) => (
+                    <tr key={`${product._id || 'tbl-prod'}-${idx}`} className="hover:bg-slate-50/40 transition-colors">
                       {/* Particulars */}
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-4">
@@ -605,6 +603,7 @@ const AdminProductDashboard = ({ token }) => {
           activeGalleryImage={activeGalleryImage}
           setActiveGalleryImage={setActiveGalleryImage}
           submittingReview={submittingReview}
+          token={token}
           onClose={() => setInspectedProduct(null)}
           onReviewAction={handleReviewAction}
           onOpenReject={(prod) => setSelectedProductForRejection(prod)}
@@ -670,13 +669,14 @@ const AdminProductDashboard = ({ token }) => {
 };
 
 // =========================================================
-// SUB-COMPONENT: PRODUCT DETAILS MODAL WITH THUMBNAIL EDIT
+// SUB-COMPONENT: PRODUCT DETAILS MODAL WITH SUGGESTION TOGGLE BUTTON
 // =========================================================
 const ProductDetailsModal = ({
   product,
   activeGalleryImage,
   setActiveGalleryImage,
   submittingReview,
+  token,
   onClose,
   onReviewAction,
   onOpenReject,
@@ -689,6 +689,12 @@ const ProductDetailsModal = ({
   const [newThumbnailFile, setNewThumbnailFile] = useState(null);
   const [thumbnailPreviewUrl, setThumbnailPreviewUrl] = useState(product.thumbnail || "");
   const fileInputRef = useRef(null);
+
+  // Suggestion Toggle States
+  const [isSuggested, setIsSuggested] = useState(Boolean(product.suggestion_id));
+  const [togglingSuggestion, setTogglingSuggestion] = useState(false);
+
+  const headers = useMemo(() => buildAuthHeaders(token), [token]);
 
   const handleThumbnailChange = (e) => {
     const file = e.target.files[0];
@@ -705,6 +711,22 @@ const ProductDetailsModal = ({
       description: editDesc.trim(),
       price: Number(editPrice)
     });
+  };
+
+  // Toggle Global Suggestion Handler
+  const handleToggleSuggestion = async () => {
+    try {
+      setTogglingSuggestion(true);
+      const res = await accountClient.patch(`/merchant/products/${product._id}/toggle-suggestion`, {}, { headers });
+      if (res.data.success) {
+        setIsSuggested(res.data.data.isSuggested);
+        alert(res.data.message);
+      }
+    } catch (err) {
+      alert(err.response?.data?.message || "Failed to update global suggestion catalog.");
+    } finally {
+      setTogglingSuggestion(false);
+    }
   };
 
   return (
@@ -727,6 +749,23 @@ const ProductDetailsModal = ({
               ID: {product._id}
             </span>
           </div>
+
+          {/* NEW: Toggle Global Suggestion Button in Header */}
+          <button
+            type="button"
+            disabled={togglingSuggestion}
+            onClick={handleToggleSuggestion}
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider transition cursor-pointer shadow-2xs border ${
+              isSuggested 
+                ? "bg-purple-600 text-white border-purple-700 hover:bg-purple-700" 
+                : "bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100"
+            }`}
+            title="Publish or unpublish from global product suggestions"
+          >
+            {togglingSuggestion ? <Loader2 className="animate-spin" size={13} /> : <Sparkles size={13} />}
+            {isSuggested ? "In Global Suggestions" : "Copy to Suggestions"}
+          </button>
+
           <button 
             onClick={onClose}
             className="w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition cursor-pointer"
@@ -793,6 +832,7 @@ const ProductDetailsModal = ({
                 <div className="flex gap-2 overflow-x-auto pb-1">
                   {product.thumbnail && (
                     <button
+                      key="thumb-main"
                       type="button"
                       onClick={() => setActiveGalleryImage(product.thumbnail)}
                       className={`w-14 h-14 rounded-xl border p-1 overflow-hidden shrink-0 cursor-pointer transition ${
@@ -806,7 +846,7 @@ const ProductDetailsModal = ({
                   )}
                   {product.images.map((imgSrc, idx) => (
                     <button
-                      key={idx}
+                      key={`thumb-img-${idx}`}
                       type="button"
                       onClick={() => setActiveGalleryImage(imgSrc)}
                       className={`w-14 h-14 rounded-xl border p-1 overflow-hidden shrink-0 cursor-pointer transition ${
@@ -985,7 +1025,7 @@ const ProductDetailsModal = ({
                     <span className="text-[10px] text-slate-400 font-black uppercase tracking-wider block mb-1.5">Search Metadata Tags</span>
                     <div className="flex flex-wrap gap-1.5">
                       {product.tags.map((tag, i) => (
-                        <span key={i} className="px-2 py-0.5 bg-white border border-slate-200 rounded-md text-[10px] font-bold text-slate-600">
+                        <span key={`tag-${i}`} className="px-2 py-0.5 bg-white border border-slate-200 rounded-md text-[10px] font-bold text-slate-600">
                           #{tag}
                         </span>
                       ))}

@@ -331,7 +331,7 @@ const FeatureRow = ({ label, val, pct, color }) => (
 const AlertItem = ({ label, type }) => (
   <div className="flex justify-between items-center text-[10px] font-bold border-b border-slate-50/80 pb-2 last:border-0 last:pb-0 gap-3">
     <div className="flex items-center gap-1.5 min-w-0">
-      <AlertTriangle size={12} className={type === 'Critical' ? 'text-rose-400' : 'text-amber-400'} strokeWidth={2.5} className="shrink-0" />
+      <AlertTriangle size={12} className={'shrink-0 '+type === 'Critical' ? 'text-rose-400' : 'text-amber-400'} strokeWidth={2.5}  />
       <span className="font-semibold text-slate-600 truncate" title={label}>{label}</span>
     </div>
     <span className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider shrink-0 border ${type === 'Critical' ? 'bg-rose-50 text-rose-600 border-rose-100' : 'bg-amber-50 text-amber-600 border-amber-100'}`}>{type}</span>

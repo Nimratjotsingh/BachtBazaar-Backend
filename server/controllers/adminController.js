@@ -89,6 +89,110 @@ const convertToBase64 = (file) => {
   return `data:${file.contentType};base64,${file.data.toString("base64")}`;
 };
 
+
+export const getAdminShopDetailById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: "Shop ID parameter is required.",
+      });
+    }
+
+    // 1. Fetch shop and populate associated master references
+    const shop = await MerchantShop.findById(id)
+      .populate({
+        path: "merchantId",
+        select: "-password -tokens -otp -__v",
+      })
+      .populate("categoryId", "label description icon")
+      .populate("subCategoryId", "label description")
+      .lean();
+
+    if (!shop) {
+      return res.status(404).json({
+        success: false,
+        message: "Merchant shop record not found.",
+      });
+    }
+
+    // 2. Robustly format opening hours for all 7 days of the week
+    const standardDays = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
+    const formattedOpeningHours = {};
+
+    standardDays.forEach((day) => {
+      let dayData = null;
+
+      if (shop.openingHours) {
+        if (shop.openingHours instanceof Map || typeof shop.openingHours.get === "function") {
+          dayData = shop.openingHours.get(day);
+        } else if (typeof shop.openingHours === "object") {
+          dayData = shop.openingHours[day];
+        }
+      }
+
+      // Ensure every day has a safe fallback structure
+      formattedOpeningHours[day] = {
+        open: dayData?.open || "09:00",
+        close: dayData?.close || "21:00",
+        isClosed: dayData?.isClosed ?? (dayData ? false : true), // Default to closed if missing
+      };
+    });
+
+    // 3. Compute live open status
+    const shopDoc = new MerchantShop(shop);
+    const liveStatus = shopDoc.calculateIsOpen(new Date());
+
+    // 4. Construct unified response payload
+    return res.status(200).json({
+      success: true,
+      message: "Merchant shop dossier retrieved successfully.",
+      data: {
+        shopInfo: {
+          _id: shop._id,
+          shopName: shop.shopName || "Unnamed Store",
+          address: shop.address || "",
+          address1: shop.address1 || "",
+          city: shop.city || "",
+          coordinates: {
+            latitude: shop.latitude || null,
+            longitude: shop.longitude || null,
+          },
+          visibilityRadiusKm: shop.visibilityRadiusKm || 15,
+          description: shop.description || "",
+          phone: shop.phone || "",
+        },
+        taxonomy: {
+          category: shop.categoryId || null,
+          subCategory: shop.subCategoryId || null,
+        },
+        operationalStatus: {
+          isOpenNow: liveStatus.isOpen,
+          reason: liveStatus.reason,
+          isManualOverride: liveStatus.isManualOverride,
+          manualOverrideConfig: shop.manualOverride || { status: "AUTO" },
+          weeklySchedule: formattedOpeningHours, // Guaranteed 7 days object
+        },
+        merchantProfile: shop.merchantId || null,
+        timestamps: {
+          createdAt: shop.createdAt,
+          updatedAt: shop.updatedAt,
+        },
+      },
+    });
+
+  } catch (error) {
+    console.error("Admin Get Shop Detail Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "An internal server error occurred while retrieving shop details.",
+      error: error.message,
+    });
+  }
+};
+
 export const getMerchant = async (req, res) => {
   try {
     const { id } = req.params;

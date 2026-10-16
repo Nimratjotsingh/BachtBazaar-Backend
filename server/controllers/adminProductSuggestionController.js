@@ -1,4 +1,5 @@
 import ProductSuggestion from "../models/productSuggestionModel.js";
+import Product from '../models/productModel.js';
 import fs from "fs";
 import path from "path";
 
@@ -13,6 +14,98 @@ const removeLocalFile = (relativePath) => {
   }
 };
 
+
+export const toggleProductToSuggestion = async (req, res) => {
+  try {
+    const { productId } = req.params;
+    const adminId = req.admin?._id || req.user?._id; // Adjust based on your admin auth middleware
+
+    if (!productId) {
+      return res.status(400).json({
+        success: false,
+        message: "Product ID parameter is required.",
+      });
+    }
+
+    // 1. Fetch the target product
+    const product = await Product.findOne({ _id: productId, is_deleted: false });
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: "Product record not found.",
+      });
+    }
+
+    let suggestion;
+    let isLinked;
+
+    // 2. Check if product already has an active suggestion_id link
+    if (product.suggestion_id) {
+      suggestion = await ProductSuggestion.findById(product.suggestion_id);
+    }
+
+    if (suggestion) {
+      // SCENARIO A: Already linked. Toggle OFF (Unlink or remove suggestion reference)
+      // We unlink it from the product so it no longer points to a suggestion template.
+      product.suggestion_id = null;
+      await product.save();
+
+      // Optionally decrement usage count or delete suggestion if no longer used
+      suggestion.usage_count = Math.max(0, (suggestion.usage_count || 1) - 1);
+      await suggestion.save();
+
+      isLinked = false;
+      return res.status(200).json({
+        success: true,
+        message: "Product successfully unlinked from global suggestions catalog.",
+        data: {
+          isSuggested: false,
+          suggestionId: null,
+        },
+      });
+    } else {
+      // SCENARIO B: Not linked. Toggle ON (Copy product data into a new ProductSuggestion)
+      suggestion = new ProductSuggestion({
+        name: product.name,
+        description: product.description,
+        category_id: product.category_id,
+        subcategory_id: product.subcategory_id,
+        thumbnail: product.thumbnail,
+        images: product.images || [],
+        suggested_price: product.discounted_price || product.price,
+        tags: product.tags || [],
+        unit_size: product.unit_size || null,
+        created_by: adminId || null,
+        is_active: true,
+        usage_count: 1,
+      });
+
+      await suggestion.save();
+
+      // Link product back to the newly created suggestion ID
+      product.suggestion_id = suggestion._id;
+      await product.save();
+
+      isLinked = true;
+      return res.status(201).json({
+        success: true,
+        message: "Product successfully copied and published to global suggestions catalog!",
+        data: {
+          isSuggested: true,
+          suggestionId: suggestion._id,
+        },
+      });
+    }
+
+  } catch (error) {
+    console.error("Toggle Product Suggestion Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "An internal server error occurred while toggling product suggestion.",
+      error: error.message,
+    });
+  }
+};
 /**
  * 1. CREATE Product Suggestion
  * POST /api/admin/product-suggestions

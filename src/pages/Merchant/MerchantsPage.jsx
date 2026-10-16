@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, } from "react";
 import { adminClient, buildAuthHeaders } from "../../lib/api";
 import { 
   Search, ShieldCheck, ShieldAlert, Trash2, ChevronLeft, ChevronRight, 
@@ -9,6 +9,8 @@ import {
   Truck, Moon, Zap, Clock, Download, Maximize2
 } from "lucide-react";
 import MerchantStats from "./component/Stats";
+import { useNavigate } from "react-router-dom";
+
 
 // --- Helper: Convert Buffer to Base64 ---
 const getImageUrl = (imageObj) => {
@@ -72,6 +74,7 @@ const InfoField = ({ label, value, icon: Icon, badge }) => (
 );
 
 function MerchantsPage({ token }) {
+  const navigate = useNavigate();
   // --- Core Lifecycle States ---
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -338,7 +341,7 @@ function MerchantsPage({ token }) {
                 <tr className="border-b border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-widest">
                   <th className="px-4 pb-3">Merchant Partner</th>
                   <th className="px-4 pb-3">Contact Nodes</th>
-                  <th className="px-4 pb-3">Core Category</th>
+                  
                   <th className="px-4 pb-3 text-center">Blue Tick Badge</th>
                   <th className="px-4 pb-3">Verification</th>
                   <th className="px-4 pb-3 text-right">Audit</th>
@@ -405,11 +408,7 @@ function MerchantsPage({ token }) {
                         </td>
 
                         {/* Category */}
-                        <td className="px-4 py-4">
-                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-black uppercase border tracking-wider ${catDecor.color}`}>
-                            {catDecor.icon} {m.business_type || "General Store"}
-                          </span>
-                        </td>
+                        
 
                         {/* Blue Tick Quick Toggle */}
                         <td className="px-4 py-4 text-center">
@@ -543,12 +542,18 @@ function MerchantsPage({ token }) {
                   ID: {editingMerchant._id}
                 </p>
               </div>
+              <div className="flex">
+                {fullData?.shop?.id &&<button className="flex mt-2 cursor-pointer mr-2" onClick={()=>navigate(`/dashboard/shop/${fullData.shop.id}`)}>
+                  <ExternalLink size={20} className="text-slate-400 hover:text-blue-600 transition cursor-pointer"/>
+                  <h1 className="text-xs mt-1 ">Open Business Profile</h1>
+                </button>}
               <button 
                 onClick={() => setEditingMerchant(null)} 
                 className="p-2 hover:bg-slate-100 rounded-full transition cursor-pointer text-slate-400 hover:text-slate-800"
               >
                 <X size={20}/>
               </button>
+              </div>
             </div>
 
             {/* Body */}

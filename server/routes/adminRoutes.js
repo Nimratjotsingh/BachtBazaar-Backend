@@ -20,7 +20,8 @@ import {
 	getDashboardStats,
 	blockMerchant,
 	rejectMerchant,
-	updateMerchantBlueTick
+	updateMerchantBlueTick,
+	getAdminShopDetailById
 } from "../controllers/adminController.js";
 
 const router = express.Router();
@@ -40,6 +41,7 @@ router.put("/users/:id/role", protectSuperAdmin, updateUserRole);
 // Merchant management
 router.get("/merchants", protectSuperAdmin, listMerchants);
 router.get("/merchants/:id", protectSuperAdmin, getMerchant);
+router.get("/shops/:id", protectSuperAdmin, getAdminShopDetailById);
 router.put("/merchants/:id", protectSuperAdmin, updateMerchant);
 router.patch("/merchants/:merchantId/blue-tick",protectSuperAdmin, updateMerchantBlueTick);
 
