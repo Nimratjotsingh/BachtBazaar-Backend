@@ -103,7 +103,8 @@ const AdminOffersDashboard = ({ token }) => {
             status: activeFilters.tab === "all" ? undefined : activeFilters.tab,
             category_id: activeFilters.category === "" ? undefined : activeFilters.category,
             merchant_id: activeFilters.merchant === "" ? undefined : activeFilters.merchant,
-            
+            startDate: dateRange.startDate,
+            endDate: dateRange.endDate,
           },
         }),
         accountClient.get("/offer-types/admin", { headers }),

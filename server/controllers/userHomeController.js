@@ -970,6 +970,11 @@ export const getOfferDetails = async (req, res) => {
       displayType: offer.display_type,
       discountExpression: labelBadge,
       minimumPurchaseAmount: offer.minimum_purchase_amount || 0,
+      claim_limit: offer.claim_limit,
+      claimedCount:offer.claimedCount,
+      redeemedCount:offer.redeemedCount,
+      
+      
       
       // Validity Context Timeline Data
       timeline: {
