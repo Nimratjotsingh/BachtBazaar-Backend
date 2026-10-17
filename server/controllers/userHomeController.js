@@ -1698,7 +1698,7 @@ export const getNearbyShops15KmForUser = async (req, res) => {
         if (distanceKm <= effectiveMaxRadius) {
           shop.distanceKm = Number(distanceKm.toFixed(2));
           shop.effectiveRadiusKm = merchantConfiguredRadius;
-          
+
           // Attach blue tick verification status directly on the shop object
           shop.isBlueTickEnabled = shop.merchantId?.isBlueTickEnabled || false;
 
@@ -1714,7 +1714,7 @@ export const getNearbyShops15KmForUser = async (req, res) => {
     const totalWithinRadius = validShopsInRadius.length;
     const paginatedShops = validShopsInRadius.slice(skip, skip + currentLimit);
 
-    // 6. Wishlist, Offers & Live Status Stitching
+    // 6. Wishlist, Offers, Products & Live Status Stitching
     if (paginatedShops.length > 0) {
       const merchantIds = paginatedShops
         .map((shop) => shop.merchantId?._id || shop.merchantId)
@@ -1735,11 +1735,35 @@ export const getNearbyShops15KmForUser = async (req, res) => {
           ],
         })
           .select(
-            "title description thumbnail display_type discount_percentage discount_value merchant_id start_date end_date"
+            "title description thumbnail display_type discount_percentage discount_value merchant_id start_date end_date product_id"
           )
           .sort({ createdAt: -1 })
           .lean(),
       ]);
+
+      // Extract all associated product IDs from the fetched live offers
+      const allProductIds = [];
+      liveOffers.forEach((offer) => {
+        if (offer.product_id && Array.isArray(offer.product_id)) {
+          allProductIds.push(...offer.product_id);
+        }
+      });
+
+      // Batch fetch active, approved, non-deleted products linked to these offers
+      const productsList = allProductIds.length > 0 ? await Product.find({
+        _id: { $in: allProductIds },
+        is_active: true,
+        is_deleted: false,
+        approval_status: "approved",
+      })
+      .select("name description price discounted_price thumbnail images unit_size specifications stock")
+      .lean() : [];
+
+      // Map products by stringified ID for O(1) lookups
+      const productsMap = {};
+      productsList.forEach((prod) => {
+        productsMap[prod._id.toString()] = prod;
+      });
 
       const wishlistedShopIdsSet = new Set(
         (userWishlist?.shops || []).map((id) => id.toString())
@@ -1750,6 +1774,12 @@ export const getNearbyShops15KmForUser = async (req, res) => {
         if (!offer.merchant_id) return;
         const mId = offer.merchant_id.toString();
         if (!offersMap[mId]) offersMap[mId] = [];
+
+        // Map product_id array references to actual full product documents
+        offer.products = (offer.product_id || [])
+          .map((pId) => productsMap[pId.toString()])
+          .filter(Boolean);
+
         offersMap[mId].push(offer);
       });
 

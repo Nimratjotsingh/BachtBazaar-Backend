@@ -39,7 +39,7 @@ router.post('/resend-otp',retryOtp)
 router.post("/set-password", protectMerchant, setPassword);
 router.post("/login-password", loginWithPassword);
 router.post("/login-otp", loginWithOtp);
-router.post("/forgot-password", forgotPassword);
+router.post("/forgot-password", protectMerchant,forgotPassword);
 router.post("/temp-change-pass",tempUpdatePass);
 router.put("/password", protectMerchant, updatePassword);
 router.post("/merchant/auth/logout", protectMerchant, logoutMerchant);

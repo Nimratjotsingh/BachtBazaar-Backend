@@ -109,7 +109,7 @@ const merchantSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["verified", "unverified", "rejected"],
+      enum: ["pending","verified", "unverified", "rejected"],
       default: "unverified",
     },
     rejectedReason: {

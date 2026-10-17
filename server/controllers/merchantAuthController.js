@@ -441,10 +441,12 @@ export const loginWithOtp = async (req, res) => {
 
 export const forgotPassword = async (req, res) => {
   try {
-    const { token, newPassword } = validate(forgotPasswordSchema, req.body);
-    const phone = await resolvePhoneFromTokenOrBypass({ ...req.body, token });
+    const { newPassword } = req.body
+    const {id} = req.merchant
 
-    const merchant = await Merchant.findOne({ phone });
+   
+
+    const merchant = await Merchant.findById(id);
     if (!merchant) return res.status(404).json({ message: "Merchant not found" });
 
     merchant.password = await bcrypt.hash(newPassword, 10);
@@ -455,6 +457,7 @@ export const forgotPassword = async (req, res) => {
     if (error?.code?.startsWith("auth/")) {
       return handleFirebaseAuthError(res, error, "Reset failed");
     }
+    
     return handleValidation(res, error, "Reset failed");
   }
 };
