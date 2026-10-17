@@ -16,8 +16,8 @@ const AdminOffersDashboard = ({ token }) => {
   const [page, setPage] = useState(1);
   const [dateRange, setDateRange] = useState({
     label: "Last 30 Days",
-    startDate: "2026-04-30",
-    endDate: "2026-05-30",
+    startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+    endDate: new Date().toISOString().split("T")[0],
   });
 
   // --- Filter Parameters ---
@@ -68,6 +68,10 @@ const AdminOffersDashboard = ({ token }) => {
 
       const res = await accountClient.get("/offers/stats-summary", {
         headers,
+        params: {
+          startDate: dateRange.startDate,
+          endDate: dateRange.endDate,
+        },
       });
 
       if (res.data.success) {
@@ -99,8 +103,7 @@ const AdminOffersDashboard = ({ token }) => {
             status: activeFilters.tab === "all" ? undefined : activeFilters.tab,
             category_id: activeFilters.category === "" ? undefined : activeFilters.category,
             merchant_id: activeFilters.merchant === "" ? undefined : activeFilters.merchant,
-            startDate: dateRange.startDate,
-            endDate: dateRange.endDate,
+            
           },
         }),
         accountClient.get("/offer-types/admin", { headers }),

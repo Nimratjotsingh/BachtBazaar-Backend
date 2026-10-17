@@ -14,6 +14,13 @@ import {
 const OffersStatsHeader = ({ stats, loading, dateRange, setDateRange }) => {
   const [isDateDropdownOpen, setIsDateDropdownOpen] = useState(false);
 
+  const getFormattedDate = (date) => new Date(date).toISOString().split('T')[0];
+
+  const todayStr = getFormattedDate(new Date());
+  const last7DaysStr = getFormattedDate(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000));
+  const last30DaysStr = getFormattedDate(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000));
+  const lastYearStr = getFormattedDate(new Date(Date.now() - 365 * 24 * 60 * 60 * 1000));
+
   const TrendBadge = ({ trendData }) => {
     if (!trendData) return null;
     const { value, isPositive } = trendData;
@@ -68,10 +75,10 @@ const OffersStatsHeader = ({ stats, loading, dateRange, setDateRange }) => {
           {isDateDropdownOpen && (
             <div className="absolute right-0 mt-2 w-56 bg-white border border-slate-100 rounded-xl shadow-xl py-1 z-50 text-xs font-bold text-slate-600 animate-in fade-in slide-in-from-top-2 duration-150">
               {[
-                { label: "Today Only", start: "2026-05-30", end: "2026-05-30" },
-                { label: "Last 7 Days", start: "2026-05-23", end: "2026-05-30" },
-                { label: "Last 30 Days", start: "2026-04-30", end: "2026-05-30" },
-                { label: "Historical 2024 Frame", start: "2024-05-18", end: "2024-06-18" }
+                { label: "Today Only", start: todayStr, end: todayStr },
+                { label: "Last 7 Days", start: last7DaysStr, end: todayStr },
+                { label: "Last 30 Days", start: last30DaysStr, end: todayStr },
+                { label: "Last 1 Year", start: lastYearStr, end: todayStr }
               ].map((opt, i) => (
                 <button
                   key={i}
@@ -109,7 +116,7 @@ const OffersStatsHeader = ({ stats, loading, dateRange, setDateRange }) => {
                   {currentStats.totalOffers.toLocaleString('en-IN')}
                 </h3>
               )}
-              <p className="text-[9px] sm:text-[10px] font-semibold text-slate-400 mt-0.5">vs last 30 days</p>
+              <p className="text-[9px] sm:text-[10px] font-semibold text-slate-400 mt-0.5">vs prior period</p>
             </div>
           </div>
           <div className="self-center">
@@ -132,7 +139,7 @@ const OffersStatsHeader = ({ stats, loading, dateRange, setDateRange }) => {
                   {currentStats.activeOffers.toLocaleString('en-IN')}
                 </h3>
               )}
-              <p className="text-[9px] sm:text-[10px] font-semibold text-slate-400 mt-0.5">vs last 30 days</p>
+              <p className="text-[9px] sm:text-[10px] font-semibold text-slate-400 mt-0.5">vs prior period</p>
             </div>
           </div>
           <div className="self-center">
@@ -155,7 +162,7 @@ const OffersStatsHeader = ({ stats, loading, dateRange, setDateRange }) => {
                   {currentStats.hotOffers.toLocaleString('en-IN')}
                 </h3>
               )}
-              <p className="text-[9px] sm:text-[10px] font-semibold text-slate-400 mt-0.5">vs last 30 days</p>
+              <p className="text-[9px] sm:text-[10px] font-semibold text-slate-400 mt-0.5">vs prior period</p>
             </div>
           </div>
           <div className="self-center">
@@ -178,7 +185,7 @@ const OffersStatsHeader = ({ stats, loading, dateRange, setDateRange }) => {
                   {currentStats.offersRedeemed.toLocaleString('en-IN')}
                 </h3>
               )}
-              <p className="text-[9px] sm:text-[10px] font-semibold text-slate-400 mt-0.5">vs last 30 days</p>
+              <p className="text-[9px] sm:text-[10px] font-semibold text-slate-400 mt-0.5">vs prior period</p>
             </div>
           </div>
           <div className="self-center">
