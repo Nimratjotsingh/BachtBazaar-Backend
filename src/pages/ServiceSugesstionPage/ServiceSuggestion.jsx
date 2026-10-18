@@ -4,7 +4,7 @@ import {
   Image as ImageIcon, Search, Filter, Eye, Tag, X, Layers,
   Box, Sparkles, RefreshCw, ChevronDown, CheckCircle2,
   DollarSign, Power, Clock, Check, AlertCircle, LayoutGrid,
-  List, Maximize2, Download, Hash, Calendar, Building2
+  List, Maximize2, Download, Hash, Calendar, Building2, ChevronLeft, ChevronRight
 } from "lucide-react";
 import { accountClient, buildAuthHeaders } from "../../lib/api";
 
@@ -18,6 +18,11 @@ const ServiceSuggestionsManager = ({ token }) => {
   const [displayMode, setDisplayMode] = useState("grid"); // 'grid' | 'table'
   const [selectedSuggestion, setSelectedSuggestion] = useState(null);
 
+  // --- Pagination States ---
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
+
   // Previews & Image State
   const [imagePreview, setImagePreview] = useState(null);
 
@@ -27,7 +32,7 @@ const ServiceSuggestionsManager = ({ token }) => {
   // --- Filter States ---
   const [searchTerm, setSearchTerm] = useState("");
   const [filterCategory, setFilterCategory] = useState("all");
-  const [filterStatus, setFilterStatus] = useState("all"); // 'all' | 'approved' | 'pending' | 'rejected'
+  const [filterStatus, setFilterStatus] = useState("all"); // 'all' | 'active' | 'pending' | 'inactive'
 
   // --- Form State ---
   const initialFormState = {
@@ -44,30 +49,59 @@ const ServiceSuggestionsManager = ({ token }) => {
   const headers = useMemo(() => buildAuthHeaders(token), [token]);
 
   // ==========================================
-  // PIPELINE 1: INITIAL DATA STREAM
+  // PIPELINE 1: PAGINATED DATA STREAM
   // ==========================================
-  const fetchInitialData = useCallback(async () => {
+  const fetchSuggestions = useCallback(async () => {
     try {
       setLoading(true);
-      const [suggestionsRes, catRes, subRes] = await Promise.all([
-        accountClient.get("/admin/service-suggestions", { headers }),
+      const res = await accountClient.get("/admin/service-suggestions", {
+        headers,
+        params: {
+          page,
+          limit: 12,
+          search: searchTerm.trim() || undefined,
+          category: filterCategory !== "all" ? filterCategory : undefined,
+          status: filterStatus !== "all" ? filterStatus : undefined,
+        },
+      });
+
+      setSuggestions(res.data.suggestions || res.data.data || []);
+      setTotalPages(res.data.pages || 1);
+      setTotalItems(res.data.total || res.data.count || (res.data.suggestions || res.data.data || []).length);
+    } catch (err) {
+      console.error("Error fetching master service suggestions:", err);
+      setSuggestions([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [headers, page, searchTerm, filterCategory, filterStatus]);
+
+  // Fetch static lookups (categories & subcategories) once on mount
+  const fetchMetadataLookups = useCallback(async () => {
+    try {
+      const [catRes, subRes] = await Promise.all([
         accountClient.get("/categories", { headers }),
         accountClient.get("/subcategories", { headers }),
       ]);
-
-      setSuggestions(suggestionsRes.data.suggestions || suggestionsRes.data.data || []);
       setCategories(catRes.data.categories || catRes.data.data || []);
       setSubCategories(subRes.data.subCategories || subRes.data.data || []);
     } catch (err) {
-      console.error("Error fetching master service suggestions:", err);
-    } finally {
-      setLoading(false);
+      console.error("Error fetching metadata lookups:", err);
     }
   }, [headers]);
 
   useEffect(() => {
-    fetchInitialData();
-  }, [fetchInitialData]);
+    fetchMetadataLookups();
+  }, [fetchMetadataLookups]);
+
+  useEffect(() => {
+    fetchSuggestions();
+  }, [fetchSuggestions]);
+
+  // Reset to page 1 on filter modifications
+  useEffect(() => {
+    setPage(1);
+  }, [searchTerm, filterCategory, filterStatus]);
 
   // ==========================================
   // PIPELINE 2: MEDIA HANDLERS
@@ -164,7 +198,7 @@ const ServiceSuggestionsManager = ({ token }) => {
         });
       }
 
-      await fetchInitialData();
+      await fetchSuggestions();
       setView("list");
       resetForm();
     } catch (err) {
@@ -184,7 +218,7 @@ const ServiceSuggestionsManager = ({ token }) => {
         setView("list");
         setSelectedSuggestion(null);
       }
-      await fetchInitialData();
+      await fetchSuggestions();
     } catch (err) {
       alert(err.response?.data?.message || "Delete request dropped.");
     } finally {
@@ -220,35 +254,16 @@ const ServiceSuggestionsManager = ({ token }) => {
   };
 
   // ==========================================
-  // DERIVED DATA & FILTERS
+  // DERIVED METRICS & SUBCATEGORIES
   // ==========================================
   const computedMetrics = useMemo(() => {
     return {
-      total: suggestions.length,
+      total: totalItems,
       approved: suggestions.filter((s) => s.status === "approved" && s.is_active).length,
       pending: suggestions.filter((s) => s.status === "pending").length,
       inactive: suggestions.filter((s) => !s.is_active || s.status === "rejected").length,
     };
-  }, [suggestions]);
-
-  const filteredSuggestions = useMemo(() => {
-    return suggestions.filter((item) => {
-      const matchesSearch =
-        item.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.description?.toLowerCase().includes(searchTerm.toLowerCase());
-
-      const itemCatId = (item.category_id?.[0]?._id || item.category_id?.[0] || item.category_id)?.toString();
-      const matchesCategory = filterCategory === "all" || itemCatId === filterCategory;
-
-      const matchesStatus =
-        filterStatus === "all" ||
-        (filterStatus === "active" && item.is_active && item.status === "approved") ||
-        (filterStatus === "pending" && item.status === "pending") ||
-        (filterStatus === "inactive" && (!item.is_active || item.status === "rejected"));
-
-      return matchesSearch && matchesCategory && matchesStatus;
-    });
-  }, [suggestions, searchTerm, filterCategory, filterStatus]);
+  }, [suggestions, totalItems]);
 
   const relevantSubCategories = useMemo(() => {
     if (!formData.category_id) return [];
@@ -345,8 +360,8 @@ const ServiceSuggestionsManager = ({ token }) => {
                       }
                     >
                       <option value="">Select Service Category</option>
-                      {categories.map((cat) => (
-                        <option key={cat._id} value={cat._id}>
+                      {categories.map((cat, idx) => (
+                        <option key={`${cat._id || 'cat'}-${idx}`} value={cat._id}>
                           {cat.label || cat.name}
                         </option>
                       ))}
@@ -369,8 +384,8 @@ const ServiceSuggestionsManager = ({ token }) => {
                       }
                     >
                       <option value="">None</option>
-                      {relevantSubCategories.map((sub) => (
-                        <option key={sub._id} value={sub._id}>
+                      {relevantSubCategories.map((sub, idx) => (
+                        <option key={`${sub._id || 'sub'}-${idx}`} value={sub._id}>
                           {sub.label || sub.name}
                         </option>
                       ))}
@@ -469,7 +484,7 @@ const ServiceSuggestionsManager = ({ token }) => {
             </div>
             <div className="flex items-center gap-3 w-full sm:w-auto">
               <button
-                onClick={fetchInitialData}
+                onClick={fetchSuggestions}
                 className="p-3 bg-white border border-slate-200 text-slate-500 hover:text-blue-600 rounded-xl transition shadow-xs hover:bg-slate-50 cursor-pointer shrink-0"
                 title="Refresh Dataset"
               >
@@ -538,8 +553,8 @@ const ServiceSuggestionsManager = ({ token }) => {
                     onChange={(e) => setFilterCategory(e.target.value)}
                   >
                     <option value="all">All Service Categories</option>
-                    {categories.map((cat) => (
-                      <option key={cat._id} value={cat._id}>
+                    {categories.map((cat, idx) => (
+                      <option key={`${cat._id || 'cat-opt'}-${idx}`} value={cat._id}>
                         {cat.label || cat.name}
                       </option>
                     ))}
@@ -603,14 +618,14 @@ const ServiceSuggestionsManager = ({ token }) => {
                     Loading Master Service Suggestions...
                   </p>
                 </div>
-              ) : filteredSuggestions.length === 0 ? (
+              ) : suggestions.length === 0 ? (
                 <div className="col-span-full text-center py-20 font-bold text-slate-400 bg-white border-2 border-dashed border-slate-200 rounded-[28px] text-xs uppercase tracking-wider italic">
                   No master service templates matched your filtered parameters.
                 </div>
               ) : (
-                filteredSuggestions.map((item) => (
+                suggestions.map((item, idx) => (
                   <div
-                    key={item._id}
+                    key={`${item._id || 'grid-sugg'}-${idx}`}
                     onClick={() => openSuggestionDetails(item)}
                     className="bg-white rounded-[24px] border border-slate-200/80 hover:border-blue-300 shadow-xs hover:shadow-md transition-all duration-300 overflow-hidden group cursor-pointer flex flex-col justify-between"
                   >
@@ -780,16 +795,16 @@ const ServiceSuggestionsManager = ({ token }) => {
                           <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Syncing Master Service Tree...</p>
                         </td>
                       </tr>
-                    ) : filteredSuggestions.length === 0 ? (
+                    ) : suggestions.length === 0 ? (
                       <tr>
                         <td colSpan="4" className="py-20 text-center font-bold text-slate-400 bg-slate-50/20 italic text-xs uppercase tracking-wider">
                           No matching service templates found under current filters.
                         </td>
                       </tr>
                     ) : (
-                      filteredSuggestions.map((item) => (
+                      suggestions.map((item, idx) => (
                         <tr 
-                          key={item._id} 
+                          key={`${item._id || 'tbl-sugg'}-${idx}`}
                           onClick={() => openSuggestionDetails(item)}
                           className="hover:bg-slate-50/60 transition-colors group cursor-pointer"
                         >
@@ -895,6 +910,29 @@ const ServiceSuggestionsManager = ({ token }) => {
               </div>
             </div>
           )}
+
+          {/* Pagination Footer */}
+          <div className="flex items-center justify-between pt-2">
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+              Page <span className="text-slate-700">{page}</span> of {totalPages || 1} ({totalItems} total templates)
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                disabled={page <= 1 || loading}
+                onClick={() => setPage(prev => Math.max(1, prev - 1))}
+                className="w-10 h-10 flex items-center justify-center bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl transition disabled:opacity-30 shadow-2xs cursor-pointer"
+              >
+                <ChevronLeft size={18} />
+              </button>
+              <button
+                disabled={page >= totalPages || loading}
+                onClick={() => setPage(prev => Math.min(totalPages, prev + 1))}
+                className="w-10 h-10 flex items-center justify-center bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl transition disabled:opacity-30 shadow-2xs cursor-pointer"
+              >
+                <ChevronRight size={18} />
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

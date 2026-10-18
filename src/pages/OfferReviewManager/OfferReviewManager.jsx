@@ -524,7 +524,7 @@ const OfferReviewsManager = ({ token }) => {
 
                           {/* Offer Campaign Snapshot */}
                           <td className="px-5 py-4 align-top">
-                            <div className="font-extrabold text-slate-800 text-xs line-clamp-1">{rev.offerId?.title || "Campaign Asset"}</div>
+                            <div className="font-extrabold text-slate-800 text-xs line-clamp-1">{rev.offerId?.title || "Campaign Reference"}</div>
                             <div className="flex items-center gap-1 mt-1">
                               <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded">
                                 {rev.offerId?.display_type || "Standard"}
@@ -776,7 +776,7 @@ const ReviewDetailsView = ({
               {review.images.map((imgSrc, idx) => (
                 <div
                   key={idx}
-                  onClick={() => onOpenLightbox(imgSrc, `${review.merchantId?.name || 'Review'} - Evidence ${idx + 1}`)}
+                  onClick={() => onOpenLightbox(imgSrc, `${review.merchantId?.name || 'Review'} - Evidence Photo ${idx + 1}`)}
                   className="relative aspect-[16/10] bg-slate-950 rounded-2xl overflow-hidden border border-slate-800 p-2 flex items-center justify-center cursor-pointer group shadow-2xs"
                 >
                   <img

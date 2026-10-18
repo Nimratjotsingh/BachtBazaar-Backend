@@ -109,7 +109,7 @@ export const listSuggestions = async (req, res) => {
     const query = {};
 
     if (search) {
-      query.name = { $regex: String(search).trim(),$options: "i" };
+      query.name = { $regex: String(search).trim(), $options: "i" };
     }
 
     if (status) query.status = status; // "approved", "pending", "rejected"
@@ -117,15 +117,22 @@ export const listSuggestions = async (req, res) => {
     if (is_active !== undefined) query.is_active = is_active === "true";
 
     const skip = (Math.max(1, Number(page)) - 1) * Number(limit);
-    const total = await ServiceReference.countDocuments(query);
 
-    const suggestions = await ServiceReference.find(query)
-      .populate("category_id", "label")
-      .populate("subcategory_id", "label")
-      .populate("suggested_by", "name businessName email phone")
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(Number(limit));
+    // Run parallel queries for paginated results and global stat metrics
+    const [suggestions, total, approvedCount, pendingCount, inactiveCount] = await Promise.all([
+      ServiceReference.find(query)
+        .populate("category_id", "label")
+        .populate("subcategory_id", "label")
+        .populate("suggested_by", "name businessName email phone")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(Number(limit)),
+      ServiceReference.countDocuments(query),
+      // Aggregate stats across the entire collection (ignoring pagination)
+      ServiceReference.countDocuments({ status: "approved", is_active: true }),
+      ServiceReference.countDocuments({ status: "pending" }),
+      ServiceReference.countDocuments({ $or: [{ is_active: false }, { status: "rejected" }] }),
+    ]);
 
     return res.status(200).json({
       success: true,
@@ -133,8 +140,16 @@ export const listSuggestions = async (req, res) => {
       total,
       pages: Math.ceil(total / limit) || 1,
       currentPage: Number(page),
+      // --- Added computed stats matching your dashboard ticker cards ---
+      stats: {
+        totalTemplates: total,
+        approved: approvedCount,
+        pending: pendingCount,
+        inactive: inactiveCount,
+      },
     });
   } catch (error) {
+    console.error("List Service Suggestions Error:", error);
     return res.status(500).json({
       success: false,
       message: "Failed to fetch suggestions.",
@@ -175,16 +190,37 @@ export const updateSuggestion = async (req, res) => {
       updates.image = `/uploads/${req.file.filename}`;
     }
 
-    if (updates.category_id && typeof updates.category_id === "string") {
-      updates.category_id = updates.category_id.includes(",")
-        ? updates.category_id.split(",").map((c) => c.trim())
-        : [updates.category_id];
+    // Robust helper to parse IDs whether sent as JSON strings, comma-separated strings, or arrays
+    const parseIds = (val) => {
+      if (!val) return undefined;
+      try {
+        if (typeof val === "string" && val.trim().startsWith("[")) {
+          const parsed = JSON.parse(val);
+          return Array.isArray(parsed) 
+            ? parsed.map(item => item.toString().trim()).filter(Boolean) 
+            : [parsed.toString().trim()];
+        }
+        if (typeof val === "string" && val.includes(",")) {
+          return val.split(",").map((s) => s.trim()).filter(Boolean);
+        }
+        if (typeof val === "string") {
+          return [val.trim()];
+        }
+        if (Array.isArray(val)) {
+          return val.map(item => item.toString().trim()).filter(Boolean);
+        }
+      } catch (e) {
+        if (typeof val === "string") return [val.trim()];
+      }
+      return val;
+    };
+
+    if (updates.category_id) {
+      updates.category_id = parseIds(updates.category_id);
     }
 
-    if (updates.subcategory_id && typeof updates.subcategory_id === "string") {
-      updates.subcategory_id = updates.subcategory_id.includes(",")
-        ? updates.subcategory_id.split(",").map((s) => s.trim())
-        : [updates.subcategory_id];
+    if (updates.subcategory_id) {
+      updates.subcategory_id = parseIds(updates.subcategory_id);
     }
 
     if (updates.is_active !== undefined) {
@@ -207,6 +243,7 @@ export const updateSuggestion = async (req, res) => {
       suggestion,
     });
   } catch (error) {
+    console.error("Update Suggestion Error:", error);
     return res.status(400).json({
       success: false,
       message: "Failed to update suggestion.",
