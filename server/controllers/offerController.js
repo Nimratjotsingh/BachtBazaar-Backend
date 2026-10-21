@@ -514,6 +514,9 @@ export const createAllTypeOffer = async (req, res) => {
       });
     }
 
+    //Time zeroed
+
+    //lets fix it
     const startOfToday = new Date();
     startOfToday.setUTCHours(0, 0, 0, 0);
 
