@@ -513,7 +513,7 @@ export const searchGlobalCatalog = async (req, res) => {
     const hasCoordinates =
       centerLat !== null && centerLng !== null && !isNaN(centerLat) && !isNaN(centerLng);
 
-    const regexSearch = { $regex: searchKeyword, $options: "i" };
+    const regexSearch = { $regex: searchKeyword,$options: "i" };
     const maxResults = Math.max(1, Number(limit));
     const rightNow = new Date();
 
@@ -522,7 +522,7 @@ export const searchGlobalCatalog = async (req, res) => {
     // A. Shop Search Query
     const shopQuery = { shopName: regexSearch };
     if (city) {
-      shopQuery.city = { $regex: city.trim(), $options: "i" };
+      shopQuery.city = { $regex: city.trim(),$options: "i" };
     }
 
     // B. Product & Service Search Query
@@ -537,8 +537,7 @@ export const searchGlobalCatalog = async (req, res) => {
       is_deleted: false,
       is_draft: false,
       is_active: true,
-      start_date: { $lte: rightNow },
-      $or: [
+      start_date: { $lte: rightNow },$or: [
         { end_date: { $exists: false } },
         { end_date: null },
         { end_date: { $gte: rightNow } },
@@ -584,11 +583,12 @@ export const searchGlobalCatalog = async (req, res) => {
       searchTasks.push(Promise.resolve([]));
     }
 
-    // 2. Products Task
+    // 2. Products Task (POPULATED WITH CATEGORY)
     if (type === "all" || type === "product") {
       searchTasks.push(
         Product.find(itemQuery)
-          .select("name price discounted_price thumbnail stock is_featured merchant_id description")
+          .populate("category_id", "label description image isActive") // Populating product categories
+          .select("name price discounted_price thumbnail stock is_featured merchant_id description category_id")
           .limit(maxResults)
           .lean()
       );

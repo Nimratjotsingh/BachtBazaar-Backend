@@ -25,6 +25,22 @@ const bestPriceRequestSchema = new mongoose.Schema(
       required: [true, "Target category is required."],
       index: true,
     },
+    // --- OPTIONAL PRODUCT REFERENCE ---
+    productId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Product",
+      default: null,
+      index: true,
+    },
+    // --- ATTACHED IMAGES (E.g. reference photos, sample item snapshots) ---
+    images: {
+      type: [String],
+      validate: [
+        (val) => val.length <= 5,
+        "Maximum 5 images allowed per best price request",
+      ],
+      default: [],
+    },
     budget: {
       type: Number,
       required: [true, "Target budget allocation value is required."],
@@ -61,7 +77,7 @@ const bestPriceRequestSchema = new mongoose.Schema(
     // Administrative lifecycle controls
     status: {
       type: String,
-      enum: ["pending", "active", "completed", "expired", "cancelled","closed"],
+      enum: ["pending", "active", "completed", "expired", "cancelled", "closed"],
       default: "active",
       index: true
     },
@@ -85,7 +101,6 @@ const bestPriceRequestSchema = new mongoose.Schema(
 );
 
 // --- HOOKS: Pre-validate execution calculation logic ---
-// --- HOOKS: Pre-validate execution calculation logic ---
 bestPriceRequestSchema.pre("validate", function () {
   // Automatically calculate the expiration date based on their timeframe selection
   if (this.isNew && !this.expiresAt) {
@@ -101,13 +116,13 @@ bestPriceRequestSchema.pre("validate", function () {
     
     this.expiresAt = calculatedExpiry;
   }
-  // ✓ REMOVED: next(); statement is deleted to avoid callback crashes
 });
 
 // --- HIGH PERFORMANCE COMPOSITE INDEXES ---
 // Allows fast queries for scanning active requests within bounded local target areas
 bestPriceRequestSchema.index({ latitude: 1, longitude: 1, status: 1 });
 bestPriceRequestSchema.index({ categoryId: 1, status: 1 });
+bestPriceRequestSchema.index({ productId: 1 });
 
 const BestPriceRequest = mongoose.models.BestPriceRequest || mongoose.model("BestPriceRequest", bestPriceRequestSchema);
 export default BestPriceRequest;

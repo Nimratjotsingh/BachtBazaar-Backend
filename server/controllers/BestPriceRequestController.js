@@ -4,6 +4,7 @@ import MerchantBid from '../models/MerchantBidModel.js';
 import { notifyNearbyMerchantsForPriceRequest } from "../utils/bestPriceNotificationHelper.js";
 import MerchantShop from '../models/merchantShopModel.js';
 import Notification from "../models/Notification.js";
+import Product from "../models/productModel.js";
 
 const getDistanceKm = (lat1, lon1, lat2, lon2) => {
   const R = 6371; // Earth's radius in kilometers
@@ -23,7 +24,16 @@ const getDistanceKm = (lat1, lon1, lat2, lon2) => {
 
 export const createBestPriceRequest = async (req, res) => {
   try {
-    const { title, description, categoryId, budget, timeframe, formattedAddress } = req.body;
+    const { 
+      title, 
+      description, 
+      categoryId, 
+      budget, 
+      timeframe, 
+      formattedAddress, 
+      productId, 
+      images 
+    } = req.body;
 
     // 1. Core Profile Context Check
     if (!req.user) {
@@ -41,6 +51,17 @@ export const createBestPriceRequest = async (req, res) => {
       });
     }
 
+    // Optional Product Validation if productId is provided
+    if (productId && productId.trim() !== "") {
+      const productExists = await Product.findById(productId);
+      if (!productExists) {
+        return res.status(404).json({
+          success: false,
+          message: "The specified linked product ID could not be found.",
+        });
+      }
+    }
+
     const userLat = req.user.latitude;
     const userLng = req.user.longitude;
     const userCity = req.user.city;
@@ -48,9 +69,27 @@ export const createBestPriceRequest = async (req, res) => {
     if (userLat === undefined || userLng === undefined || userLat === null || userLng === null) {
       return res.status(400).json({
         success: false,
-        message:
-          "Profile location parameters missing. Please set your account profile coordinates before requesting deals.",
+        message: "Profile location parameters missing. Please set your account profile coordinates before requesting deals.",
       });
+    }
+
+    // --- HANDLE IMAGES (FROM UPLOADED FILES OR BODY ARRAYS) ---
+    let processedImages = [];
+    if (req.files && Array.isArray(req.files) && req.files.length > 0) {
+      processedImages = req.files.map(file => `/uploads/${file.filename}`);
+    } else if (req.file) {
+      processedImages = [`/uploads/${req.file.filename}`];
+    } else if (images) {
+      if (Array.isArray(images)) {
+        processedImages = images;
+      } else if (typeof images === "string") {
+        try {
+          const parsed = JSON.parse(images);
+          processedImages = Array.isArray(parsed) ? parsed : [images];
+        } catch (e) {
+          processedImages = [images];
+        }
+      }
     }
 
     // 3. Save the Best Price Request Document
@@ -59,6 +98,8 @@ export const createBestPriceRequest = async (req, res) => {
       title: title.trim(),
       description: description ? description.trim() : "",
       categoryId,
+      productId: productId && productId.trim() !== "" ? productId : null,
+      images: processedImages,
       budget: Number(budget),
       timeframe,
       latitude: userLat,
@@ -83,8 +124,8 @@ export const createBestPriceRequest = async (req, res) => {
         // Bounding box query filtered by the exact categoryId
         const candidateShops = await MerchantShop.find({
           categoryId,
-          latitude: { $gte: userLat - latDelta, $lte: userLat + latDelta },
-          longitude: { $gte: userLng - lngDelta, $lte: userLng + lngDelta },
+          latitude: { $gte: userLat - latDelta,$lte: userLat + latDelta },
+          longitude: { $gte: userLng - lngDelta,$lte: userLng + lngDelta },
         })
           .select("merchantId latitude longitude")
           .lean();
@@ -242,7 +283,16 @@ export const cancelBestPriceRequest = async (req, res) => {
 export const updateBestPriceRequest = async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, description, categoryId, budget, timeframe, formattedAddress } = req.body;
+    const { 
+      title, 
+      description, 
+      categoryId, 
+      budget, 
+      timeframe, 
+      formattedAddress, 
+      productId, 
+      images 
+    } = req.body;
 
     // 1. Core Profile Context Check
     if (!req.user) {
@@ -282,7 +332,39 @@ export const updateBestPriceRequest = async (req, res) => {
       requestItem.categoryId = categoryId;
     }
 
-    // 5. Apply partial field updates
+    // 5. Optionally update productId validation
+    if (productId !== undefined) {
+      if (productId && productId.trim() !== "") {
+        const productExists = await Product.findById(productId);
+        if (!productExists) {
+          return res.status(404).json({
+            success: false,
+            message: "The specified product ID does not exist."
+          });
+        }
+        requestItem.productId = productId;
+      } else {
+        requestItem.productId = null;
+      }
+    }
+
+    // 6. Handle Image Updates if provided
+    if (req.files && Array.isArray(req.files) && req.files.length > 0) {
+      requestItem.images = req.files.map(file => `/uploads/${file.filename}`);
+    } else if (images !== undefined) {
+      if (Array.isArray(images)) {
+        requestItem.images = images;
+      } else if (typeof images === "string") {
+        try {
+          const parsed = JSON.parse(images);
+          requestItem.images = Array.isArray(parsed) ? parsed : [images];
+        } catch (e) {
+          requestItem.images = [images];
+        }
+      }
+    }
+
+    // 7. Apply partial field updates
     if (title !== undefined) requestItem.title = title.trim();
     if (description !== undefined) requestItem.description = description;
     if (budget !== undefined) requestItem.budget = Number(budget);
@@ -292,8 +374,9 @@ export const updateBestPriceRequest = async (req, res) => {
     // Save updated request document
     await requestItem.save();
 
-    // Populate category metadata for response payload consistency
+    // Populate category and product metadata for response payload consistency
     await requestItem.populate("categoryId", "label value image");
+    await requestItem.populate("productId", "name price thumbnail");
 
     return res.status(200).json({
       success: true,
