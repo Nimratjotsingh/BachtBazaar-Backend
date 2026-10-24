@@ -1,6 +1,6 @@
 import Merchant from "../models/merchantModel.js";
 import MerchantBusinessDoc from "../models/merchantBusinessDocModel.js";
-import {dispatchAsyncAadhaarVerification,dispatchAsyncPanVerification,fetchTaskStatusFromIdfy,normalizeToYYYYMMDD, dispatchAsyncGstVerification,dispatchAsyncFssaiVerification,dispatchAsyncDrivingLicenseVerification} from '../services/idfyService.js'
+import {dispatchAsyncAadhaarVerification,dispatchAsyncPanVerification,fetchTaskStatusFromIdfy,normalizeToYYYYMMDD, dispatchAsyncGstVerification,dispatchAsyncFssaiVerification,dispatchAsyncDrivingLicenseVerification,dispatchAsyncUdyamVerification} from '../services/idfyService.js'
 import fs from "fs/promises";
 
 export const upsertBusinessDocs = async (req, res) => {
@@ -15,12 +15,18 @@ export const upsertBusinessDocs = async (req, res) => {
     if (req.body.shopRegistrationNumber) update.shopRegistrationNumber = req.body.shopRegistrationNumber;
     if (req.body.fssaiNumber) update.fssaiNumber = req.body.fssaiNumber;
     if (req.body.panNumber) update.panNumber = String(req.body.panNumber).toUpperCase();
+    
+    // --- Udyam Number Mapping ---
+    if (req.body.udhyamNumber || req.body.uamNumber || req.body.udyamNumber) {
+      update.udhyamNumber = String(req.body.udhyamNumber || req.body.uamNumber || req.body.udyamNumber).trim().toUpperCase();
+    }
 
     const gstImageFile = req.files?.gstImage?.[0];
     const tradeLicenseImageFile = req.files?.tradeLicenseImage?.[0];
     const shopRegistrationImageFile = req.files?.shopRegistrationImage?.[0];
     const fssaiImageFile = req.files?.fssaiImage?.[0];
     const panImageFile = req.files?.panImage?.[0];
+    const udhyamImageFile = req.files?.udhyamImage?.[0] || req.files?.udyamImage?.[0];
 
     if (gstImageFile) {
       update.gstImage = {
@@ -57,24 +63,33 @@ export const upsertBusinessDocs = async (req, res) => {
       };
     }
 
+    // --- Udyam Image Mapping ---
+    if (udhyamImageFile) {
+      update.udhyamImage = {
+        data: udhyamImageFile.buffer,
+        contentType: udhyamImageFile.mimetype
+      };
+    }
+
     const hasPayload = Object.keys(update).length > 0;
     if (!hasPayload) {
       return res.status(400).json({ message: "No business docs payload provided" });
     }
-
 
     const doc = await MerchantBusinessDoc.findOneAndUpdate(
       { merchantId: req.merchant._id },
       { $set: update, $setOnInsert: { merchantId: req.merchant._id } },
       { new: true, upsert: true }
     );
+    
+    // --- Updated Merchant Status & Blue Tick Verification Status ---
     await Merchant.findByIdAndUpdate(req.merchant._id, {
-      status: "pending"
+      blueTickStatus: "pending"
     });
 
     return res.json({ success: true, businessDocsId: doc._id });
   } catch (error) {
-    console.log(error);
+    console.error("Upsert Business Docs Error:", error);
     return res.status(500).json({ message: "Upload failed" });
   }
 };
@@ -151,6 +166,204 @@ export const requestPanVerification = async (req, res) => {
   }
 };
 
+
+export const checkUdyamTaskStatus = async (req, res) => {
+  try {
+    const { requestId } = req.params;
+    const merchantId = req.merchant._id;
+
+    if (!requestId) {
+      return res.status(400).json({ success: false, message: "Request ID is required." });
+    }
+
+    // Fetch the task result from IDfy
+    const taskResult = await fetchTaskStatusFromIdfy(requestId);
+
+    // 1. Task still processing with the government gateway
+    if (taskResult.status === "in_progress") {
+      return res.status(202).json({
+        success: true,
+        status: "in_progress",
+        message: taskResult.message || "Udyam verification is in progress with the source registry.",
+      });
+    }
+
+    // 2. Task not found on IDfy
+    if (taskResult.status === "not_found") {
+      return res.status(404).json({
+        success: false,
+        message: taskResult.message || "No Udyam task found matching the provided request ID.",
+      });
+    }
+
+    const isVerified = taskResult.isValid === true || taskResult.status === "completed";
+    const sourceOutput = taskResult.sourceOutput || taskResult.rawResponse?.result?.source_output || {};
+    const generalDetails = sourceOutput.general_details || {};
+    const officialAddress = sourceOutput.official_address || {};
+
+    // 3. Build atomic database update for MerchantBusinessDoc
+    const updateDoc = {};
+    
+    // Extract Udyam / UAM number if present in input or raw response
+    const uamNumber = taskResult.uamNumber || taskResult.udyamNumber || generalDetails.uam_number || null;
+    if (uamNumber) {
+      updateDoc.udhyamNumber = uamNumber;
+    }
+
+    updateDoc["verificationResults.udyam"] = {
+      status: taskResult.status,
+      requestId,
+      verifiedAt: isVerified ? new Date() : null,
+      enterpriseName: generalDetails.enterprise_name || taskResult.enterpriseName,
+      majorActivity: generalDetails.major_activity || taskResult.majorActivity,
+      organizationType: generalDetails.organization_type || taskResult.organizationType,
+      socialCategory: generalDetails.social_category || taskResult.socialCategory,
+      state: officialAddress.state || generalDetails.state,
+      district: officialAddress.district || generalDetails.district,
+      dateOfIncorporation: generalDetails.date_of_inc || taskResult.dateOfIncorporation,
+      failureReason: taskResult.failureReason,
+      rawResponse: taskResult.rawResponse,
+    };
+
+    // Update the business document record
+    await MerchantBusinessDoc.findOneAndUpdate(
+      { merchantId },
+      { $set: updateDoc, $setOnInsert: { merchantId } },
+      { new: true, upsert: true }
+    );
+
+    // =========================================================================
+    // 4. EXTRACT DETAILS FOR VERIFICATION AUDIT LOG
+    // =========================================================================
+    const extractedName = generalDetails.enterprise_name || taskResult.enterpriseName || null;
+    const extractedDocNumber = uamNumber || null;
+
+    // Save into the Verification Log Model
+    await MerchantVerificationLog.findOneAndUpdate(
+      { requestId },
+      {
+        merchantId,
+        requestId,
+        taskId: taskResult.taskId || null,
+        groupId: taskResult.groupId || null,
+        type: taskResult.type || "udyam_aadhaar",
+        status: taskResult.status,
+        action: taskResult.action || "verify_with_source",
+        isValid: isVerified,
+        name: extractedName,
+        documentNumber: extractedDocNumber,
+        resultOutput: sourceOutput,
+        rawApiResponse: taskResult.rawResponse || {},
+        completedAt: taskResult.completedAt ? new Date(taskResult.completedAt) : new Date(),
+      },
+      { upsert: true, new: true }
+    );
+
+    // 5. Build clean, sanitized response payload tailored for Udyam
+    const responseData = {
+      type: taskResult.type || "udyam_aadhaar",
+      status: taskResult.status,
+      isValid: isVerified,
+      uamNumber: extractedDocNumber,
+      enterpriseName: extractedName,
+      majorActivity: generalDetails.major_activity || null,
+      organizationType: generalDetails.organization_type || null,
+      state: officialAddress.state || null,
+      district: officialAddress.district || null,
+      officialAddress: {
+        door: officialAddress.door || "",
+        road: officialAddress.road || "",
+        city: officialAddress.city || "",
+        district: officialAddress.district || "",
+        state: officialAddress.state || "",
+        pin: officialAddress.pin || "",
+      },
+      failureReason: taskResult.failureReason,
+    };
+
+    return res.status(isVerified ? 200 : 422).json({
+      success: isVerified,
+      status: taskResult.status,
+      type: taskResult.type || "udyam_aadhaar",
+      message: isVerified
+        ? "Udyam Aadhaar verified successfully with source registry."
+        : `Verification failed: ${taskResult.failureReason || "Invalid Udyam details"}`,
+      data: responseData,
+    });
+  } catch (error) {
+    console.error("Udyam Task Status Check Error:", error.response?.data || error.message);
+    return res.status(500).json({
+      success: false,
+      message: "An internal server error occurred while retrieving Udyam verification status.",
+      error: error.message,
+    });
+  }
+};
+const UDYAM_REGEX = /^UDYAM-[A-Z]{2}-\d{2}-\d{7}$/i;
+
+/**
+ * Request Async Udyam Aadhaar Verification
+ * POST /api/merchant/business-docs/udyam/request
+ */
+export const requestUdyamVerification = async (req, res) => {
+  try {
+    const merchantId = req.merchant._id;
+    const { udhyamNumber, uamNumber, udyamNumber } = req.body;
+
+    const targetUdyam = String(udhyamNumber || uamNumber || udhyamNumber || "").trim().toUpperCase();
+
+    if (!targetUdyam || !UDYAM_REGEX.test(targetUdyam)) {
+      return res.status(400).json({
+        success: false,
+        message: "A valid Udyam registration number (e.g., UDYAM-XX-00-0000000) is required.",
+      });
+    }
+
+    const idfyResponse = await dispatchAsyncUdyamVerification({
+      uamNumber: targetUdyam,
+    });
+
+    const requestId = idfyResponse?.request_id;
+    if (!requestId) {
+      return res.status(502).json({
+        success: false,
+        message: "Failed to initiate Udyam verification with IDfy.",
+        rawResponse: idfyResponse,
+      });
+    }
+
+    // Persist pending task in database
+    await MerchantBusinessDoc.findOneAndUpdate(
+      { merchantId },
+      {
+        $set: {
+          udhyamNumber: targetUdyam,
+          "verificationResults.udyam": {
+            status: "in_progress",
+            requestId,
+            submittedAt: new Date(),
+          },
+        },
+        $setOnInsert: { merchantId },
+      },
+      { upsert: true }
+    );
+
+    return res.status(202).json({
+      success: true,
+      message: "Udyam verification request submitted successfully.",
+      requestId,
+    });
+  } catch (error) {
+    console.error("Async Udyam Request Error:", error.response?.data || error.message);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to submit Udyam verification request.",
+      error: error.response?.data?.message || error.message,
+    });
+  }
+};
+
 /**
  * 2. Request Async Aadhaar Verification
  * POST /api/merchant/business-docs/aadhaar/request
@@ -213,6 +426,8 @@ export const requestAadhaarVerification = async (req, res) => {
     });
   }
 };
+
+
 
 
 
@@ -408,6 +623,24 @@ export const checkTaskStatus = async (req, res) => {
         failureReason: taskResult.failureReason,
         rawResponse: taskResult.rawResponse,
       };
+    } else if (taskResult.type === "udyam_aadhaar" || taskResult.type === "ind_udyam") {
+      if (taskResult.uamNumber || taskResult.udyamNumber) {
+        updateDoc.udhyamNumber = taskResult.uamNumber || taskResult.udyamNumber;
+      }
+      updateDoc["verificationResults.udyam"] = {
+        status: taskResult.status,
+        requestId,
+        verifiedAt: isVerified ? new Date() : null,
+        enterpriseName: taskResult.enterpriseName,
+        majorActivity: taskResult.majorActivity,
+        organizationType: taskResult.organizationType,
+        socialCategory: taskResult.socialCategory,
+        state: taskResult.state,
+        district: taskResult.district,
+        dateOfIncorporation: taskResult.dateOfIncorporation,
+        failureReason: taskResult.failureReason,
+        rawResponse: taskResult.rawResponse,
+      };
     } else {
       updateDoc[`verificationResults.${taskResult.type || "unknown"}`] = {
         status: taskResult.status,
@@ -420,7 +653,7 @@ export const checkTaskStatus = async (req, res) => {
     // 4. Update the business document record
     await MerchantBusinessDoc.findOneAndUpdate(
       { merchantId },
-      { $set: updateDoc,$setOnInsert: { merchantId } },
+      { $set: updateDoc, $setOnInsert: { merchantId } },
       { new: true, upsert: true }
     );
 
@@ -445,6 +678,9 @@ export const checkTaskStatus = async (req, res) => {
     } else if (taskResult.type === "ind_fssai") {
       extractedName = taskResult.companyName || null;
       extractedDocNumber = taskResult.licenseNumber || null;
+    } else if (taskResult.type === "udyam_aadhaar" || taskResult.type === "ind_udyam") {
+      extractedName = taskResult.enterpriseName || null;
+      extractedDocNumber = taskResult.uamNumber || taskResult.udyamNumber || null;
     } else if (taskResult.type === "ind_aadhaar") {
       extractedName = taskResult.name || null;
     }
@@ -456,6 +692,8 @@ export const checkTaskStatus = async (req, res) => {
         taskResult.licenseNumber || 
         taskResult.dlNumber || 
         taskResult.gstin || 
+        taskResult.uamNumber ||
+        taskResult.udyamNumber ||
         null;
     }
 
@@ -530,6 +768,13 @@ export const checkTaskStatus = async (req, res) => {
       responseData.gstinStatus = taskResult.gstinStatus;
       responseData.dateOfRegistration = taskResult.dateOfRegistration;
       responseData.principalPlaceOfBusiness = taskResult.principalPlaceOfBusiness;
+    } else if (taskResult.type === "udyam_aadhaar" || taskResult.type === "ind_udyam") {
+      responseData.uamNumber = taskResult.uamNumber || taskResult.udyamNumber;
+      responseData.enterpriseName = taskResult.enterpriseName;
+      responseData.majorActivity = taskResult.majorActivity;
+      responseData.organizationType = taskResult.organizationType;
+      responseData.state = taskResult.state;
+      responseData.district = taskResult.district;
     }
 
     return res.status(isVerified ? 200 : 422).json({

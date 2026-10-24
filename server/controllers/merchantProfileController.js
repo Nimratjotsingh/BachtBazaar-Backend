@@ -41,6 +41,8 @@ export const updateMerchantProfile = async (req, res) => {
     merchant.email = email || merchant.email;
     if (phone) merchant.phone = formatPhone(phone);
 
+    merchant.status = "pending"
+
     if (req.file) {
       merchant.profileImage = {
         data: req.file.buffer,
