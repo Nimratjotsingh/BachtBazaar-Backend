@@ -54,6 +54,7 @@ const navItems = [
     { label: "Quest", to: "/dashboard/quest", icon: Coins },
     { label: "Help & Support", to: "/dashboard/help-support", icon: Coins },
     { label: "QR Template Management", to: "/dashboard/qr-template", icon: Coins },
+    { label: "Merchant Edit Request", to: "/dashboard/merchant-edit-requests", icon: Coins },
     
     
     
