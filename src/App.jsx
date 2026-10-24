@@ -97,6 +97,7 @@ function App() {
         <Route path="users" element={<UsersPage token={token} />} />
         <Route path="main" element={<AdminDashboard token={token} />} />
         <Route path="merchants" element={<MerchantsPage token={token} />} />
+        <Route path="merchant-edit-requests" element={<AdminMerchantEditRequests token={token}/>}/>
         <Route path="privacy" element={<PolicyEditor token={token} />} />
         <Route path="categories" element={<CategoryPage token={token} />} />
         <Route path="subcategories" element={<SubCategoryPage token={token} />} />
@@ -127,7 +128,7 @@ function App() {
         <Route path="callback" element={<CallbackAdminPage token={token}/>}/>
         <Route path="offer-review" element={<AdminOfferReviewDashboard token={token}/>}/>
         <Route path="shop/:shopId" element={<AdminShopDetailView token={token}/>}/>
-        <Route path="merchant-edit-requests" element={<AdminMerchantEditRequests token={token}/>}/>
+        
       </Route>
 
       {/* 🔁 Fallback Catch-All for unknown URLs */}
