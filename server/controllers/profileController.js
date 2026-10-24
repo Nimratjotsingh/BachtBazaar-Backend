@@ -74,49 +74,80 @@ export const getProfileUser = async (req, res) => {
   }
 };
 
-export const getProfileMerchant = async(req,res)=>{
-        const data = await  MerchantShop.findOne({ merchantId: req.merchant._id });
-      console.log(data)
+import MerchantEditRequest from "../models/MerchantEditRequestModel.js"; // Make sure to import this model
 
+export const getProfileMerchant = async (req, res) => {
+  try {
+    // Determine the correct merchant ID from authentication middleware (req.auth?.id or req.merchant?._id)
+    const merchantId = req.auth?.id || req.merchant?._id;
 
-      const [merchant, shop, personalDoc, businessDoc] = await Promise.all([
-        Merchant.findById(req.auth.id).select("-password"),
-        MerchantShop.findOne({ merchantId: req.auth.id }),
-        MerchantPersonalDoc.findOne({ merchantId: req.auth.id }),
-        MerchantBusinessDoc.findOne({ merchantId: req.auth.id }),
-      ]);
+    if (!merchantId) {
+      return res.status(401).json({ success: false, message: "Unauthorized merchant request." });
+    }
 
-      if (!merchant)
-        return res.status(404).json({ message: "Merchant not found" });
+    // Fetch merchant, shop, docs, and latest edit request in parallel
+    const [merchant, shop, personalDoc, businessDoc, latestEditRequest] = await Promise.all([
+      Merchant.findById(merchantId).select("-password"),
+      MerchantShop.findOne({ merchantId }),
+      MerchantPersonalDoc.findOne({ merchantId }),
+      MerchantBusinessDoc.findOne({ merchantId }),
+      MerchantEditRequest.findOne({ merchantId }).sort({ createdAt: -1 }).lean(), // Gets the most recent edit request
+    ]);
 
-      const documentStatus = {
-        aadhar: personalDoc?.aadharImage?.data ? "uploaded" : "missing",
-        pan:
-          personalDoc?.panImage?.data || businessDoc?.panImage?.data
-            ? "uploaded"
-            : "missing",
-        gst: businessDoc?.gstImage?.data ? "uploaded" : "missing",
-        tradeLicense: businessDoc?.tradeLicenseImage?.data
+    if (!merchant) {
+      return res.status(404).json({ success: false, message: "Merchant not found" });
+    }
+
+    const documentStatus = {
+      aadhar: personalDoc?.aadharImage?.data ? "uploaded" : "missing",
+      pan:
+        personalDoc?.panImage?.data || businessDoc?.panImage?.data
           ? "uploaded"
           : "missing",
-        shopRegistration: businessDoc?.shopRegistrationImage?.data
-          ? "uploaded"
-          : "missing",
-        fssai: businessDoc?.fssaiImage?.data ? "uploaded" : "missing",
-      };
+      gst: businessDoc?.gstImage?.data ? "uploaded" : "missing",
+      tradeLicense: businessDoc?.tradeLicenseImage?.data
+        ? "uploaded"
+        : "missing",
+      shopRegistration: businessDoc?.shopRegistrationImage?.data
+        ? "uploaded"
+        : "missing",
+      fssai: businessDoc?.fssaiImage?.data ? "uploaded" : "missing",
+      udyam: personalDoc?.udhyamImage?.data || businessDoc?.udhyamImage?.data ? "uploaded" : "missing",
+    };
 
-      return res.json({
-        success: true,
-        accountType: ACCOUNT_TYPES.MERCHANT,
-        profile: {
-          merchant: sanitizeMerchant(merchant),
-          shop,
-          personalDocuments: buildPersonalDocPayload(personalDoc),
-          businessDocuments: buildBusinessDocPayload(businessDoc),
-          documentStatus,
-          adminVerification: {
-            isVerified: Boolean(merchant.isVerified),
-          },
+    return res.json({
+      success: true,
+      accountType: ACCOUNT_TYPES.MERCHANT,
+      profile: {
+        merchant: sanitizeMerchant(merchant),
+        shop,
+        personalDocuments: buildPersonalDocPayload(personalDoc),
+        businessDocuments: buildBusinessDocPayload(businessDoc),
+        documentStatus,
+        adminVerification: {
+          isVerified: Boolean(merchant.isVerified),
+          blueTickStatus: merchant.blueTickStatus,
+          blueTickReason: merchant.blueTickReason,
         },
-      });
-}
+        // --- Added Merchant Edit Request Status Tracking ---
+        editRequestStatus: latestEditRequest ? {
+          requestId: latestEditRequest._id,
+          status: latestEditRequest.status, // "pending", "allowed", "rejected", "consumed"
+          targetModel: latestEditRequest.targetModel,
+          adminNotes: latestEditRequest.adminNotes,
+          createdAt: latestEditRequest.createdAt,
+          reviewedAt: latestEditRequest.reviewedAt,
+        } : {
+          status: "not_applied", // Fallback if no edit request has ever been made
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Get Profile Merchant Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "An internal server error occurred while loading profile data.",
+      error: error.message,
+    });
+  }
+};
