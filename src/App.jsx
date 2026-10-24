@@ -59,7 +59,7 @@ function App() {
   const handleLogout = () => setToken("");
 
   const isAuthenticated = !!token;
-  console.log(gmaps_key)
+
   return (
     
     <Routes>
