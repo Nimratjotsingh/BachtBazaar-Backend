@@ -81,6 +81,17 @@ export const upsertBusinessDocs = async (req, res) => {
       { $set: update, $setOnInsert: { merchantId: req.merchant._id } },
       { new: true, upsert: true }
     );
+    const allowedEditRequest = await MerchantEditRequest.findOne({
+          merchantId: req.merchant._id,
+          targetModel: "Merchant",
+          status: "allowed",
+        });
+
+    if(allowedEditRequest){
+      allowedEditRequest.status = "consumed";
+      await allowedEditRequest.save();
+    }
+    
     
     // --- Updated Merchant Status & Blue Tick Verification Status ---
     await Merchant.findByIdAndUpdate(req.merchant._id, {
@@ -503,6 +514,7 @@ export const requestFssaiVerification = async (req, res) => {
 
 
 import MerchantVerificationLog from "../models/MerchantVerificationLogModel.js";
+import MerchantEditRequest from "../models/MerchantEditRequestModel.js";
 
 export const checkTaskStatus = async (req, res) => {
   try {

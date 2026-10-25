@@ -74,7 +74,73 @@ export const getProfileUser = async (req, res) => {
   }
 };
 
-import MerchantEditRequest from "../models/MerchantEditRequestModel.js"; // Make sure to import this model
+import MerchantEditRequest from "../models/MerchantEditRequestModel.js";
+
+// Ensure model is imported
+
+export const updateMerchantProfile = async (req, res) => {
+  try {
+    const merchantId = req.merchant._id;
+
+    // --- 1. VERIFY EDIT PERMISSION VIA EDIT REQUEST WORKFLOW ---
+    const allowedEditRequest = await MerchantEditRequest.findOne({
+      merchantId,
+      targetModel: "Merchant",
+      status: "allowed",
+    });
+
+    if (!allowedEditRequest) {
+      return res.status(403).json({
+        success: false,
+        message: "Edit permission denied. You must request edit approval from the admin before modifying your profile.",
+      });
+    }
+
+    const validatedData = validate(updateMerchantProfileSchema, req.body);
+    const merchant = await Merchant.findById(merchantId);
+
+    if (!merchant) {
+      return res.status(404).json({ success: false, message: "Merchant not found" });
+    }
+
+    const { name, gender, city, phone, email } = validatedData;
+
+    merchant.name = name || merchant.name;
+    merchant.gender = gender || merchant.gender;
+    merchant.city = city || merchant.city;
+    merchant.email = email || merchant.email;
+    if (phone) merchant.phone = formatPhone(phone);
+
+    merchant.status = "pending";
+
+    if (req.file) {
+      merchant.profileImage = {
+        data: req.file.buffer,
+        contentType: req.file.mimetype
+      };
+    }
+
+    // Save updated merchant profile
+    await merchant.save();
+
+    // --- 2. MARK THE APPROVED EDIT REQUEST AS CONSUMED ---
+    allowedEditRequest.status = "consumed";
+    await allowedEditRequest.save();
+
+    return res.json({
+      success: true,
+      message: "Merchant profile updated successfully. Further edits will require a new request.",
+      merchant: sanitizeMerchant(merchant)
+    });
+  } catch (error) {
+    if (error instanceof ValidationError) {
+      return res.status(400).json({ message: error.message });
+    }
+    console.error("Update Merchant Profile Error:", error);
+    return res.status(500).json({ message: "Profile update failed" });
+  }
+};
+
 
 export const getProfileMerchant = async (req, res) => {
   try {
