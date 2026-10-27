@@ -6,7 +6,7 @@ import {
   updateProductSuggestion,
   toggleProductSuggestionStatus,
   deleteProductSuggestion,
-  toggleProductToSuggestion,
+
 } from "../controllers/adminProductSuggestionController.js";
 import {protectSuperAdmin as protectAdmin } from "../middleware/superAuthMiddleware.js";
 import upload from "../middleware/uploadSec.js";
@@ -28,7 +28,7 @@ router
   .get(getAllProductSuggestions);
 
 
-  router.patch("/:productId/toggle-suggestion", toggleProductToSuggestion);
+
 
 router
   .route("/:id")

@@ -29,7 +29,7 @@ const LandingPage = () => {
               <ShoppingBag className="text-white" size={24} />
             </div>
             <span className="text-2xl font-black tracking-tighter text-slate-900">
-              Bachat<span className="text-indigo-600">Bazaar</span>
+              Near<span className="text-indigo-600">Et</span>
             </span>
           </div>
 
@@ -211,7 +211,7 @@ const LandingPage = () => {
                     <ShoppingBag className="text-white" size={18} />
                     </div>
                     <span className="text-xl font-black tracking-tighter">
-                    Bachat<span className="text-indigo-600">Bazaar</span>
+                    Near<span className="text-indigo-600">Et</span>
                     </span>
                 </div>
                 <p className="text-slate-500 font-medium max-w-sm">
@@ -237,7 +237,7 @@ const LandingPage = () => {
         </div>
         <div className="max-w-7xl mx-auto mt-20 pt-8 border-t border-slate-50 text-center">
             <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-                © 2026 BachatBazaar Technologies. All rights reserved.
+                © 2026 Near Et Technologies. All rights reserved.
             </p>
         </div>
       </footer>

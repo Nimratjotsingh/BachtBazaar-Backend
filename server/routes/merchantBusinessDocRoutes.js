@@ -1,7 +1,7 @@
 import express from "express";
 import upload from "../middleware/uploadSec.js";
 import { protectMerchant } from "../middleware/authMiddleware.js";
-import { checkTaskStatus,requestAadhaarVerification,requestPanVerification, upsertBusinessDocs,requestFssaiVerification,requestDrivingLicenseVerification, requestGstVerification } from "../controllers/merchantBusinessDocController.js";
+import { checkUdyamTaskStatus,checkTaskStatus,requestAadhaarVerification,requestPanVerification, upsertBusinessDocs,requestFssaiVerification,requestDrivingLicenseVerification, requestGstVerification,requestUdyamVerification } from "../controllers/merchantBusinessDocController.js";
 
 const router = express.Router();
 
@@ -13,7 +13,8 @@ router.post(
     { name: "tradeLicenseImage", maxCount: 1 },
     { name: "shopRegistrationImage", maxCount: 1 },
     { name: "fssaiImage", maxCount: 1 },
-    { name: "panImage", maxCount: 1 }
+    { name: "panImage", maxCount: 1 },
+    { name: "udhyamImage", maxCount: 1 },
   ]),
   upsertBusinessDocs
 );
@@ -27,10 +28,13 @@ router.post("/fssai/request", protectMerchant, requestFssaiVerification);
 
 // 2. Poll or check verification result by requestId
 router.get("/task-status/:requestId", protectMerchant, checkTaskStatus);
+router.get("/udhyam/task-status/:requestId",protectMerchant,checkUdyamTaskStatus)
 
 router.post('/dl/request',protectMerchant,requestDrivingLicenseVerification)
 
 router.post('/gst/request',protectMerchant,requestGstVerification)
+
+router.post("/udhyam/request",protectMerchant,requestUdyamVerification)
 
 
 export default router;

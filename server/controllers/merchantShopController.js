@@ -1,3 +1,4 @@
+import MerchantEditRequest from "../models/MerchantEditRequestModel.js";
 import Merchant from "../models/merchantModel.js";
 import MerchantShop from "../models/merchantShopModel.js";
 import {
@@ -98,6 +99,18 @@ export const upsertShopProfile = async (req, res) => {
       { $set: update, $setOnInsert: { merchantId: req.merchant._id } },
       { new: true, upsert: true }
     );
+    
+    const allowedEditRequest = await MerchantEditRequest.findOne({
+      merchantId: req.merchant._id,
+      targetModel: "Merchant",
+      status: "allowed",
+    });
+
+
+    if(allowedEditRequest){
+      allowedEditRequest.status = "consumed";
+    await allowedEditRequest.save();
+    }
 
     return res.json({ success: true, shopId: shop._id });
   } catch (error) {

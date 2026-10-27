@@ -37,6 +37,7 @@ import TagSuggestionAdminPage from "./pages/TagSuggestion/TagSuggestion";
 import CallbackAdminPage from "./pages/Callback/AdminCallback";
 import AdminOfferReviewDashboard from "./pages/AdminOfferReview/AdminOfferReview";
 import AdminShopDetailView from "./pages/ShopDetailView/ShopDetailView";
+import AdminMerchantEditRequests from "./pages/AdminMerchantEditRequest/AdminMerchantEditRequest";
 
 const TOKEN_STORAGE_KEY = "bb_admin_token";
 const gmaps_key = import.meta.env.VITE_API_GMAPS_KEY;
@@ -58,7 +59,7 @@ function App() {
   const handleLogout = () => setToken("");
 
   const isAuthenticated = !!token;
-  console.log(gmaps_key)
+
   return (
     
     <Routes>
@@ -96,6 +97,7 @@ function App() {
         <Route path="users" element={<UsersPage token={token} />} />
         <Route path="main" element={<AdminDashboard token={token} />} />
         <Route path="merchants" element={<MerchantsPage token={token} />} />
+        <Route path="merchant-edit-requests" element={<AdminMerchantEditRequests token={token}/>}/>
         <Route path="privacy" element={<PolicyEditor token={token} />} />
         <Route path="categories" element={<CategoryPage token={token} />} />
         <Route path="subcategories" element={<SubCategoryPage token={token} />} />
@@ -126,6 +128,7 @@ function App() {
         <Route path="callback" element={<CallbackAdminPage token={token}/>}/>
         <Route path="offer-review" element={<AdminOfferReviewDashboard token={token}/>}/>
         <Route path="shop/:shopId" element={<AdminShopDetailView token={token}/>}/>
+        
       </Route>
 
       {/* 🔁 Fallback Catch-All for unknown URLs */}

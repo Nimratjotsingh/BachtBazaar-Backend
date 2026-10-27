@@ -24,13 +24,26 @@ const formatPhone = (phone) => {
   return trimmed.startsWith("+91") ? trimmed : `+91${trimmed}`;
 };
 
+import MerchantEditRequest from "../models/MerchantEditRequestModel.js"; // Ensure model is imported
+
 export const updateMerchantProfile = async (req, res) => {
   try {
+    const merchantId = req.merchant._id;
+
+    // --- 1. VERIFY EDIT PERMISSION VIA EDIT REQUEST WORKFLOW ---
+    const allowedEditRequest = await MerchantEditRequest.findOne({
+      merchantId,
+      targetModel: "Merchant",
+      status: "allowed",
+    });
+
+    
+
     const validatedData = validate(updateMerchantProfileSchema, req.body);
-    const merchant = await Merchant.findById(req.merchant._id);
+    const merchant = await Merchant.findById(merchantId);
 
     if (!merchant) {
-      return res.status(404).json({ message: "Merchant not found" });
+      return res.status(404).json({ success: false, message: "Merchant not found" });
     }
 
     const { name, gender, city, phone, email } = validatedData;
@@ -41,6 +54,8 @@ export const updateMerchantProfile = async (req, res) => {
     merchant.email = email || merchant.email;
     if (phone) merchant.phone = formatPhone(phone);
 
+    merchant.status = "pending";
+
     if (req.file) {
       merchant.profileImage = {
         data: req.file.buffer,
@@ -48,17 +63,27 @@ export const updateMerchantProfile = async (req, res) => {
       };
     }
 
+    // Save updated merchant profile
     await merchant.save();
+
+    // --- 2. MARK THE APPROVED EDIT REQUEST AS CONSUMED ---
+    if(allowedEditRequest){
+      allowedEditRequest.status = "consumed";
+    await allowedEditRequest.save();
+    }
+    
 
     return res.json({
       success: true,
+      message: "Merchant profile updated successfully. Further edits will require a new request.",
       merchant: sanitizeMerchant(merchant)
     });
   } catch (error) {
+    console.log(error)
     if (error instanceof ValidationError) {
       return res.status(400).json({ message: error.message });
     }
-    console.log(error);
+    console.error("Update Merchant Profile Error:", error);
     return res.status(500).json({ message: "Profile update failed" });
   }
 };

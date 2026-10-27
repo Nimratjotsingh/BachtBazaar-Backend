@@ -89,6 +89,19 @@ export const dispatchAsyncAadhaarVerification = async ({ aadhaarNumber }) => {
  * Queries the task status by request_id and parses source output
  */
 
+export const dispatchAsyncUdyamVerification = async ({ uamNumber }) => {
+  const payload = {
+    task_id: randomUUID(),
+    group_id: randomUUID(),
+    data: {
+      uam_number: uamNumber,
+    },
+  };
+
+  const response = await idfyClient.post("/async/verify_with_source/udyam_aadhaar", payload);
+  return response.data;
+};
+
 export const dispatchAsyncGstVerification = async ({ gstin }) => {
   const cleanGstin = String(gstin).trim().toUpperCase();
 

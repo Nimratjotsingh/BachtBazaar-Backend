@@ -75,8 +75,9 @@ import adminCallbackRoutes from './routes/adminCallbackRoutes.js';
 import imageUpdateRoute from './routes/imageUpdateRoutes.js';
 import clickRoutes from './routes/clickRoutes.js';
 import shopAnalyticsRoutes from './routes/shopAnalyticsRoutes.js'
-
+import merchantEditRequestRoutes from './routes/merchantEditRequestRoutes.js';
 import adminOfferRoutes from './routes/adminOfferRoutes.js'
+import adminMerchantEditRequestRoutes from './routes/adminMerchantEditRoutes.js'
 
 dotenv.config();
 // console.log(process.env.MONGO_URI)
@@ -122,6 +123,9 @@ app.use('/api/faqs',faqRoutes);
 app.use('/api/admin/product-suggestions',adminProductSuggestionRoutes);
 app.use('/api/click',clickRoutes)
 app.use('/api/shop/analytics',shopAnalyticsRoutes)
+app.use('/api/merchant/edit-requests',merchantEditRequestRoutes)
+app.use('/api/admin/merchant-edit-request',adminMerchantEditRequestRoutes)
+
 
 app.use("/api/admin/entity/",imageUpdateRoute)
 app.use("/api/admin/offers",adminOfferRoutes)

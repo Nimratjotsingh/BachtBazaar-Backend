@@ -12,10 +12,20 @@ const merchantPersonalDocSchema = new mongoose.Schema({
     required: true,
     unique: true
   },
+  
   aadharNumber: String,
   aadharImage: imageSchema,
   panNumber: String,
-  panImage: imageSchema
+  panImage: imageSchema,
+  
+  // --- Newly Added Udyam Fields ---
+  udhyamNumber: {
+    type: String,
+    trim: true,
+    uppercase: true,
+  },
+  udhyamImage: imageSchema,
+
 }, { timestamps: true });
 
-export default mongoose.model("MerchantPersonalDoc", merchantPersonalDocSchema);
+export default mongoose.models.MerchantPersonalDoc || mongoose.model("MerchantPersonalDoc", merchantPersonalDocSchema);

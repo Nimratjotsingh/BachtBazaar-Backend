@@ -27,6 +27,7 @@ const navItems = [
   { label: "Dashboard", to: "/dashboard/main", icon: LayoutDashboard },
   { label: "Users", to: "/dashboard/users", icon: Users },
   { label: "Merchants", to: "/dashboard/merchants", icon: Store },
+  { label: "Merchant Edit Request", to: "/dashboard/merchant-edit-requests", icon: Coins },
   { label: "Privacy Policies", to: "/dashboard/privacy", icon: ShieldCheck },
   { label: "Categories", to: "/dashboard/categories", icon: Workflow },
   { label: "SubCategories", to: "/dashboard/subcategories", icon: LucideWorkflow },
@@ -54,6 +55,7 @@ const navItems = [
     { label: "Quest", to: "/dashboard/quest", icon: Coins },
     { label: "Help & Support", to: "/dashboard/help-support", icon: Coins },
     { label: "QR Template Management", to: "/dashboard/qr-template", icon: Coins },
+
     
     
     

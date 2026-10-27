@@ -292,7 +292,7 @@ export const updateMerchant = async (req, res) => {
 export const updateMerchantBlueTick = async (req, res) => {
   try {
     const { merchantId } = req.params;
-    const { isBlueTickEnabled } = req.body;
+    const { isBlueTickEnabled, blueTickStatus, blueTickReason } = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(merchantId)) {
       return res.status(400).json({
@@ -309,26 +309,66 @@ export const updateMerchantBlueTick = async (req, res) => {
       });
     }
 
-    // Determine target state: if provided explicitly, parse it; otherwise toggle current value
-    let targetStatus;
-    if (isBlueTickEnabled !== undefined && isBlueTickEnabled !== null) {
+    // --- 1. HANDLE BLUE TICK STATUS & REASON UPDATE (IF PROVIDED) ---
+    if (blueTickStatus !== undefined && blueTickStatus !== null) {
+      const allowedStatuses = ["not applied", "pending", "completed", "rejected"];
+      const cleanStatus = String(blueTickStatus).toLowerCase().trim();
+
+      if (!allowedStatuses.includes(cleanStatus)) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid blue tick status value. Allowed: ${allowedStatuses.join(", ")}.`,
+        });
+      }
+
+      merchant.blueTickStatus = cleanStatus;
+
+      // Automatically sync boolean flag & reason based on status
+      if (cleanStatus === "completed") {
+        merchant.isBlueTickEnabled = true;
+        merchant.blueTickReason = null; // Clear rejection reason upon approval
+      } else if (cleanStatus === "rejected") {
+        merchant.isBlueTickEnabled = false;
+        merchant.blueTickReason = blueTickReason ? String(blueTickReason).trim() : "Blue tick verification request rejected by admin.";
+      } else {
+        merchant.isBlueTickEnabled = false;
+        if (blueTickReason !== undefined) {
+          merchant.blueTickReason = blueTickReason ? String(blueTickReason).trim() : null;
+        }
+      }
+    } 
+    // --- 2. FALLBACK TO LEGACY BOOLEAN TOGGLE (IF STATUS NOT PROVIDED) ---
+    else if (isBlueTickEnabled !== undefined && isBlueTickEnabled !== null) {
+      let targetStatus;
       if (typeof isBlueTickEnabled === "string") {
         targetStatus = isBlueTickEnabled.toLowerCase() === "true";
       } else {
         targetStatus = Boolean(isBlueTickEnabled);
       }
-    } else {
-      targetStatus = !merchant.isBlueTickEnabled;
+
+      merchant.isBlueTickEnabled = targetStatus;
+      merchant.blueTickStatus = targetStatus ? "completed" : "not applied";
+      if (!targetStatus) {
+        merchant.blueTickReason = null;
+      }
+    } 
+    // --- 3. DEFAULT TOGGLE BEHAVIOR ---
+    else {
+      const targetStatus = !merchant.isBlueTickEnabled;
+      merchant.isBlueTickEnabled = targetStatus;
+      merchant.blueTickStatus = targetStatus ? "completed" : "not applied";
+      if (!targetStatus) {
+        merchant.blueTickReason = null;
+      }
     }
 
-    merchant.isBlueTickEnabled = targetStatus;
     await merchant.save();
 
     return res.status(200).json({
       success: true,
-      message: targetStatus
+      message: merchant.isBlueTickEnabled
         ? `Verified blue tick badge granted to ${merchant.name || "merchant"}.`
-        : `Verified blue tick badge revoked from ${merchant.name || "merchant"}.`,
+        : `Verified blue tick status updated to '${merchant.blueTickStatus}' for ${merchant.name || "merchant"}.`,
       data: {
         _id: merchant._id,
         name: merchant.name,
@@ -336,6 +376,8 @@ export const updateMerchantBlueTick = async (req, res) => {
         email: merchant.email,
         isVerified: merchant.isVerified,
         isBlueTickEnabled: merchant.isBlueTickEnabled,
+        blueTickStatus: merchant.blueTickStatus,
+        blueTickReason: merchant.blueTickReason,
         status: merchant.status,
       },
     });

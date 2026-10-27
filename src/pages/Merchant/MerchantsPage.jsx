@@ -99,6 +99,12 @@ function MerchantsPage({ token }) {
   const [rejectReasonInput, setRejectReasonInput] = useState("");
   const [submittingAction, setSubmittingAction] = useState(false);
 
+  // --- Blue Tick Modal & Reason State Managers ---
+  const [isBlueTickModalOpen, setIsBlueTickModalOpen] = useState(false);
+  const [blueTickActionType, setBlueTickActionType] = useState("completed"); // "completed" or "rejected"
+  const [blueTickReasonInput, setBlueTickReasonInput] = useState("");
+  const [submittingBlueTick, setSubmittingBlueTick] = useState(false);
+
   // Fullscreen Image Lightbox Modal State
   const [lightboxImage, setLightboxImage] = useState(null); // { src, label }
 
@@ -166,21 +172,65 @@ function MerchantsPage({ token }) {
     }
   };
 
-  // --- Toggle Blue Tick Verified Badge ---
-  const handleToggleBlueTick = async (merchantId, currentVal) => {
+  // --- Toggle / Open Blue Tick Modal ---
+  const handleOpenBlueTickModal = (statusType) => {
+    setBlueTickActionType(statusType);
+    setBlueTickReasonInput(editingMerchant?.blueTickReason || "");
+    setIsBlueTickModalOpen(true);
+  };
+
+  // --- Submit Blue Tick Status & Reason ---
+  const handleConfirmBlueTickSubmit = async (e) => {
+    e.preventDefault();
+    if (!editingMerchant) return;
+    setSubmittingBlueTick(true);
+    try {
+      const merchantId = editingMerchant._id;
+      const targetVal = blueTickActionType === "completed";
+
+      const payload = {
+        isBlueTickEnabled: targetVal,
+        blueTickStatus: blueTickActionType,
+        blueTickReason: blueTickActionType === "rejected" ? blueTickReasonInput : null
+      };
+
+      // Optimistic state updates
+      setItems(prev => prev.map(m => m._id === merchantId ? { ...m, isBlueTickEnabled: targetVal, blueTickStatus: blueTickActionType, blueTickReason: payload.blueTickReason } : m));
+      setEditingMerchant(prev => ({ ...prev, isBlueTickEnabled: targetVal, blueTickStatus: blueTickActionType, blueTickReason: payload.blueTickReason }));
+      if (fullData?.profile?._id === merchantId) {
+        setFullData(prev => ({ ...prev, profile: { ...prev.profile, isBlueTickEnabled: targetVal, blueTickStatus: blueTickActionType, blueTickReason: payload.blueTickReason } }));
+      }
+
+      await adminClient.patch(`/merchants/${merchantId}/blue-tick`, payload, { headers });
+
+      setFeedback(`Blue tick status updated to '${blueTickActionType}' successfully.`);
+      setIsBlueTickModalOpen(false);
+      setTimeout(() => setFeedback(""), 3500);
+    } catch (err) {
+      setFeedback("Failed to update verified blue tick status.");
+      await loadMerchants();
+    } finally {
+      setSubmittingBlueTick(false);
+    }
+  };
+
+  // --- Quick Table Toggle Blue Tick Handler ---
+  const handleToggleBlueTickQuick = async (merchantId, currentVal) => {
     try {
       const targetVal = !currentVal;
-      // Optimistic update in table
-      setItems(prev => prev.map(m => m._id === merchantId ? { ...m, isBlueTickEnabled: targetVal } : m));
+      const newStatus = targetVal ? "completed" : "not applied";
+
+      setItems(prev => prev.map(m => m._id === merchantId ? { ...m, isBlueTickEnabled: targetVal, blueTickStatus: newStatus } : m));
       if (editingMerchant && editingMerchant._id === merchantId) {
-        setEditingMerchant(prev => ({ ...prev, isBlueTickEnabled: targetVal }));
+        setEditingMerchant(prev => ({ ...prev, isBlueTickEnabled: targetVal, blueTickStatus: newStatus }));
       }
       if (fullData?.profile?._id === merchantId) {
-        setFullData(prev => ({ ...prev, profile: { ...prev.profile, isBlueTickEnabled: targetVal } }));
+        setFullData(prev => ({ ...prev, profile: { ...prev.profile, isBlueTickEnabled: targetVal, blueTickStatus: newStatus } }));
       }
 
       await adminClient.patch(`/merchants/${merchantId}/blue-tick`, {
-        isBlueTickEnabled: targetVal
+        isBlueTickEnabled: targetVal,
+        blueTickStatus: newStatus
       }, { headers });
 
       setFeedback(`Blue tick ${targetVal ? 'granted' : 'revoked'} successfully.`);
@@ -371,7 +421,7 @@ function MerchantsPage({ token }) {
                         <td className="px-4 py-4">
                           <div className="flex items-center gap-3">
                             <div 
-                              onClick={() => profileImg && setLightboxImage({ src: profileImg, label: `${m.name} - Profile Image` })}
+                              onClick={() => profileImg && setLightboxImage({ src: profileImg, label: `${m.name}Profile Image` })}
                               className={`w-11 h-11 rounded-xl bg-blue-600 flex items-center justify-center font-black text-sm text-white shadow-xs overflow-hidden shrink-0 border border-slate-200 ${profileImg ? 'cursor-zoom-in' : ''}`}
                             >
                               {profileImg ? (
@@ -414,7 +464,7 @@ function MerchantsPage({ token }) {
                         <td className="px-4 py-4 text-center">
                           <button
                             type="button"
-                            onClick={() => handleToggleBlueTick(m._id, m.isBlueTickEnabled)}
+                            onClick={() => handleToggleBlueTickQuick(m._id, m.isBlueTickEnabled)}
                             className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer border ${
                               m.isBlueTickEnabled
                                 ? "bg-blue-600 text-white border-blue-600 shadow-xs shadow-blue-200"
@@ -579,7 +629,7 @@ function MerchantsPage({ token }) {
                         <div 
                           onClick={() => {
                             const src = getImageUrl(fullData.profile?.profileImage);
-                            if (src) setLightboxImage({ src, label: `${fullData.profile?.name} - Avatar` });
+                            if (src) setLightboxImage({ src, label: `${fullData.profile?.name}Avatar` });
                           }}
                           className={`w-16 h-16 rounded-2xl overflow-hidden shadow-xs border-2 border-white bg-slate-200 shrink-0 ${getImageUrl(fullData.profile?.profileImage) ? 'cursor-zoom-in' : ''}`}
                         >
@@ -605,24 +655,43 @@ function MerchantsPage({ token }) {
                         <InfoField label="Primary Contact Phone" value={fullData.profile?.phone} icon={Phone} />
                         <InfoField label="Primary Contact Email" value={fullData.profile?.email} icon={Mail} />
                         <InfoField label="System Role" value={fullData.profile?.role} icon={ShieldCheck} />
-                        <InfoField 
-                          label="Blue Tick Verified Badge" 
-                          icon={BadgeCheck}
-                          badge={
-                            <div className="flex items-center gap-2 mt-1">
-                              <span className={`text-xs font-bold ${fullData.profile?.isBlueTickEnabled ? 'text-blue-600' : 'text-slate-400'}`}>
-                                {fullData.profile?.isBlueTickEnabled ? 'Active Verified' : 'Disabled'}
-                              </span>
+                        
+                        {/* Blue Tick Inspector Card with Status & Reason */}
+                        <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-100 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <BadgeCheck size={16} className="text-blue-500" />
+                              <div>
+                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider leading-none">Blue Tick Verification</p>
+                                <p className="text-xs font-bold text-slate-800 capitalize mt-0.5">
+                                  Status: <strong className="text-blue-600">{fullData.profile?.blueTickStatus || "not applied"}</strong>
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex gap-1.5">
                               <button
                                 type="button"
-                                onClick={() => handleToggleBlueTick(fullData.profile?._id, fullData.profile?.isBlueTickEnabled)}
-                                className="px-2.5 py-1 bg-white border border-slate-200 hover:border-blue-400 text-blue-600 rounded-lg text-[10px] font-black uppercase cursor-pointer"
+                                onClick={() => handleOpenBlueTickModal("completed")}
+                                className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-black uppercase cursor-pointer"
                               >
-                                {fullData.profile?.isBlueTickEnabled ? "Revoke" : "Enable"}
+                                Grant
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenBlueTickModal("rejected")}
+                                className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[10px] font-black uppercase cursor-pointer"
+                              >
+                                Decline
                               </button>
                             </div>
-                          }
-                        />
+                          </div>
+                          {fullData.profile?.blueTickReason && (
+                            <p className="text-[11px] text-rose-600 bg-rose-50 px-2.5 py-1.5 rounded-xl border border-rose-100 font-medium">
+                              <strong>Decline Reason:</strong> {fullData.profile.blueTickReason}
+                            </p>
+                          )}
+                        </div>
+
                       </div>
                     </div>
 
@@ -831,7 +900,7 @@ function MerchantsPage({ token }) {
 
                       {/* Toggle Blue Tick */}
                       <button
-                        onClick={() => handleToggleBlueTick(editingMerchant._id, editingMerchant.isBlueTickEnabled)}
+                        onClick={() => handleOpenBlueTickModal(editingMerchant.isBlueTickEnabled ? "not applied" : "completed")}
                         className={`flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-bold text-xs uppercase tracking-wider transition cursor-pointer ${
                           editingMerchant.isBlueTickEnabled
                             ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
@@ -933,6 +1002,70 @@ function MerchantsPage({ token }) {
                 className="flex-1 h-10 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl text-xs transition shadow-xs flex items-center justify-center cursor-pointer"
               >
                 {submittingAction ? <Loader2 className="animate-spin" size={14} /> : "Submit Rejection"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* =========================================================
+          BLUE TICK STATUS & REASON MODAL
+         ========================================================= */}
+      {isBlueTickModalOpen && (
+        <div className="fixed inset-0 z-[200] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <form 
+            onSubmit={handleConfirmBlueTickSubmit}
+            className="bg-white p-6 rounded-3xl max-w-md w-full shadow-2xl space-y-4 animate-in zoom-in-95 duration-200 border border-slate-100"
+          >
+            <div className="flex items-start gap-3 text-blue-600">
+              <div className="p-2 bg-blue-50 rounded-xl"><BadgeCheck size={22} /></div>
+              <div>
+                <h3 className="text-base font-black text-slate-900 leading-tight">
+                  {blueTickActionType === "completed" ? "Grant Verified Blue Tick" : "Decline Blue Tick Request"}
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">Manage badge status and review notes for merchant.</p>
+              </div>
+            </div>
+
+            {blueTickActionType === "rejected" && (
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">
+                  Decline Reason / Remarks
+                </label>
+                <textarea
+                  required
+                  rows="3"
+                  value={blueTickReasonInput}
+                  onChange={(e) => setBlueTickReasonInput(e.target.value)}
+                  placeholder="e.g., Storefront identity mismatch or insufficient brand presence..."
+                  className="w-full text-xs font-semibold p-3.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-slate-700 resize-none transition-all placeholder:text-slate-300"
+                />
+              </div>
+            )}
+
+            {blueTickActionType === "completed" && (
+              <p className="text-xs text-slate-600 font-medium py-2">
+                Are you sure you want to grant the verified blue tick badge to <strong className="text-slate-900">{editingMerchant?.name}</strong>? This will enable public credibility indicators across the platform.
+              </p>
+            )}
+
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsBlueTickModalOpen(false)}
+                disabled={submittingBlueTick}
+                className="flex-1 h-10 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={submittingBlueTick}
+                className={`flex-1 h-10 text-white font-bold rounded-xl text-xs transition shadow-xs flex items-center justify-center cursor-pointer ${
+                  blueTickActionType === "completed" ? "bg-blue-600 hover:bg-blue-700" : "bg-rose-600 hover:bg-rose-700"
+                }`}
+              >
+                {submittingBlueTick ? <Loader2 className="animate-spin" size={14} /> : (blueTickActionType === "completed" ? "Confirm Grant" : "Submit Decline")}
               </button>
             </div>
           </form>

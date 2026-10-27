@@ -23,12 +23,24 @@ const merchantSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    
     // --- VERIFIED BADGE / BLUE TICK FEATURE ---
     isBlueTickEnabled: {
       type: Boolean,
       default: false,
       index: true,
     },
+    blueTickStatus: {
+      type: String,
+      enum: ["not applied", "pending", "completed", "rejected"],
+      default: "not applied",
+      index: true,
+    },
+    blueTickReason: {
+      type: String,
+      default: null,
+    },
+
     role: {
       type: String,
       enum: [ROLES.MERCHANT, ROLES.SUPER_ADMIN],
@@ -109,7 +121,7 @@ const merchantSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["pending","verified", "unverified", "rejected"],
+      enum: ["pending", "verified", "unverified", "rejected"],
       default: "unverified",
     },
     rejectedReason: {
