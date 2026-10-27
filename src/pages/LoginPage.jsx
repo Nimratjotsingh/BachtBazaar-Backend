@@ -59,7 +59,7 @@ const BachttBazaarLogin = ({ onLogin }) => {
             <img src="/logo.jpeg" alt="logo" />
           </div>
           <h1 className="text-3xl font-extrabold text-sky-900 tracking-tight">
-            Bachtt<span className="text-sky-500">Bazaar</span>
+            Near<span className="text-sky-500">Et</span>
           </h1>
         </div>
 
