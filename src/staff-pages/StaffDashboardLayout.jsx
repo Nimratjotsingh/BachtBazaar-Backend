@@ -18,7 +18,9 @@ import {
 const staffNavItems = [
   { label: "Staff Dashboard", to: "/staff/dashboard", icon: LayoutDashboard },
   { label: "Staff Products", to: "/staff/products", icon: LayoutDashboard },
+  { label: "Staff Products Suggestion", to: "/staff/productsuggestion", icon: LayoutDashboard },
    { label: "Staff Services", to: "/staff/services", icon: LayoutDashboard },
+    { label: "Staff Services Suggestion", to: "/staff/services-suggestion", icon: LayoutDashboard },
    { label: "Staff Offers", to: "/staff/offers", icon: LayoutDashboard },
 
 ];

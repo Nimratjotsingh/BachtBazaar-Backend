@@ -83,6 +83,8 @@ import staffProfileRoutes from './routes/staff/staffProfileRoutes.js'
 import staffAuthRoutes from './routes/staff/staffAuthRoutes.js'
 import staffServicesRoutes from './routes/staff/staffServicesRoutes.js';
 import staffOfferRoutes from './routes/staff/staffOfferRoutes.js'
+import staffProductSuggestionRoutes from './routes/staff/staffProductSuggestionRoutes.js'
+import staffSreviceSuggestionRoutes from './routes/staff/staffServiceSuggestionRoutes.js';
 
 dotenv.config();
 // console.log(process.env.MONGO_URI)
@@ -141,6 +143,8 @@ app.use('/api/staff',staffAuthRoutes);
 app.use('/api/staff/profile',staffProfileRoutes);
 app.use('/api/staff/services',staffServicesRoutes);
 app.use('/api/staff/offers',staffOfferRoutes);
+app.use('/api/staff/product-suggestions',staffProductSuggestionRoutes);
+app.use('/api/staff/service-suggestions',staffSreviceSuggestionRoutes);
 
 
 app.use("/api/merchant/auth", merchantAuthRoutes);

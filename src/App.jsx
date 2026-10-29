@@ -45,6 +45,8 @@ import AdminStaffManagement from "./pages/AdminStaffManagement/AdminManagementPA
 import StaffProductDashboard from "./staff-pages/Products/StaffProductsPage.jsx";
 import StaffServiceVerificationManager from "./staff-pages/Services/StaffServices.jsx";
 import StaffOfferReviewsManager from "./staff-pages/Offers/StaffOfferReviewManager.jsx";
+import StaffProductSuggestionsManager from "./staff-pages/ProductSuggestionManager/StaffProductSuggestionManager.jsx";
+import StaffServiceSuggestionsManager from "./staff-pages/ServiceSuggestion/ServiceSuggestion.jsx";
 
 const ADMIN_TOKEN_KEY = "bb_admin_token";
 const STAFF_TOKEN_KEY = "bb_staff_token";
@@ -177,9 +179,13 @@ function App() {
         <Route index element={<Navigate to="dashboard" replace />} />
         <Route path="dashboard" element={<StaffDashboard token={staffToken} />} />
         <Route path="products" element={<StaffProductDashboard token={staffToken} />} />
+        <Route path="productsuggestion" element={<StaffProductSuggestionsManager token={staffToken} />} />
+        
         <Route path="services" element={<StaffServiceVerificationManager token={staffToken} />} />
+        <Route path="services-suggestion" element={<StaffServiceSuggestionsManager token={staffToken} />} />
         
         <Route path="offers" element={<StaffOfferReviewsManager token={staffToken} />} />
+        
         
       </Route>
     </Routes>
