@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 
 import DashboardLayout from "./pages/DashboardLayout";
-import StaffDashboardLayout from "./staff-pages/StaffDashboardLAyout.jsx"; // Import the staff layout we created earlier
+import StaffDashboardLayout from "./staff-pages/StaffDashboardLayout.jsx"; // Import the staff layout we created earlier
 import LoginPage from "./pages/LoginPage";
 import StaffLoginPage from "./staff-pages/Login/StaffLogin.jsx"; // Dedicated or shared login page for staff
 import StaffDashboard from "./staff-pages/Dashboard/DashboardPage.jsx"; // The welcome banner staff dashboard we created
