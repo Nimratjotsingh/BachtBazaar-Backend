@@ -78,6 +78,11 @@ import shopAnalyticsRoutes from './routes/shopAnalyticsRoutes.js'
 import merchantEditRequestRoutes from './routes/merchantEditRequestRoutes.js';
 import adminOfferRoutes from './routes/adminOfferRoutes.js'
 import adminMerchantEditRequestRoutes from './routes/adminMerchantEditRoutes.js'
+import adminStaffRoutes from './routes/adminStaffRoutes.js';
+import staffProfileRoutes from './routes/staff/staffProfileRoutes.js'
+import staffAuthRoutes from './routes/staff/staffAuthRoutes.js'
+import staffServicesRoutes from './routes/staff/staffServicesRoutes.js';
+import staffOfferRoutes from './routes/staff/staffOfferRoutes.js'
 
 dotenv.config();
 // console.log(process.env.MONGO_URI)
@@ -126,9 +131,18 @@ app.use('/api/shop/analytics',shopAnalyticsRoutes)
 app.use('/api/merchant/edit-requests',merchantEditRequestRoutes)
 app.use('/api/admin/merchant-edit-request',adminMerchantEditRequestRoutes)
 
-
+//AdminRoutes
 app.use("/api/admin/entity/",imageUpdateRoute)
 app.use("/api/admin/offers",adminOfferRoutes)
+app.use('/api/admin/staff',adminStaffRoutes);
+
+//Staff Routes
+app.use('/api/staff',staffAuthRoutes);
+app.use('/api/staff/profile',staffProfileRoutes);
+app.use('/api/staff/services',staffServicesRoutes);
+app.use('/api/staff/offers',staffOfferRoutes);
+
+
 app.use("/api/merchant/auth", merchantAuthRoutes);
 app.use("/api/merchants", merchantAuthRoutes);
 app.use('/api/super-admin',superAuth);

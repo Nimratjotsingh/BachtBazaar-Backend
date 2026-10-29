@@ -130,7 +130,14 @@ const BachttBazaarLogin = ({ onLogin }) => {
                 "Login"
               )}
             </button>
+
+            <div className="flex justify-center items center">
+
+            <button onClick={()=>{navigate('/staff/login')}} className="cursor-pointer">Staff Login</button>
+            </div>
           </form>
+
+          
         </div>
       </div>
 

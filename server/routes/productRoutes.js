@@ -11,6 +11,8 @@ import {
   listProductsAll
 } from "../controllers/productController.js";
 
+import {protectStaff} from '../middleware/staffAuthMiddleware.js'
+
 // Assuming you have these middleware already created
 import { protectMerchant } from "../middleware/authMiddleware.js";
 import {protectSuperAdmin} from '../middleware/superAuthMiddleware.js';
@@ -27,6 +29,7 @@ router.get('/all',listProductsAll)
 router.get("/review-queue", protectSuperAdmin, getPendingProductsAdmin);
 router.patch("/:productId/toggle-suggestion", protectSuperAdmin,toggleProductToSuggestion);
 router.patch("/:id/review",protectSuperAdmin,upload.fields([{name:"thumbnail",maxCount:1}]), reviewProductAdmin);
+router.patch("/:id/review/staff",protectStaff,upload.fields([{name:"thumbnail",maxCount:1}]), reviewProductAdmin);
 
 router.get("/suggestions", protectMerchant, getProductSuggestionsForMerchant);
 
