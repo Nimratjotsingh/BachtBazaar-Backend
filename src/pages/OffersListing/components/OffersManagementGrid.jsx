@@ -3,7 +3,7 @@ import {
   Search, SlidersHorizontal, RotateCcw, ChevronLeft, ChevronRight,
   MoreVertical, TrendingUp, TrendingDown, Eye, Plus, Upload, 
   Download, Calendar, BarChart3, Tag, Percent, X, Store, User, Mail, Phone, MapPin, Clock, ShieldCheck, Sliders, EyeOff,
-  Loader2, Layers, LayoutGrid, List, Maximize2, Ticket, QrCode, CheckCircle2, AlertCircle, Hash, DollarSign
+  Loader2, Layers, LayoutGrid, List, Maximize2, Ticket, QrCode, CheckCircle2, AlertCircle, Hash, DollarSign, Check, Shield
 } from "lucide-react";
 
 const OffersManagementGrid = ({ 
@@ -29,6 +29,10 @@ const OffersManagementGrid = ({
   const [selectedStatus, setSelectedStatus] = useState("");
   const [selectedType, setSelectedType] = useState("");
   const [itemsPerPage, setItemsPerPage] = useState(10);
+
+  // Rejection reason prompt input state for verification drawer
+  const [rejectionInput, setRejectionInput] = useState("");
+  const [showRejectInput, setShowRejectInput] = useState(false);
 
   const handleApplyFilters = () => {
     if (onFilterChange) {
@@ -220,7 +224,7 @@ const OffersManagementGrid = ({
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            onActionTrigger && onActionTrigger("open_lightbox", { src: offer.thumbnail, label: `${offer.title} - Banner` });
+                            onActionTrigger && onActionTrigger("open_lightbox", { src: offer.thumbnail, label: `${offer.title} Banner` });
                           }}
                           className="absolute bottom-2.5 right-2.5 p-2 bg-slate-900/60 hover:bg-slate-900 text-white rounded-xl backdrop-blur-xs opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer shadow-xs"
                           title="Fullscreen Banner"
@@ -280,8 +284,8 @@ const OffersManagementGrid = ({
           </div>
         ) : (
           /* =========================================================
-              VIEW MODE 2: TABLE LIST VIEW
-              ========================================================= */
+             VIEW MODE 2: TABLE LIST VIEW
+             ========================================================= */
           <div className="overflow-x-auto w-full">
             <table className="w-full text-left border-collapse min-w-[750px]">
               <thead>
@@ -308,7 +312,7 @@ const OffersManagementGrid = ({
                           onClick={(e) => {
                             if (offer.thumbnail) {
                               e.stopPropagation();
-                              onActionTrigger && onActionTrigger("open_lightbox", { src: offer.thumbnail, label: `${offer.title} - Banner` });
+                              onActionTrigger && onActionTrigger("open_lightbox", { src: offer.thumbnail, label: `${offer.title} Banner` });
                             }
                           }}
                           className={`w-11 h-11 rounded-xl bg-slate-950 border border-slate-800 overflow-hidden shrink-0 shadow-inner flex items-center justify-center ${offer.thumbnail ? 'cursor-zoom-in' : ''}`}
@@ -392,12 +396,96 @@ const OffersManagementGrid = ({
             </div>
 
             <div className="p-5 space-y-5 max-h-[calc(100vh-160px)] overflow-y-auto pr-2 scrollbar-thin">
+              
+              {/* --- VERIFICATION & AUDIT ACTIONS BAR --- */}
+              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Moderation Status</span>
+                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase ${
+                    selectedOfferDetail.approval_status === "approved" ? "bg-emerald-100 text-emerald-800" :
+                    selectedOfferDetail.approval_status === "rejected" ? "bg-rose-100 text-rose-800" : "bg-amber-100 text-amber-800"
+                  }`}>
+                    {selectedOfferDetail.approval_status || "approved"}
+                  </span>
+                </div>
+
+                {/* Verifier Attribution Stamp if available */}
+                {selectedOfferDetail.approved_by && (
+                  <div className="flex items-center gap-2 text-xs text-slate-600 border-t border-slate-200/60 pt-2.5">
+                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-white shrink-0 text-xs ${
+                      selectedOfferDetail.approved_by_model === "Staff" ? "bg-amber-600" : "bg-indigo-600"
+                    }`}>
+                      <Shield size={14} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-bold text-slate-900 truncate">
+                        {selectedOfferDetail.approved_by?.name || "Admin"} <span className="text-[9px] font-normal text-slate-500">({selectedOfferDetail.approved_by_model || "Admin"})</span>
+                      </p>
+                      <p className="text-[10px] text-slate-400">
+                        {selectedOfferDetail.approval_date ? new Date(selectedOfferDetail.approval_date).toLocaleString() : ""}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Rejection input field if rejected */}
+                {showRejectInput ? (
+                  <div className="space-y-2 pt-1 border-t border-slate-200/60">
+                    <textarea
+                      rows={2}
+                      placeholder="Specify rejection reason..."
+                      value={rejectionInput}
+                      onChange={(e) => setRejectionInput(e.target.value)}
+                      className="w-full p-2 bg-white border border-slate-200 rounded-xl text-xs outline-none text-slate-800"
+                    />
+                    <div className="flex gap-2 justify-end">
+                      <button 
+                        onClick={() => setShowRejectInput(false)}
+                        className="px-2.5 py-1 text-xs text-slate-500 hover:bg-slate-200 rounded-lg cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                      <button 
+                        onClick={() => {
+                          if (!rejectionInput.trim()) return alert("Provide a reason");
+                          onActionTrigger && onActionTrigger("review_offer", { 
+                            offerId: selectedOfferDetail._id, 
+                            status: "rejected", 
+                            rejectionReason: rejectionInput.trim() 
+                          });
+                          setShowRejectInput(false);
+                          setRejectionInput("");
+                        }}
+                        className="px-3 py-1 bg-rose-600 text-white rounded-lg text-xs font-bold shadow-xs cursor-pointer"
+                      >
+                        Confirm Rejection
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex gap-2 pt-1 border-t border-slate-200/60">
+                    <button
+                      onClick={() => onActionTrigger && onActionTrigger("review_offer", { offerId: selectedOfferDetail._id, status: "approved" })}
+                      className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-extrabold flex items-center justify-center gap-1 transition shadow-xs cursor-pointer"
+                    >
+                      <Check size={14} /> Approve
+                    </button>
+                    <button
+                      onClick={() => setShowRejectInput(true)}
+                      className="flex-1 py-2 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1 transition border border-rose-200 cursor-pointer"
+                    >
+                      <X size={14} /> Reject
+                    </button>
+                  </div>
+                )}
+              </div>
+
               {/* Proportional Preview Container */}
               <div className="space-y-3">
                 <div 
                   onClick={() => {
                     if (selectedOfferDetail.thumbnail) {
-                      onActionTrigger && onActionTrigger("open_lightbox", { src: selectedOfferDetail.thumbnail, label: `${selectedOfferDetail.title} - Banner` });
+                      onActionTrigger && onActionTrigger("open_lightbox", { src: selectedOfferDetail.thumbnail, label: `${selectedOfferDetail.title} Banner` });
                     }
                   }}
                   className={`w-full aspect-[16/10] bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden shadow-inner flex items-center justify-center p-3 relative group ${selectedOfferDetail.thumbnail ? 'cursor-zoom-in' : ''}`}

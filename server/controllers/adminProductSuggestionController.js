@@ -150,10 +150,23 @@ export const createProductSuggestion = async (req, res) => {
       try { data.volume = JSON.parse(data.volume); } catch { data.volume = null; }
     }
 
+    // --- IDENTIFY CREATOR (Admin vs Staff) ---
+    const creatorId = req.superAdmin?._id || req.admin?._id || req.staff?._id || req.user?._id || null;
+    let creatorModel = null;
+
+    if (req.superAdmin || req.admin) {
+      creatorModel = "SuperAdmin"; // Change to "Admin" if your admin model name is Admin
+    } else if (req.staff) {
+      creatorModel = "Staff";
+    } else if (req.user) {
+      creatorModel = req.user.role === "staff" ? "Staff" : "SuperAdmin";
+    }
+
     const suggestion = await ProductSuggestion.create({
       ...data,
       name: data.name.trim(),
-      created_by: req.admin?._id || null,
+      created_by: creatorId,
+      created_by_model: creatorModel,
     });
 
     return res.status(201).json({
@@ -243,7 +256,7 @@ export const getProductSuggestionById = async (req, res) => {
     const suggestion = await ProductSuggestion.findById(id)
       .populate("category_id", "label name")
       .populate("subcategory_id", "label name")
-      .populate("created_by", "name email")
+      .populate("created_by", "name email phone role") // Dynamically populates SuperAdmin, Admin, or Staff
       .lean();
 
     if (!suggestion) {
@@ -253,9 +266,24 @@ export const getProductSuggestionById = async (req, res) => {
       });
     }
 
+    // Format creator metadata for the frontend
+    let creatorDetails = null;
+    if (suggestion.created_by) {
+      creatorDetails = {
+        _id: suggestion.created_by._id,
+        name: suggestion.created_by.name || "Unknown",
+        email: suggestion.created_by.email || null,
+        roleType: suggestion.created_by_model, // "SuperAdmin", "Admin", or "Staff"
+        isStaff: suggestion.created_by_model === "Staff", // Boolean flag for UI badges
+      };
+    }
+
     return res.status(200).json({
       success: true,
-      data: suggestion,
+      data: {
+        ...suggestion,
+        creator: creatorDetails, // Clean separated object containing who created the template
+      },
     });
   } catch (error) {
     console.error("Get Product Suggestion By ID Error:", error);

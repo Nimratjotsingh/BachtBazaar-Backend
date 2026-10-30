@@ -92,6 +92,7 @@ export const getOfferDetailsAdmin = async (req, res) => {
       .populate("offer_type_id", "title label")
       .populate("sub_offer_type_id", "title label")
       .populate("product_id", "name thumbnail price discounted_price stock")
+      .populate("approved_by", "name email phone role") // Dynamically populates SuperAdmin, Admin, or Staff
       .lean();
 
     if (!offer) {
@@ -101,9 +102,24 @@ export const getOfferDetailsAdmin = async (req, res) => {
       });
     }
 
+    // Format audit metadata for the frontend
+    let verifierDetails = null;
+    if (offer.approved_by) {
+      verifierDetails = {
+        _id: offer.approved_by._id,
+        name: offer.approved_by.name || "Unknown",
+        email: offer.approved_by.email || null,
+        roleType: offer.approved_by_model, // "SuperAdmin", "Admin", or "Staff"
+        isStaff: offer.approved_by_model === "Staff", // Boolean flag for easy UI checks
+      };
+    }
+
     return res.status(200).json({
       success: true,
-      data: offer,
+      data: {
+        ...offer,
+        verifier: verifierDetails, // Clean separated object containing who reviewed/approved it
+      },
     });
   } catch (error) {
     console.error("Get Admin Offer Details Error:", error);
@@ -154,6 +170,18 @@ export const reviewOfferStatus = async (req, res) => {
 
     const previousStatus = offer.approval_status;
 
+    // --- IDENTIFY VERIFIER (Admin vs Staff) ---
+    const verifierId = req.admin?._id || req.staff?._id || req.user?._id;
+    let verifierModel = null;
+
+    if (req.admin) {
+      verifierModel = "SuperAdmin"; // Change to "Admin" if your schema model is named Admin
+    } else if (req.staff) {
+      verifierModel = "Staff";
+    } else if (req.user) {
+      verifierModel = req.user.role === "staff" ? "Staff" : "SuperAdmin";
+    }
+
     // Apply verification logic
     offer.approval_status = status;
 
@@ -167,6 +195,13 @@ export const reviewOfferStatus = async (req, res) => {
       offer.is_active = false;
       offer.rejection_reason = null;
     }
+
+    // --- RECORD AUDIT TRAIL ---
+    if (verifierId) {
+      offer.approved_by = verifierId;
+      offer.approved_by_model = verifierModel;
+    }
+    offer.approval_date = new Date();
 
     await offer.save();
 
@@ -210,7 +245,6 @@ export const reviewOfferStatus = async (req, res) => {
     });
   }
 };
-
 import fs from "fs";
 import path from "path";
 

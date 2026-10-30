@@ -36,11 +36,24 @@ const serviceReferenceSchema = new mongoose.Schema(
       ],
       index: true,
     },
+    
+    // --- Creator Attribution (Merchant, Admin, or Staff) ---
     suggested_by: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Merchant",
-      default: null, // Null if created directly by Admin
+      default: null, // Null if created directly by Admin/Staff
     },
+    created_by: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+      refPath: "created_by_model",
+    },
+    created_by_model: {
+      type: String,
+      enum: ["SuperAdmin", "Admin", "Staff", "Merchant"],
+      default: null,
+    },
+
     status: {
       type: String,
       enum: ["approved", "pending", "rejected"],
@@ -51,6 +64,23 @@ const serviceReferenceSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+
+    // --- Approval / Verification Audit Trail ---
+    approved_by: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+      refPath: "approved_by_model",
+    },
+    approved_by_model: {
+      type: String,
+      enum: ["SuperAdmin", "Admin", "Staff"],
+      default: null,
+    },
+    approval_date: {
+      type: Date,
+      default: null,
+    },
+
     is_active: {
       type: Boolean,
       default: true,
@@ -63,6 +93,6 @@ const serviceReferenceSchema = new mongoose.Schema(
 // Search index for auto-complete suggestions
 serviceReferenceSchema.index({ name: "text", description: "text" });
 
-const ServiceReference = mongoose.model("ServiceReference", serviceReferenceSchema);
+const ServiceReference = mongoose.models.ServiceReference || mongoose.model("ServiceReference", serviceReferenceSchema);
 
 export default ServiceReference;

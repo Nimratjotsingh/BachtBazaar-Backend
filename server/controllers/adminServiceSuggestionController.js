@@ -68,6 +68,18 @@ export const createSuggestion = async (req, res) => {
       image = `/uploads/${req.file.filename}`;
     }
 
+    // --- IDENTIFY CREATOR & VERIFIER (Admin vs Staff) ---
+    const creatorId = req.superAdmin?._id || req.admin?._id || req.staff?._id || req.user?._id || null;
+    let creatorModel = null;
+
+    if (req.superAdmin || req.admin) {
+      creatorModel = "SuperAdmin"; // Adjust to "Admin" if your admin model name is Admin
+    } else if (req.staff) {
+      creatorModel = "Staff";
+    } else if (req.user) {
+      creatorModel = req.user.role === "staff" ? "Staff" : "SuperAdmin";
+    }
+
     const suggestion = await ServiceReference.create({
       name: name.trim(),
       description: description.trim(),
@@ -76,6 +88,11 @@ export const createSuggestion = async (req, res) => {
       subcategory_id: subcategories,
       suggested_by: null, // Admin direct creation
       status: "approved",
+      created_by: creatorId,
+      created_by_model: creatorModel,
+      approved_by: creatorId,
+      approved_by_model: creatorModel,
+      approval_date: new Date(),
       is_active: is_active !== undefined ? is_active === "true" || is_active === true : true,
     });
 
@@ -164,14 +181,48 @@ export const getSuggestionDetails = async (req, res) => {
     const suggestion = await ServiceReference.findById(req.params.id)
       .populate("category_id", "label")
       .populate("subcategory_id", "label")
-      .populate("suggested_by", "name businessName email phone");
+      .populate("suggested_by", "name businessName email phone")
+      .populate("created_by", "name email phone role") // Dynamically populates SuperAdmin, Admin, Staff, or Merchant
+      .populate("approved_by", "name email phone role"); // Dynamically populates SuperAdmin, Admin, or Staff
 
     if (!suggestion) {
       return res.status(404).json({ success: false, message: "Suggestion not found." });
     }
 
-    return res.status(200).json({ success: true, suggestion });
+    // Format creator metadata for the frontend
+    let creatorDetails = null;
+    if (suggestion.created_by) {
+      creatorDetails = {
+        _id: suggestion.created_by._id,
+        name: suggestion.created_by.name || "Unknown",
+        email: suggestion.created_by.email || null,
+        roleType: suggestion.created_by_model, // "SuperAdmin", "Admin", "Staff", or "Merchant"
+        isStaff: suggestion.created_by_model === "Staff",
+      };
+    }
+
+    // Format verifier audit metadata for the frontend
+    let verifierDetails = null;
+    if (suggestion.approved_by) {
+      verifierDetails = {
+        _id: suggestion.approved_by._id,
+        name: suggestion.approved_by.name || "Unknown",
+        email: suggestion.approved_by.email || null,
+        roleType: suggestion.approved_by_model, // "SuperAdmin", "Admin", or "Staff"
+        isStaff: suggestion.approved_by_model === "Staff",
+      };
+    }
+
+    return res.status(200).json({ 
+      success: true, 
+      suggestion: {
+        ...suggestion.toObject(),
+        creator: creatorDetails,
+        verifier: verifierDetails,
+      } 
+    });
   } catch (error) {
+    console.error("Get Suggestion Details Error:", error);
     return res.status(500).json({
       success: false,
       message: "Error fetching suggestion.",

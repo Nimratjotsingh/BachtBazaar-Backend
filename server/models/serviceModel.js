@@ -14,7 +14,7 @@ const serviceProviderSchema = new mongoose.Schema(
       trim: true,
     },
     experience: {
-      type: Number, // Number of years (or specify as String if formatted, e.g., '5 years')
+      type: Number, // Number of years
       min: [0, "Experience cannot be negative"],
       default: 0,
     },
@@ -29,11 +29,11 @@ const serviceProviderSchema = new mongoose.Schema(
       default: "prefer_not_to_say",
     },
     specialisation: {
-      type: [String], // Array of skills/specialisations or a String
+      type: [String], // Array of skills/specialisations
       default: [],
     },
   },
-  { _id: false } // Prevents automatic generation of a separate _id for the embedded provider
+  { _id: false }
 );
 
 const serviceSchema = new mongoose.Schema(
@@ -81,8 +81,10 @@ const serviceSchema = new mongoose.Schema(
     service_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "ServiceReference", // Optional reference to a master service list
+      default: null,
+      index: true,
     },
-    // --- Added Service Provider Details ---
+    // --- Service Provider Details ---
     service_provider: {
       type: serviceProviderSchema,
       default: null,
@@ -120,6 +122,33 @@ const serviceSchema = new mongoose.Schema(
       type: [String],
       index: true,
     },
+
+    // --- Approval & Verification Tracking ---
+    approval_status: {
+      type: String,
+      enum: ["pending", "approved", "rejected"],
+      default: "pending",
+      index: true,
+    },
+    approved_by: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+      refPath: "approved_by_model", // Dynamically links to SuperAdmin, Admin, or Staff
+    },
+    approved_by_model: {
+      type: String,
+      enum: ["SuperAdmin", "Staff"],
+      default: null,
+    },
+    approval_date: {
+      type: Date,
+      default: null,
+    },
+    rejection_reason: {
+      type: String,
+      default: "",
+    },
+
     is_active: {
       type: Boolean,
       default: true,
@@ -133,24 +162,6 @@ const serviceSchema = new mongoose.Schema(
       default: false,
       index: true,
     },
-    // Add these fields inside your existing serviceSchema in models/serviceModel.js:
-
-service_id: {
-  type: mongoose.Schema.Types.ObjectId,
-  ref: "ServiceReference",
-  default: null,
-  index: true,
-},
-approval_status: {
-  type: String,
-  enum: ["pending", "approved", "rejected"],
-  default: "pending",
-  index: true,
-},
-rejection_reason: {
-  type: String,
-  default: null,
-},
     ratings: {
       average: {
         type: Number,
@@ -164,12 +175,13 @@ rejection_reason: {
       },
     },
   },
-  
   {
     timestamps: true,
   }
 );
 
-const Service = mongoose.model("Service", serviceSchema);
+serviceSchema.index({ is_deleted: 1, is_active: 1, approval_status: 1 });
+
+const Service = mongoose.models.Service || mongoose.model("Service", serviceSchema);
 
 export default Service;

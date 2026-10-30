@@ -133,6 +133,11 @@ const AdminOffersDashboard = ({ token }) => {
         discount_value: offer.discount_value,
         minimum_purchase_amount: offer.minimum_purchase_amount || 0,
         status: offer.is_paused ? "paused" : (new Date(offer.end_date) < new Date() ? "expired" : (new Date(offer.start_date) > new Date() ? "scheduled" : "active")),
+        approval_status: offer.approval_status || "approved",
+        approved_by: offer.approved_by,
+        approved_by_model: offer.approved_by_model,
+        approval_date: offer.approval_date,
+        rejection_reason: offer.rejection_reason,
         formatted_start: new Date(offer.start_date).toLocaleDateString("en-IN", { day: "numeric", month: "short" }),
         formatted_end: new Date(offer.end_date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }),
         redemptions_count: offer.redeemedCount || offer.number_of_winners || 0,
@@ -192,6 +197,30 @@ const AdminOffersDashboard = ({ token }) => {
     }
   };
 
+  // =========================================================
+  // PIPELINE 4: REVIEW / VERIFICATION ACTION HANDLER
+  // =========================================================
+  const handleReviewOfferStatus = async (offerId, newStatus, rejectionReason = "") => {
+    try {
+      const payload = { status: newStatus };
+      if (newStatus === "rejected") {
+        payload.rejection_reason = rejectionReason;
+      }
+
+      const res = await accountClient.patch(`/offers/admin/review/${offerId}`, payload, { headers });
+      if (res.data.success) {
+        const updatedDoc = res.data.data || {};
+        
+        // Refresh local details drawer & master table list
+        setSelectedOfferProfile(updatedDoc);
+        syncOffersGridAndMetadata();
+        syncWorkspaceMetrics();
+      }
+    } catch (err) {
+      alert(err.response?.data?.message || "Failed to commit offer review status.");
+    }
+  };
+
   useEffect(() => {
     syncWorkspaceMetrics();
   }, [dateRange.startDate, dateRange.endDate]);
@@ -218,6 +247,9 @@ const AdminOffersDashboard = ({ token }) => {
         break;
       case "open_lightbox":
         setLightboxImage({ src: dataPayload.src, label: dataPayload.label });
+        break;
+      case "review_offer":
+        handleReviewOfferStatus(dataPayload.offerId, dataPayload.status, dataPayload.rejectionReason);
         break;
       default:
         console.log(`Action context missing for: ${actionKey}`, dataPayload);

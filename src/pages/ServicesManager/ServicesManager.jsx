@@ -4,7 +4,7 @@ import {
   RefreshCw, Eye, ArrowLeft, Image as ImageIcon, User, Tag,
   Layers, DollarSign, Briefcase, Award, AlertCircle, Check,
   X, ChevronRight, ExternalLink, Loader2, Sparkles, Building2,
-  LayoutGrid, List, Maximize2, Download, Hash, Calendar, Upload, Edit3, Save
+  LayoutGrid, List, Maximize2, Download, Hash, Calendar, Upload, Edit3, Save, Shield
 } from "lucide-react";
 import { accountClient, buildAuthHeaders } from "../../lib/api";
 
@@ -102,6 +102,9 @@ const ServiceVerificationManager = ({ token }) => {
           description: updatedService.description || updatedData.description || selectedService?.description,
           price: updatedService.price !== undefined ? updatedService.price : (updatedData.price ?? selectedService?.price),
           thumbnail: updatedService.thumbnail || selectedService?.thumbnail,
+          approved_by: updatedService.approved_by,
+          approved_by_model: updatedService.approved_by_model,
+          approval_date: updatedService.approval_date,
         };
 
         setServices((prev) =>
@@ -135,23 +138,26 @@ const ServiceVerificationManager = ({ token }) => {
       );
 
       if (res.data.success) {
+        const updatedService = res.data.service || {};
+        const updatedObj = {
+          approval_status: "rejected",
+          is_active: false,
+          rejection_reason: rejectionReason.trim(),
+          approved_by: updatedService.approved_by,
+          approved_by_model: updatedService.approved_by_model,
+          approval_date: updatedService.approval_date,
+        };
+
         setServices((prev) =>
           prev.map((s) =>
             s._id === selectedService._id
-              ? {
-                  ...s,
-                  approval_status: "rejected",
-                  is_active: false,
-                  rejection_reason: rejectionReason.trim(),
-                }
+              ? { ...s, ...updatedObj }
               : s
           )
         );
         setSelectedService((prev) => ({
           ...prev,
-          approval_status: "rejected",
-          is_active: false,
-          rejection_reason: rejectionReason.trim(),
+          ...updatedObj,
         }));
         setRejectionModalOpen(false);
         setRejectionReason("");
@@ -163,8 +169,18 @@ const ServiceVerificationManager = ({ token }) => {
     }
   };
 
-  const openServiceDetails = (service) => {
-    setSelectedService(service);
+  const openServiceDetails = async (service) => {
+    // Fetch full populated details including verifier metadata
+    try {
+      const res = await accountClient.get(`/admin/services/${service._id}`, { headers });
+      if (res.data.success && res.data.service) {
+        setSelectedService(res.data.service);
+      } else {
+        setSelectedService(service);
+      }
+    } catch (err) {
+      setSelectedService(service);
+    }
     setView("details");
   };
 
@@ -428,7 +444,7 @@ const ServiceVerificationManager = ({ token }) => {
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              setLightboxImage({ src: service.thumbnail, label: `${service.name} - Thumbnail` });
+                              setLightboxImage({ src: service.thumbnail, label: `${service.name} Thumbnail` });
                             }}
                             className="absolute bottom-2.5 right-2.5 p-2 bg-slate-900/60 hover:bg-slate-900 text-white rounded-xl backdrop-blur-xs opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer shadow-xs"
                             title="Fullscreen Image"
@@ -481,7 +497,7 @@ const ServiceVerificationManager = ({ token }) => {
                                   e.stopPropagation();
                                   setLightboxImage({ 
                                     src: service.service_provider.profile_image, 
-                                    label: `${service.service_provider.name} - Profile Photo` 
+                                    label: `${service.service_provider.name} Profile Photo` 
                                   });
                                 }
                               }}
@@ -502,7 +518,7 @@ const ServiceVerificationManager = ({ token }) => {
                                 {service.service_provider.name}
                               </p>
                               <p className="text-slate-400 text-[10px] leading-tight truncate">
-                                {service.service_provider.designation || "Specialist"} • {service.service_provider.experience || 0} yrs exp
+                                {service.service_provider.experience || 0} yrs exp
                               </p>
                             </div>
                           </div>
@@ -577,8 +593,8 @@ const ServiceVerificationManager = ({ token }) => {
             </div>
           ) : (
             /* =========================================================
-                VIEW OPTION B: TABLE LIST LEDGER VIEW (MOBILE RESPONSIVE SCROLL)
-                ========================================================= */
+               VIEW OPTION B: TABLE LIST LEDGER VIEW (MOBILE RESPONSIVE SCROLL)
+               ========================================================= */
             <div className="bg-white rounded-[24px] border border-slate-200/80 shadow-xs overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse min-w-[850px]">
@@ -620,7 +636,7 @@ const ServiceVerificationManager = ({ token }) => {
                                 onClick={(e) => {
                                   if (service.thumbnail) {
                                     e.stopPropagation();
-                                    setLightboxImage({ src: service.thumbnail, label: `${service.name} - Thumbnail` });
+                                    setLightboxImage({ src: service.thumbnail, label: `${service.name} Thumbnail` });
                                   }
                                 }}
                                 className={`w-12 h-12 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center overflow-hidden shrink-0 ${service.thumbnail ? 'cursor-zoom-in group/img' : ''}`}
@@ -670,7 +686,7 @@ const ServiceVerificationManager = ({ token }) => {
                                       e.stopPropagation();
                                       setLightboxImage({ 
                                         src: service.service_provider.profile_image, 
-                                        label: `${service.service_provider.name} - Avatar` 
+                                        label: `${service.service_provider.name} Avatar` 
                                       });
                                     }
                                   }}
@@ -916,7 +932,7 @@ const ServiceDetailsView = ({
               src={thumbnailPreviewUrl} 
               alt={editName || service.name}
               className="w-full h-full object-contain drop-shadow-2xl group-hover:scale-105 transition-transform duration-500 cursor-pointer"
-              onClick={() => onOpenLightbox(thumbnailPreviewUrl, `${service.name} - Asset Preview`)}
+              onClick={() => onOpenLightbox(thumbnailPreviewUrl, `${service.name} Asset Preview`)}
             />
           ) : (
             <div className="w-full h-full flex flex-col items-center justify-center text-slate-500 bg-slate-900 gap-2">
@@ -948,7 +964,7 @@ const ServiceDetailsView = ({
             {thumbnailPreviewUrl && (
               <button
                 type="button"
-                onClick={() => onOpenLightbox(thumbnailPreviewUrl, `${service.name} - Asset Preview`)}
+                onClick={() => onOpenLightbox(thumbnailPreviewUrl, `${service.name} Asset Preview`)}
                 className="flex items-center gap-1.5 px-3.5 py-2 bg-black/60 hover:bg-black/80 text-white rounded-xl backdrop-blur-md text-xs font-bold transition cursor-pointer shadow-lg"
               >
                 <Maximize2 size={14} /> Fullscreen
@@ -971,6 +987,40 @@ const ServiceDetailsView = ({
 
         {/* Content Body */}
         <div className="p-5 sm:p-8 space-y-6">
+          
+          {/* --- AUDIT VERIFIER ATTRIBUTION BANNER --- */}
+          {service.approval_status !== "pending" && (
+            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-white shrink-0 ${
+                  service.approved_by_model === "Staff" ? "bg-amber-600" : "bg-blue-600"
+                }`}>
+                  <Shield size={18} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-black text-slate-900">
+                      {service.approved_by?.name || "System Administrator"}
+                    </span>
+                    <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider ${
+                      service.approved_by_model === "Staff" ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800"
+                    }`}>
+                      {service.approved_by_model || "Admin"}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    {service.approval_status === "approved" ? "Approved and verified by" : "Declined by"} {service.approved_by?.email || "authorized personnel"}
+                  </p>
+                </div>
+              </div>
+              {service.approval_date && (
+                <div className="text-[11px] text-slate-400 font-mono flex items-center gap-1 sm:text-right">
+                  <Calendar size={13} /> {new Date(service.approval_date).toLocaleString()}
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
               Service Details & Content Editing
@@ -1066,7 +1116,7 @@ const ServiceDetailsView = ({
                 <div 
                   onClick={() => {
                     if (service.service_provider.profile_image) {
-                      onOpenLightbox(service.service_provider.profile_image, `${service.service_provider.name} - Profile Photo`);
+                      onOpenLightbox(service.service_provider.profile_image, `${service.service_provider.name} Profile Photo`);
                     }
                   }}
                   className={`w-14 h-14 rounded-2xl bg-white border border-slate-200 overflow-hidden shrink-0 flex items-center justify-center ${service.service_provider.profile_image ? 'cursor-zoom-in' : ''}`}
