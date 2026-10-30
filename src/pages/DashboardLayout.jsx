@@ -21,12 +21,11 @@ import {
   Coins,
   MessageSquareCheck,
   Bell,
-  CheckCheck,
-  ExternalLink
+  CheckCheck
 } from "lucide-react";
 import { io } from "socket.io-client";
 import toast from "react-hot-toast";
-import { adminClient, buildAuthHeaders } from "../lib/api"; // Adjust path as needed
+import { adminClient, buildAuthHeaders } from "../lib/api";
 
 const navItems = [
   { label: "Dashboard", to: "/dashboard/main", icon: LayoutDashboard },
@@ -64,7 +63,7 @@ const navItems = [
   { label: "callbacks", to: "/dashboard/callback", icon: MessageSquareCheck },
 ];
 
-const SOCKET_SERVER_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+const SOCKET_SERVER_URL = "http://localhost:5001";
 
 const DashboardLayout = ({ token, onLogout }) => {
   const [isSidebarOpen, setSidebarOpen] = useState(true);
@@ -77,10 +76,17 @@ const DashboardLayout = ({ token, onLogout }) => {
   const location = useLocation();
   const headers = useMemo(() => buildAuthHeaders(token), [token]);
 
+  // --- Request Native Browser Notification Permission on Mount ---
+  useEffect(() => {
+    if ("Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+  }, []);
+
   // --- Fetch Historical Notifications ---
   const fetchNotifications = async () => {
     try {
-      const res = await adminClient.get("/admin/notifications", { headers });
+      const res = await adminClient.get("/notifications", { headers });
       if (res.data.success) {
         setNotifications(res.data.data || []);
         setUnreadCount(res.data.unreadCount || 0);
@@ -96,18 +102,17 @@ const DashboardLayout = ({ token, onLogout }) => {
     }
   }, [token, headers]);
 
-  // --- Socket.io Real-Time Listener & Teams Toast ---
+  // --- Socket.io Real-Time Listener & Native OS Fallback Toast ---
   useEffect(() => {
     const socket = io(SOCKET_SERVER_URL);
 
     socket.emit("join_admin_room");
 
     socket.on("admin_realtime_notification", (data) => {
-      // Prepend to notification list and increment unread counter
       setNotifications(prev => [data, ...prev]);
       setUnreadCount(prev => prev + 1);
 
-      // Render Microsoft Teams style toast notification
+      // 1. In-App Teams-Style Toast (When tab is active and open)
       toast.custom((t) => (
         <div
           className={`${
@@ -154,6 +159,27 @@ const DashboardLayout = ({ token, onLogout }) => {
         position: 'top-right',
         duration: 7000,
       });
+
+      // 2. Native OS Desktop Notification (When tab is hidden, minimized, or in background)
+      if (document.hidden && "Notification" in window && Notification.permission === "granted") {
+        const nativeNotification = new Notification(data.title, {
+          body: data.message,
+          icon: "/logo.jpeg",
+          tag: "bachat-admin-alert"
+        });
+
+        nativeNotification.onclick = () => {
+          window.focus();
+          nativeNotification.close();
+          if (data.category === "merchant_verification") {
+            navigate("/dashboard/merchants");
+          } else if (data.category === "offer_review") {
+            navigate("/dashboard/offer-reviews");
+          } else {
+            navigate("/dashboard/main");
+          }
+        };
+      }
     });
 
     return () => {
@@ -164,7 +190,7 @@ const DashboardLayout = ({ token, onLogout }) => {
   // --- Mark Notification as Read ---
   const handleMarkAsRead = async (id) => {
     try {
-      await adminClient.patch(`/admin/notifications/${id}/read`, {}, { headers });
+      await adminClient.patch(`/notifications/${id}/read`, {}, { headers });
       setNotifications(prev => prev.map(n => n._id === id ? { ...n, isRead: true } : n));
       setUnreadCount(prev => Math.max(0, prev - 1));
     } catch (err) {
@@ -174,7 +200,7 @@ const DashboardLayout = ({ token, onLogout }) => {
 
   const handleMarkAllAsRead = async () => {
     try {
-      await adminClient.patch("/admin/notifications/mark-all-read", {}, { headers });
+      await adminClient.patch("/notifications/mark-all-read", {}, { headers });
       setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
       setUnreadCount(0);
     } catch (err) {
@@ -182,7 +208,6 @@ const DashboardLayout = ({ token, onLogout }) => {
     }
   };
 
-  // Close notification dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (notifRef.current && !notifRef.current.contains(e.target)) {
@@ -193,7 +218,6 @@ const DashboardLayout = ({ token, onLogout }) => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Close sidebar automatically on mobile
   useEffect(() => {
     if (window.innerWidth < 1024) {
       setSidebarOpen(false);

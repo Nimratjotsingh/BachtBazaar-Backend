@@ -4,6 +4,7 @@ import Offer from "../models/offerModel.js";
 import ProductSuggestion from "../models/productSuggestionModel.js";
 import Wishlist from "../models/wishlistModel.js";
 import { notifyWishlistUsersOnPriceDrop } from "../utils/priceDropNotificationHelper.js";
+import { triggerAdminNotification } from "../utils/adminNotificationHelper.js";
 
 // ==========================================
 // HELPERS
@@ -216,6 +217,13 @@ export const createProduct = async (req, res) => {
         $inc: { usage_count: 1 },
       });
     }
+
+     await triggerAdminNotification(req, {
+              title: "Merchant Offer Creation Submitted",
+              message: `${data.name || "A merchant"} product has been created`,
+              category: "product_review",
+              referenceId: data.merchant._id
+            });
 
     return res.status(201).json({
       success: true,

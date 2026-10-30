@@ -29,6 +29,11 @@ const superAdminSchema = new mongoose.Schema({
     type: Boolean,
     default: true
   },
+  pushSubscriptions: {
+    type: [Object],
+    default: [],
+  },
+
   singleton: {
     type: String,
     default: "ONLY_ONE",

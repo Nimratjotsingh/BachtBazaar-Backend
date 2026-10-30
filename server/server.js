@@ -249,10 +249,17 @@ app.get("/health", (req, res) => {
 
 app.use(express.static(path.join(__dirname, "../dist")));
 
+
+app.get("/sw.js", (req, res) => {
+  res.setHeader("Content-Type", "application/javascript");
+  res.sendFile(path.join(__dirname, "../dist/sw.js"));
+});
 // SPA fallback LAST
 app.use((req, res) => {
   res.sendFile(path.join(__dirname, "../dist/index.html"));
 });
+
+
 
 // Centralized error handler
 app.use((err, req, res, next) => {

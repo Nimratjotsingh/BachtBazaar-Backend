@@ -25,6 +25,7 @@ const formatPhone = (phone) => {
 };
 
 import MerchantEditRequest from "../models/MerchantEditRequestModel.js"; // Ensure model is imported
+import { triggerAdminNotification } from "../utils/adminNotificationHelper.js";
 
 export const updateMerchantProfile = async (req, res) => {
   try {
@@ -71,6 +72,12 @@ export const updateMerchantProfile = async (req, res) => {
       allowedEditRequest.status = "consumed";
     await allowedEditRequest.save();
     }
+    await triggerAdminNotification(req, {
+      title: "Merchant Profile Update Submitted",
+      message: `${merchant.name || "A merchant"} has updated their profile details and is pending review.`,
+      category: "merchant_verification",
+      referenceId: merchant._id
+    });
     
 
     return res.json({
