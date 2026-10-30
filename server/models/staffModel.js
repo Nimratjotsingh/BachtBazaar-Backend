@@ -30,9 +30,25 @@ const staffSchema = new mongoose.Schema(
       enum: ["admin_manager", "support", "operations", "moderator"],
       default: "support",
     },
+    // --- Granular Permissions Mapping ---
     permissions: {
       type: [String],
-      default: [], // e.g., ["manage_merchants", "moderate_services", "view_reports"]
+      enum: [
+        "view_dashboard",
+        "manage_products",
+        "manage_product_suggestions",
+        "manage_services",
+        "manage_service_suggestions",
+        "manage_offers"
+      ],
+      default: [
+        "view_dashboard",
+        "manage_products",
+        "manage_product_suggestions",
+        "manage_services",
+        "manage_service_suggestions",
+        "manage_offers"
+      ],
     },
     isBlocked: {
       type: Boolean,

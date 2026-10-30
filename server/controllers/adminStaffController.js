@@ -13,7 +13,7 @@ export const createStaff = async (req, res) => {
       });
     }
 
-    const existingStaff = await Staff.findOne({ $or: [{ email }, { phone }] });
+    const existingStaff = await Staff.findOne({ $or: [{ email: email.toLowerCase().trim() }, { phone: phone.trim() }] });
     if (existingStaff) {
       return res.status(400).json({
         success: false,
@@ -119,9 +119,25 @@ export const updateStaff = async (req, res) => {
       return res.status(404).json({ success: false, message: "Staff member not found." });
     }
 
+    // Check email uniqueness if changing
+    if (email && email.toLowerCase().trim() !== staff.email) {
+      const emailExists = await Staff.findOne({ email: email.toLowerCase().trim(), _id: { $ne: id } });
+      if (emailExists) {
+        return res.status(400).json({ success: false, message: "Email is already in use by another staff member." });
+      }
+      staff.email = email.toLowerCase().trim();
+    }
+
+    // Check phone uniqueness if changing
+    if (phone && phone.trim() !== staff.phone) {
+      const phoneExists = await Staff.findOne({ phone: phone.trim(), _id: { $ne: id } });
+      if (phoneExists) {
+        return res.status(400).json({ success: false, message: "Phone number is already in use by another staff member." });
+      }
+      staff.phone = phone.trim();
+    }
+
     if (name) staff.name = name.trim();
-    if (email) staff.email = email.toLowerCase().trim();
-    if (phone) staff.phone = phone.trim();
     if (role) staff.role = role;
     if (permissions) staff.permissions = permissions;
     if (isBlocked !== undefined) staff.isBlocked = Boolean(isBlocked);

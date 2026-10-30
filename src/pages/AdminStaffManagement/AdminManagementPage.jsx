@@ -42,6 +42,16 @@ const AdminStaffManagement = ({ token }) => {
     { label: "Moderator", value: "moderator" }
   ];
 
+  // Available Granular Permissions matching the Staff Model
+  const availablePermissions = [
+    { key: "view_dashboard", label: "View Staff Dashboard" },
+    { key: "manage_products", label: "Manage Products" },
+    { key: "manage_product_suggestions", label: "Manage Product Suggestions" },
+    { key: "manage_services", label: "Manage Services" },
+    { key: "manage_service_suggestions", label: "Manage Service Suggestions" },
+    { key: "manage_offers", label: "Manage Offers" }
+  ];
+
   // =========================================================
   // PIPELINE 1: FETCH STAFF DIRECTORY
   // =========================================================
@@ -88,7 +98,7 @@ const AdminStaffManagement = ({ token }) => {
       phone: "",
       password: "",
       role: "support",
-      permissions: []
+      permissions: availablePermissions.map(p => p.key) // Default to all selected
     });
     setIsModalOpen(true);
   };
@@ -105,6 +115,17 @@ const AdminStaffManagement = ({ token }) => {
       permissions: staff.permissions || []
     });
     setIsModalOpen(true);
+  };
+
+  const handlePermissionToggle = (permissionKey) => {
+    setFormData(prev => {
+      const current = prev.permissions || [];
+      if (current.includes(permissionKey)) {
+        return { ...prev, permissions: current.filter(p => p !== permissionKey) };
+      } else {
+        return { ...prev, permissions: [...current, permissionKey] };
+      }
+    });
   };
 
   const handleFormSubmit = async (e) => {
@@ -240,6 +261,7 @@ const AdminStaffManagement = ({ token }) => {
                 <th className="px-6 py-4">Staff Member</th>
                 <th className="px-6 py-4">Contact Details</th>
                 <th className="px-6 py-4">Assigned Role</th>
+                <th className="px-6 py-4">Permissions Matrix</th>
                 <th className="px-6 py-4">Account Status</th>
                 <th className="px-6 py-4 text-right">Actions</th>
               </tr>
@@ -247,14 +269,14 @@ const AdminStaffManagement = ({ token }) => {
             <tbody className="divide-y divide-slate-50 text-xs font-semibold">
               {loading ? (
                 <tr>
-                  <td colSpan="5" className="py-24 text-center text-blue-500">
+                  <td colSpan="6" className="py-24 text-center text-blue-500">
                     <Loader2 className="animate-spin inline-block mb-2" size={32} />
                     <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Loading Staff Ledger...</p>
                   </td>
                 </tr>
               ) : staffList.length === 0 ? (
                 <tr>
-                  <td colSpan="5" className="py-16 text-center text-slate-400 font-bold italic">
+                  <td colSpan="6" className="py-16 text-center text-slate-400 font-bold italic">
                     No staff members found matching criteria.
                   </td>
                 </tr>
@@ -280,6 +302,19 @@ const AdminStaffManagement = ({ token }) => {
                       <span className="px-2.5 py-1 bg-blue-50 text-blue-600 rounded-lg text-[10px] font-black uppercase tracking-wider border border-blue-100">
                         {staff.role.replace('_', ' ')}
                       </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex flex-wrap gap-1 max-w-xs">
+                        {(staff.permissions || []).length === 0 ? (
+                          <span className="text-[10px] text-slate-400 italic">No permissions</span>
+                        ) : (
+                          staff.permissions.map((p, idx) => (
+                            <span key={idx} className="px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded text-[9px] font-mono font-bold">
+                              {p}
+                            </span>
+                          ))
+                        )}
+                      </div>
                     </td>
                     <td className="px-6 py-4">
                       <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border ${
@@ -341,7 +376,7 @@ const AdminStaffManagement = ({ token }) => {
         <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <form 
             onSubmit={handleFormSubmit}
-            className="bg-white p-8 rounded-[32px] max-w-lg w-full shadow-2xl space-y-5 animate-in zoom-in-95 duration-200 border border-slate-100 max-h-[90vh] overflow-y-auto"
+            className="bg-white p-8 rounded-[32px] max-w-xl w-full shadow-2xl space-y-5 animate-in zoom-in-95 duration-200 border border-slate-100 max-h-[90vh] overflow-y-auto"
           >
             <div className="flex justify-between items-center border-b border-slate-100 pb-4">
               <h3 className="text-lg font-black text-blue-950 uppercase tracking-tight">
@@ -419,6 +454,32 @@ const AdminStaffManagement = ({ token }) => {
                     <option key={r.value} value={r.value}>{r.label}</option>
                   ))}
                 </select>
+              </div>
+
+              {/* Permissions Checkbox Matrix */}
+              <div className="space-y-2 pt-2 border-t border-slate-100">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">
+                  Granular Permissions Matrix
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80">
+                  {availablePermissions.map((perm) => {
+                    const isChecked = (formData.permissions || []).includes(perm.key);
+                    return (
+                      <label 
+                        key={perm.key} 
+                        className="flex items-center gap-2.5 p-2 bg-white rounded-xl border border-slate-100 cursor-pointer hover:border-blue-300 transition select-none"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => handlePermissionToggle(perm.key)}
+                          className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500/20 cursor-pointer"
+                        />
+                        <span className="text-xs font-bold text-slate-700">{perm.label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
               </div>
 
               {isEditing && (

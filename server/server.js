@@ -85,7 +85,7 @@ import staffServicesRoutes from './routes/staff/staffServicesRoutes.js';
 import staffOfferRoutes from './routes/staff/staffOfferRoutes.js'
 import staffProductSuggestionRoutes from './routes/staff/staffProductSuggestionRoutes.js'
 import staffSreviceSuggestionRoutes from './routes/staff/staffServiceSuggestionRoutes.js';
-
+import adminNotificationRoutes from './routes/adminNotificationRoutes.js'
 dotenv.config();
 // console.log(process.env.MONGO_URI)
 import './utils/firebase.js';
@@ -137,6 +137,7 @@ app.use('/api/admin/merchant-edit-request',adminMerchantEditRequestRoutes)
 app.use("/api/admin/entity/",imageUpdateRoute)
 app.use("/api/admin/offers",adminOfferRoutes)
 app.use('/api/admin/staff',adminStaffRoutes);
+app.use('/api/admin/notifications',adminNotificationRoutes);
 
 //Staff Routes
 app.use('/api/staff',staffAuthRoutes);

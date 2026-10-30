@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import {
   Users,
@@ -12,23 +12,60 @@ import {
   MessageSquareCheck,
   FileQuestion,
   HelpCircle,
-  ClipboardList
+  ClipboardList,
+  Loader2
 } from "lucide-react";
+import { accountClient, buildAuthHeaders } from "../lib/api"; // or your staff client instance
 
+// Define all navigation items with their required permission key
 const staffNavItems = [
-  { label: "Staff Dashboard", to: "/staff/dashboard", icon: LayoutDashboard },
-  { label: "Staff Products", to: "/staff/products", icon: LayoutDashboard },
-  { label: "Staff Products Suggestion", to: "/staff/productsuggestion", icon: LayoutDashboard },
-   { label: "Staff Services", to: "/staff/services", icon: LayoutDashboard },
-    { label: "Staff Services Suggestion", to: "/staff/services-suggestion", icon: LayoutDashboard },
-   { label: "Staff Offers", to: "/staff/offers", icon: LayoutDashboard },
-
+  { label: "Staff Dashboard", to: "/staff/dashboard", icon: LayoutDashboard, permission: "view_dashboard" },
+  { label: "Staff Products", to: "/staff/products", icon: LayoutDashboard, permission: "manage_products" },
+  { label: "Staff Products Suggestion", to: "/staff/productsuggestion", icon: MessageSquareCheck, permission: "manage_product_suggestions" },
+  { label: "Staff Services", to: "/staff/services", icon: Store, permission: "manage_services" },
+  { label: "Staff Services Suggestion", to: "/staff/services-suggestion", icon: MessageSquareCheck, permission: "manage_service_suggestions" },
+  { label: "Staff Offers", to: "/staff/offers", icon: Coins, permission: "manage_offers" },
 ];
 
 const StaffDashboardLayout = ({ token, onLogout }) => {
   const [isSidebarOpen, setSidebarOpen] = useState(true);
+  const [permissions, setPermissions] = useState([]);
+  const [loadingPermissions, setLoadingPermissions] = useState(true);
   const navigate = useNavigate();
   const location = useLocation();
+
+  const headers = useMemo(() => buildAuthHeaders(token), [token]);
+
+  // Fetch staff profile and permissions on mount
+  useEffect(() => {
+    const fetchStaffPermissions = async () => {
+      try {
+        setLoadingPermissions(true);
+        const res = await accountClient.get("/staff/profile", { headers });
+        if (res.data.success) {
+          const userPermissions = res.data.data?.dashboardAccess?.permissions || [];
+          setPermissions(userPermissions);
+        }
+      } catch (err) {
+        console.error("Failed to fetch staff permissions:", err);
+      } finally {
+        setLoadingPermissions(false);
+      }
+    };
+
+    if (token) {
+      fetchStaffPermissions();
+    }
+  }, [token, headers]);
+
+  // Filter navigation items based on staff permissions
+  const filteredNavItems = useMemo(() => {
+    return staffNavItems.filter(item => {
+      // If no permission is strictly required, show it; otherwise check if user has it
+      if (!item.permission) return true;
+      return permissions.includes(item.permission);
+    });
+  }, [permissions]);
 
   // Close sidebar automatically when navigating on mobile
   useEffect(() => {
@@ -80,7 +117,7 @@ const StaffDashboardLayout = ({ token, onLogout }) => {
             </div>
             {(isSidebarOpen || window.innerWidth < 1024) && (
               <span className="text-xl font-extrabold text-sky-900 tracking-tighter">
-                NextEt<span className="text-indigo-500">Staff</span>
+                Bachat<span className="text-indigo-500">Staff</span>
               </span>
             )}
           </div>
@@ -95,27 +132,35 @@ const StaffDashboardLayout = ({ token, onLogout }) => {
 
         {/* Navigation Links */}
         <nav className="flex-1 px-4 py-6 space-y-2 overflow-y-auto custom-scrollbar">
-          {staffNavItems.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              className={({ isActive }) => `
-                flex items-center gap-3 px-3 py-3 rounded-xl transition-all group
-                ${
-                  isActive
-                    ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200"
-                    : "text-sky-700 hover:bg-sky-50 hover:text-sky-900"
-                }
-              `}
-            >
-              <item.icon size={22} className="shrink-0" />
-              <span
-                className={`font-semibold text-sm transition-opacity duration-200 ${!isSidebarOpen && "lg:hidden"}`}
+          {loadingPermissions ? (
+            <div className="py-12 text-center text-indigo-600">
+              <Loader2 className="animate-spin inline-block" size={24} />
+            </div>
+          ) : filteredNavItems.length === 0 ? (
+            <p className="text-xs text-slate-400 px-3 text-center italic">No assigned menu permissions.</p>
+          ) : (
+            filteredNavItems.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                className={({ isActive }) => `
+                  flex items-center gap-3 px-3 py-3 rounded-xl transition-all group
+                  ${
+                    isActive
+                      ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200"
+                      : "text-sky-700 hover:bg-sky-50 hover:text-sky-900"
+                  }
+                `}
               >
-                {item.label}
-              </span>
-            </NavLink>
-          ))}
+                <item.icon size={22} className="shrink-0" />
+                <span
+                  className={`font-semibold text-sm transition-opacity duration-200 ${!isSidebarOpen && "lg:hidden"}`}
+                >
+                  {item.label}
+                </span>
+              </NavLink>
+            ))
+          )}
         </nav>
 
         {/* Logout Section */}
