@@ -792,3 +792,43 @@ export const getDashboardStats = async (req, res) => {
     });
   }
 };
+
+import SuperAdmin from "../models/adminModel.js"; // Match your actual model name
+
+export const savePushSubscription = async (req, res) => {
+  try {
+    const subscription = req.body;
+    // Handle all variations of req user/admin object structures
+    const adminId = req.admin?._id || req.user?._id || req.user?.id || req.admin?.id;
+
+    if (!subscription || !subscription.endpoint) {
+      return res.status(400).json({ success: false, message: "Invalid subscription payload." });
+    }
+
+    if (!adminId) {
+      return res.status(401).json({ success: false, message: "Unauthorized: Admin ID not found in request." });
+    }
+
+    const admin = await SuperAdmin.findById(adminId);
+    if (!admin) {
+      return res.status(404).json({ success: false, message: "Super Admin not found." });
+    }
+
+    // Initialize array if undefined
+    if (!admin.pushSubscriptions) {
+      admin.pushSubscriptions = [];
+    }
+
+    // Check if subscription already exists to avoid duplicates
+    const exists = admin.pushSubscriptions.some(sub => sub.endpoint === subscription.endpoint);
+    if (!exists) {
+      admin.pushSubscriptions.push(subscription);
+      await admin.save();
+    }
+
+    return res.status(200).json({ success: true, message: "Push subscription saved successfully." });
+  } catch (error) {
+    console.error("Save Push Subscription Error:", error);
+    return res.status(500).json({ success: false, message: "Internal server error." });
+  }
+};

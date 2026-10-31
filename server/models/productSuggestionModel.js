@@ -68,11 +68,18 @@ const productSuggestionSchema = new mongoose.Schema(
       unit: { type: String, enum: ["ml", "l", "fl_oz"], default: null },
     },
 
+    // --- Dynamic Creator Attribution (Admin / SuperAdmin / Staff) ---
     created_by: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "SuperAdmin",
+      default: null,
+      refPath: "created_by_model",
+    },
+    created_by_model: {
+      type: String,
+      enum: ["SuperAdmin", "Admin", "Staff"],
       default: null,
     },
+
     is_active: {
       type: Boolean,
       default: true,

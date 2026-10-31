@@ -21,7 +21,8 @@ import {
 	blockMerchant,
 	rejectMerchant,
 	updateMerchantBlueTick,
-	getAdminShopDetailById
+	getAdminShopDetailById,
+	savePushSubscription
 } from "../controllers/adminController.js";
 
 const router = express.Router();
@@ -29,6 +30,7 @@ const router = express.Router();
 
 // Bootstrap
 router.post("/bootstrap-super-admin", bootstrapSuperAdmin);
+router.post("/save-push-subscription", protectSuperAdmin, savePushSubscription);
 
 // User management
 router.get("/users",protectSuperAdmin, listUsers);

@@ -1,6 +1,8 @@
 import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";
+import http from "http"; // <-- Added for Socket.io
+import { Server } from "socket.io"; // <-- Added for Socket.io
 import connectDB from "./config/db.js";
 import userRoutes from "./routes/userRoutes.js";
 import merchantAuthRoutes from "./routes/merchantAuthRoutes.js";
@@ -78,15 +80,49 @@ import shopAnalyticsRoutes from './routes/shopAnalyticsRoutes.js'
 import merchantEditRequestRoutes from './routes/merchantEditRequestRoutes.js';
 import adminOfferRoutes from './routes/adminOfferRoutes.js'
 import adminMerchantEditRequestRoutes from './routes/adminMerchantEditRoutes.js'
-
+import adminStaffRoutes from './routes/adminStaffRoutes.js';
+import staffProfileRoutes from './routes/staff/staffProfileRoutes.js'
+import staffAuthRoutes from './routes/staff/staffAuthRoutes.js'
+import staffServicesRoutes from './routes/staff/staffServicesRoutes.js';
+import staffOfferRoutes from './routes/staff/staffOfferRoutes.js'
+import staffProductSuggestionRoutes from './routes/staff/staffProductSuggestionRoutes.js'
+import staffSreviceSuggestionRoutes from './routes/staff/staffServiceSuggestionRoutes.js';
+import adminNotificationRoutes from './routes/adminNotificationRoutes.js'
 dotenv.config();
-// console.log(process.env.MONGO_URI)
+
 import './utils/firebase.js';
 import notificationRoutes from './routes/notificationRoutes.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
 const app = express();
+const server = http.createServer(app); // <-- Wrap express app in http server
+
+// Setup Socket.io
+const io = new Server(server, {
+  cors: {
+    origin: "http://localhost:5173", // Match your frontend origin
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE"]
+  }
+});
+
+// Make `io` accessible inside controllers via `req.app.get("socketio")`
+app.set("socketio", io);
+
+io.on("connection", (socket) => {
+  console.log(`[Socket.io] Client connected: ${socket.id}`);
+
+  // Admin clients join the notification room to receive real-time broadcasts
+  socket.on("join_admin_room", () => {
+    socket.join("admin_notifications_room");
+  });
+
+  socket.on("disconnect", () => {
+    console.log(`[Socket.io] Client disconnected: ${socket.id}`);
+  });
+});
+
 const PORT = Number(process.env.PORT) || 5001;
 const isDevelopment = (process.env.NODE_ENV || "")
   .trim()
@@ -95,13 +131,10 @@ const isDevelopment = (process.env.NODE_ENV || "")
 
 connectDB();
 
-app.use(cors(
-  {origin: 'http://localhost:5173'}
-));
-app.use(express.urlencoded({extended: true}))
+app.use(cors({ origin: 'http://localhost:5173' }));
+app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use("/uploads", express.static("public/uploads"));
-
 
 if (isDevelopment) {
   app.use((req, res, next) => {
@@ -110,30 +143,41 @@ if (isDevelopment) {
   });
 }
 
-app.use('/api/admin/service-suggestions',adminServiceSuggestionRoutes);
-app.use('/api/admin/services',adminServiceRoutes);
+app.use('/api/admin/service-suggestions', adminServiceSuggestionRoutes);
+app.use('/api/admin/services', adminServiceRoutes);
 
 app.use("/api/user", userRoutes);
 app.use("/api/users", userRoutes);
-app.use('/api/subcategories',subCategory)
-app.use('/api/merchant/products',product);
-app.use('/api/merchant/services',service);
-app.use('/api/users/shop',userHome);
-app.use('/api/faqs',faqRoutes);
-app.use('/api/admin/product-suggestions',adminProductSuggestionRoutes);
-app.use('/api/click',clickRoutes)
-app.use('/api/shop/analytics',shopAnalyticsRoutes)
-app.use('/api/merchant/edit-requests',merchantEditRequestRoutes)
-app.use('/api/admin/merchant-edit-request',adminMerchantEditRequestRoutes)
+app.use('/api/subcategories', subCategory);
+app.use('/api/merchant/products', product);
+app.use('/api/merchant/services', service);
+app.use('/api/users/shop', userHome);
+app.use('/api/faqs', faqRoutes);
+app.use('/api/admin/product-suggestions', adminProductSuggestionRoutes);
+app.use('/api/click', clickRoutes);
+app.use('/api/shop/analytics', shopAnalyticsRoutes);
+app.use('/api/merchant/edit-requests', merchantEditRequestRoutes);
+app.use('/api/admin/merchant-edit-request', adminMerchantEditRequestRoutes);
 
+// Admin Routes
+app.use("/api/admin/entity/", imageUpdateRoute);
+app.use("/api/admin/offers", adminOfferRoutes);
+app.use('/api/admin/staff', adminStaffRoutes);
+app.use('/api/admin/notifications', adminNotificationRoutes);
 
-app.use("/api/admin/entity/",imageUpdateRoute)
-app.use("/api/admin/offers",adminOfferRoutes)
+// Staff Routes
+app.use('/api/staff', staffAuthRoutes);
+app.use('/api/staff/profile', staffProfileRoutes);
+app.use('/api/staff/services', staffServicesRoutes);
+app.use('/api/staff/offers', staffOfferRoutes);
+app.use('/api/staff/product-suggestions', staffProductSuggestionRoutes);
+app.use('/api/staff/service-suggestions', staffSreviceSuggestionRoutes);
+
 app.use("/api/merchant/auth", merchantAuthRoutes);
 app.use("/api/merchants", merchantAuthRoutes);
-app.use('/api/super-admin',superAuth);
-app.use('/api/legal',legal);
-app.use('/api/expired/offers',expiredOffers);
+app.use('/api/super-admin', superAuth);
+app.use('/api/legal', legal);
+app.use('/api/expired/offers', expiredOffers);
 app.use("/api/merchant/profile", merchantProfileRoutes);
 app.use("/api/merchants/profile", merchantProfileRoutes);
 app.use("/api/merchant/personal-docs", merchantPersonalDocRoutes);
@@ -143,95 +187,79 @@ app.use("/api/merchants/business-docs", merchantBusinessDocRoutes);
 app.use("/api/merchant/shop", merchantShopRoutes);
 app.use("/api/merchants/shop", merchantShopRoutes);
 app.use("/api/categories", categoryRoutes);
-app.use('/api/offer-types', offerType)
+app.use('/api/offer-types', offerType);
 app.use("/api/admin", adminRoutes);
 
 app.use("/api/profile", profileRoutes);
 app.use("/api/kyc", kycRoutes);
-app.use('/api/templates',templateRoute);
-app.use('/api/admin/dashboard',dashboardRoutes);
+app.use('/api/templates', templateRoute);
+app.use('/api/admin/dashboard', dashboardRoutes);
 app.use('/api/calendar-config', calenderRoutes);
-app.use('/api/offers',offerRoutes);
-app.use('/api/ai',openai);
-app.use('/api/subOfferType',subOfferTypeRoute);
+app.use('/api/offers', offerRoutes);
+app.use('/api/ai', openai);
+app.use('/api/subOfferType', subOfferTypeRoute);
 app.use('/api/analytics', userAnalytics);
-app.use('/api/adminbanners',adminBanner);
-app.use('/api/areas',areasRoutes);
-app.use('/api/user/best-request',bestPriceRoutes);
-app.use('/api/cart',cartRoutes);
-app.use('/api/bachatcircle',bachatCircleRoutes);
-app.use('/api/notify',NotificationsRoutes);
-app.use('/api/merchant/notify', MerchantNotificationRoutes)
-app.use('/api/customerjournal',customerJournalRoutes)
-app.use('/api/draft/offers',draftRoutes)
-app.use('/api/reviews',reviewRoutes)
+app.use('/api/adminbanners', adminBanner);
+app.use('/api/areas', areasRoutes);
+app.use('/api/user/best-request', bestPriceRoutes);
+app.use('/api/cart', cartRoutes);
+app.use('/api/bachatcircle', bachatCircleRoutes);
+app.use('/api/notify', NotificationsRoutes);
+app.use('/api/merchant/notify', MerchantNotificationRoutes);
+app.use('/api/customerjournal', customerJournalRoutes);
+app.use('/api/draft/offers', draftRoutes);
+app.use('/api/reviews', reviewRoutes);
 
+app.use('/api/offer-reviews', offerReviewRoutes);
+app.use('/api/user/offer-wishlist', offerWishlistRoutes);
 
-app.use('/api/offer-reviews',offerReviewRoutes);
-app.use('/api/user/offer-wishlist',offerWishlistRoutes);
+app.use("/api/merchant-bids", MerchantBidRoutes);
+app.use("/api/quick-offer-routes", QuickOfferRoutes);
+app.use('/api/offer-redemption/user', offerRedemptionRoutes);
+app.use('/api/offer-redemption/merchant', offerRedemptionMerchantRoutes);
+app.use('/api/merchant/analytics', merchantAnalyticRoutes);
 
-app.use("/api/merchant-bids",MerchantBidRoutes);
-app.use("/api/quick-offer-routes",QuickOfferRoutes);
-app.use('/api/offer-redemption/user',offerRedemptionRoutes);
-app.use('/api/offer-redemption/merchant',offerRedemptionMerchantRoutes);
-app.use('/api/merchant/analytics',merchantAnalyticRoutes);
-
-app.use('/api/merchant/goals',goalsRoutes);
-app.use('/api/users/others',userHomeExtended);
-app.use('/api/banner-types', bannerTypeRoutes)
+app.use('/api/merchant/goals', goalsRoutes);
+app.use('/api/users/others', userHomeExtended);
+app.use('/api/banner-types', bannerTypeRoutes);
 app.use('/api/banner', bannerRoutes);
 app.use("/api/help-articles", helpArticeRoutes);
-app.use('/api/league',leagueRoutes);
-app.use('/api/delivery',deliveryRoutes);
-app.use('/api/notifications',notificationRoutes);
-app.use('/api/coin',coinRoutes);
-app.use('/api/quests',merchantQuestRoutes);
-app.use('/api/admin/quests',adminQuestRoutes);
-app.use('/api/help',helpRoutes);
+app.use('/api/league', leagueRoutes);
+app.use('/api/delivery', deliveryRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/coin', coinRoutes);
+app.use('/api/quests', merchantQuestRoutes);
+app.use('/api/admin/quests', adminQuestRoutes);
+app.use('/api/help', helpRoutes);
 app.use("/api/merchant/milestones", merchantMileStoneRoutes);
 app.use("/api/user/milestones", userMilestoneRoutes);
-app.use('/api/user/referrals',userReferalRoutes);
+app.use('/api/user/referrals', userReferalRoutes);
 app.use("/api/merchant/qr-templates", merchantQrTemplateRoutes);
 app.use("/api/admin/qr-templates", adminQrTemplateRoutes);
 app.use("/api/user/contacts", contactRoutes);
-app.use("/api/admin/tag-suggestions",adminTagSuggestion);
-app.use("/api/tag-suggestions",tagSuggestionRoutes)
+app.use("/api/admin/tag-suggestions", adminTagSuggestion);
+app.use("/api/tag-suggestions", tagSuggestionRoutes);
 
-app.use("/api/callback",callbackRoutes);
-app.use("/api/admin/callback",adminCallbackRoutes);
+app.use("/api/callback", callbackRoutes);
+app.use("/api/admin/callback", adminCallbackRoutes);
 
 app.get("/health", (req, res) => {
   res.json({ message: "Server is healthy!" });
 });
 
-// ESM Route Debug Function
-function printRoutes(app) {
-  console.log('=== ALL REGISTERED ROUTES ===');
-  
-  // Method 1: Direct route check
-  app._router.stack.forEach((layer) => {
-    if (layer.route) {
-      const methods = Object.keys(layer.route.methods).map(m => m.toUpperCase());
-      console.log(`${methods.join(', ')} ${layer.route.path}`);
-    }
-  });
-  
-  console.log('=== END ROUTES ===');
-}
-// Handle unknown routes
-// app.use((req, res) => {
-//   res.status(404).json({
-//     success: false,
-//     message: `Route not found: ${req.method} ${req.originalUrl}`
-//   });
-// });
-
 app.use(express.static(path.join(__dirname, "../dist")));
 
+
+app.get("/sw.js", (req, res) => {
+  res.setHeader("Content-Type", "application/javascript");
+  res.sendFile(path.join(__dirname, "../dist/sw.js"));
+});
 // SPA fallback LAST
 app.use((req, res) => {
   res.sendFile(path.join(__dirname, "../dist/index.html"));
 });
+
+
 
 // Centralized error handler
 app.use((err, req, res, next) => {
@@ -244,7 +272,8 @@ app.use((err, req, res, next) => {
   });
 });
 
-app.listen(PORT, () => {
+// IMPORTANT: Listen on `server` instead of `app` so Socket.io works properly
+server.listen(PORT, () => {
   console.log("Date.now():", Date.now().toString());
   seedAdmin();
   console.log(`Server running on port ${PORT}`);

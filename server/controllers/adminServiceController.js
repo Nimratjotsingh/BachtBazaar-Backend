@@ -63,14 +63,34 @@ export const getServiceDetailsAdmin = async (req, res) => {
       .populate("merchant_id", "name businessName email phone profileImage")
       .populate("category_id", "label")
       .populate("subcategory_id", "label")
-      .populate("service_id");
+      .populate("service_id")
+      .populate("approved_by", "name email phone role"); // Dynamically populates SuperAdmin, Admin, or Staff
 
     if (!service) {
       return res.status(404).json({ success: false, message: "Service not found." });
     }
 
-    return res.status(200).json({ success: true, service });
+    // Format audit metadata for the frontend
+    let verifierDetails = null;
+    if (service.approved_by) {
+      verifierDetails = {
+        _id: service.approved_by._id,
+        name: service.approved_by.name || "Unknown",
+        email: service.approved_by.email || null,
+        roleType: service.approved_by_model, // "SuperAdmin", "Admin", or "Staff"
+        isStaff: service.approved_by_model === "Staff", // Boolean flag for easy UI checks
+      };
+    }
+
+    return res.status(200).json({ 
+      success: true, 
+      service: {
+        ...service.toObject(),
+        verifier: verifierDetails, // Clean separated object containing who approved/rejected it
+      } 
+    });
   } catch (error) {
+    console.error("Get Service Details Admin Error:", error);
     return res.status(500).json({
       success: false,
       message: "Error retrieving service details.",
@@ -99,7 +119,7 @@ export const verifyServiceListing = async (req, res) => {
       });
     }
 
-    if (action === "reject" && !rejection_reason) {
+    if (action === "reject" && (!rejection_reason || rejection_reason.trim() === "")) {
       return res.status(400).json({
         success: false,
         message: "A rejection reason is required when rejecting a service.",
@@ -111,14 +131,26 @@ export const verifyServiceListing = async (req, res) => {
       return res.status(404).json({ success: false, message: "Service not found." });
     }
 
+    // --- IDENTIFY VERIFIER (Admin vs Staff) ---
+    const verifierId = req.admin?._id || req.staff?._id || req.user?._id;
+    let verifierModel = null;
+
+    if (req.admin) {
+      verifierModel = "SuperAdmin"; // Change to "Admin" if your model name is Admin
+    } else if (req.staff) {
+      verifierModel = "Staff";
+    } else if (req.user) {
+      verifierModel = req.user.role === "staff" ? "Staff" : "SuperAdmin";
+    }
+
     if (action === "approve") {
       service.approval_status = "approved";
       service.is_active = true;
-      service.rejection_reason = null;
+      service.rejection_reason = "";
 
-      // --- APPLY OPTIONAL ADMIN EDITS IF PROVIDED ---
+      // --- APPLY OPTIONAL EDITS IF PROVIDED ---
       if (title !== undefined && title.trim() !== "") {
-        service.title = title.trim();
+        service.name = title.trim(); // Maps request 'title' to schema 'name'
       }
       if (description !== undefined && description.trim() !== "") {
         service.description = description.trim();
@@ -129,8 +161,7 @@ export const verifyServiceListing = async (req, res) => {
 
       // --- HANDLE OPTIONAL IMAGE/THUMBNAIL REPLACEMENT VIA MULTER ---
       if (req.file) {
-        // Adjust property based on whether you save file path, url, or buffer
-        service.thumbnail  = `/uploads/${req.file.filename}`;;
+        service.thumbnail = `/uploads/${req.file.filename}`;
       }
 
       // Update or promote the associated reference in master suggestions
@@ -152,6 +183,13 @@ export const verifyServiceListing = async (req, res) => {
         });
       }
     }
+
+    // --- RECORD AUDIT TRAIL (Who approved/rejected) ---
+    if (verifierId) {
+      service.approved_by = verifierId;
+      service.approved_by_model = verifierModel;
+    }
+    service.approval_date = new Date();
 
     await service.save();
 

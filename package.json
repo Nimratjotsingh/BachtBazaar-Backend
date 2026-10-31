@@ -33,10 +33,14 @@
     "openai": "^6.38.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
+    "react-hot-toast": "^2.6.1",
     "react-markdown": "^10.1.0",
     "react-router-dom": "^7.14.1",
     "recharts": "^3.8.1",
+    "socket.io": "^4.8.4",
+    "socket.io-client": "^4.8.4",
     "suneditor-react": "^3.6.1",
+    "web-push": "^3.6.7",
     "zod": "^4.3.6"
   },
   "devDependencies": {

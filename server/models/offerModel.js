@@ -45,6 +45,23 @@ const offerSchema = new mongoose.Schema(
       trim: true,
       default: null,
     },
+    
+    // --- Dynamic Approval Audit Trail ---
+    approved_by: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+      refPath: "approved_by_model", // Dynamically links to SuperAdmin, Admin, or Staff
+    },
+    approved_by_model: {
+      type: String,
+      enum: ["SuperAdmin", "Admin", "Staff"],
+      default: null,
+    },
+    approval_date: {
+      type: Date,
+      default: null,
+    },
+
     banner_type_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "BannerType",
@@ -188,7 +205,7 @@ const offerSchema = new mongoose.Schema(
     pause_reason: {
       type: String,
       trim: true,
-      default: null, // e.g. "Out of stock", "High demand", "Emergency store closure"
+      default: null,
     },
 
     is_active: {
@@ -209,7 +226,7 @@ const offerSchema = new mongoose.Schema(
 // --- Geospatial Index Configuration ---
 offerSchema.index({ location: "2dsphere" });
 
-// --- Composite Optimization Index (Excludes Drafts, Inactive, and Paused Offers) ---
+// --- Composite Optimization Index ---
 offerSchema.index({
   is_draft: 1,
   is_paused: 1,

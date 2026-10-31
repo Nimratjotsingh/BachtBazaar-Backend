@@ -5,7 +5,7 @@ import {
   Box, RefreshCw, ChevronDown, CheckCircle2,
   DollarSign, Scale, Power, ChevronLeft, ChevronRight, Hash,
   Database, Sparkles, AlertCircle, LayoutGrid, List, Maximize2,
-  Download, Droplets, Calendar
+  Download, Droplets, Calendar, Shield
 } from "lucide-react";
 import { accountClient, buildAuthHeaders } from "../../lib/api";
 
@@ -319,8 +319,17 @@ const ProductSuggestionsManager = ({ token }) => {
     }
   };
 
-  const openSuggestionDetails = (item) => {
-    setSelectedSuggestion(item);
+  const openSuggestionDetails = async (item) => {
+    try {
+      const res = await accountClient.get(`/admin/product-suggestions/${item._id}`, { headers });
+      if (res.data.success && res.data.data) {
+        setSelectedSuggestion(res.data.data);
+      } else {
+        setSelectedSuggestion(item);
+      }
+    } catch (err) {
+      setSelectedSuggestion(item);
+    }
     setView("details");
   };
 
@@ -946,8 +955,8 @@ const ProductSuggestionsManager = ({ token }) => {
             </div>
           ) : (
             /* =========================================================
-                VIEW MODE 2: TABLE LIST LEDGER VIEW
-                ========================================================= */
+               VIEW MODE 2: TABLE LIST LEDGER VIEW
+               ========================================================= */
             <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse min-w-[900px]">
@@ -1275,6 +1284,40 @@ const SuggestionDetailsView = ({
 
         {/* Content Body */}
         <div className="p-5 sm:p-8 space-y-6">
+          
+          {/* --- CREATOR ATTRIBUTION BANNER --- */}
+          {suggestion.created_by && (
+            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-white shrink-0 ${
+                  suggestion.created_by_model === "Staff" ? "bg-amber-600" : "bg-blue-600"
+                }`}>
+                  <Shield size={18} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-black text-slate-900">
+                      {suggestion.created_by?.name || "System Administrator"}
+                    </span>
+                    <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider ${
+                      suggestion.created_by_model === "Staff" ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800"
+                    }`}>
+                      {suggestion.created_by_model || "Admin"}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    Template originally created and published by {suggestion.created_by?.email || "authorized personnel"}
+                  </p>
+                </div>
+              </div>
+              {suggestion.createdAt && (
+                <div className="text-[11px] text-slate-400 font-mono flex items-center gap-1 sm:text-right">
+                  <Calendar size={13} /> {new Date(suggestion.createdAt).toLocaleString()}
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <h2 className="text-xl sm:text-3xl font-black text-slate-900 tracking-tight">

@@ -2,7 +2,10 @@ import { useEffect, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 
 import DashboardLayout from "./pages/DashboardLayout";
+import StaffDashboardLayout from "./staff-pages/StaffDashboardLayout.jsx"; // Import the staff layout we created earlier
 import LoginPage from "./pages/LoginPage";
+import StaffLoginPage from "./staff-pages/Login/StaffLogin.jsx"; // Dedicated or shared login page for staff
+import StaffDashboard from "./staff-pages/Dashboard/DashboardPage.jsx"; // The welcome banner staff dashboard we created
 import MerchantsPage from "./pages/Merchant/MerchantsPage";
 import UsersPage from "./pages/Users/UsersPage";
 import PolicyEditor from "./pages/PrivacyPage/Privacy";
@@ -34,110 +37,157 @@ import ProductSuggestionsManager from "./pages/ProductSuggestionManager/ProductS
 import ServiceSuggestionsManager from "./pages/ServiceSugesstionPage/ServiceSuggestion";
 import ServiceVerificationManager from "./pages/ServicesManager/ServicesManager";
 import TagSuggestionAdminPage from "./pages/TagSuggestion/TagSuggestion";
-import CallbackAdminPage from "./pages/Callback/AdminCallback";
+import AdminCallbackPage from './pages/Callback/AdminCallback.jsx'
 import AdminOfferReviewDashboard from "./pages/AdminOfferReview/AdminOfferReview";
 import AdminShopDetailView from "./pages/ShopDetailView/ShopDetailView";
 import AdminMerchantEditRequests from "./pages/AdminMerchantEditRequest/AdminMerchantEditRequest";
+import AdminStaffManagement from "./pages/AdminStaffManagement/AdminManagementPAge";
+import StaffProductDashboard from "./staff-pages/Products/StaffProductsPage.jsx";
+import StaffServiceVerificationManager from "./staff-pages/Services/StaffServices.jsx";
+import StaffOfferReviewsManager from "./staff-pages/Offers/StaffOfferReviewManager.jsx";
+import StaffProductSuggestionsManager from "./staff-pages/ProductSuggestionManager/StaffProductSuggestionManager.jsx";
+import StaffServiceSuggestionsManager from "./staff-pages/ServiceSuggestion/ServiceSuggestion.jsx";
 
-const TOKEN_STORAGE_KEY = "bb_admin_token";
+const ADMIN_TOKEN_KEY = "bb_admin_token";
+const STAFF_TOKEN_KEY = "bb_staff_token";
 const gmaps_key = import.meta.env.VITE_API_GMAPS_KEY;
 
 function App() {
-  const [token, setToken] = useState(() => 
-    localStorage.getItem(TOKEN_STORAGE_KEY) || ""
+  const [adminToken, setAdminToken] = useState(() => 
+    localStorage.getItem(ADMIN_TOKEN_KEY) || ""
+  );
+
+  const [staffToken, setStaffToken] = useState(() => 
+    localStorage.getItem(STAFF_TOKEN_KEY) || ""
   );
 
   useEffect(() => {
-    if (token) {
-      localStorage.setItem(TOKEN_STORAGE_KEY, token);
+    if (adminToken) {
+      localStorage.setItem(ADMIN_TOKEN_KEY, adminToken);
     } else {
-      localStorage.removeItem(TOKEN_STORAGE_KEY);
+      localStorage.removeItem(ADMIN_TOKEN_KEY);
     }
-  }, [token]);
+  }, [adminToken]);
 
-  const handleLogin = (nextToken) => setToken(nextToken);
-  const handleLogout = () => setToken("");
+  useEffect(() => {
+    if (staffToken) {
+      localStorage.setItem(STAFF_TOKEN_KEY, staffToken);
+    } else {
+      localStorage.removeItem(STAFF_TOKEN_KEY);
+    }
+  }, [staffToken]);
 
-  const isAuthenticated = !!token;
+  const handleAdminLogin = (nextToken) => setAdminToken(nextToken);
+  const handleAdminLogout = () => setAdminToken("");
+
+  const handleStaffLogin = (nextToken) => setStaffToken(nextToken);
+  const handleStaffLogout = () => setStaffToken("");
+
+  const isAdminAuthenticated = !!adminToken;
+  const isStaffAuthenticated = !!staffToken;
 
   return (
-    
     <Routes>
       {/* 🌐 Public Routes */}
       <Route path="/" element={<LandingPage />} />
       <Route path="/legal/:slug" element={<LegalViewPage />} />
 
-      {/* 🔐 Auth Route */}
+      {/* 🔐 Admin Auth Route */}
       <Route
         path="/login"
         element={
-          isAuthenticated ? (
+          isAdminAuthenticated ? (
             <Navigate to="/dashboard/users" replace />
           ) : (
-            <LoginPage onLogin={handleLogin} />
+            <LoginPage onLogin={handleAdminLogin} />
           )
         }
       />
 
-      {/* 🛡️ Protected Dashboard Layout */}
+      {/* 🔐 Staff Auth Route */}
+      <Route
+        path="/staff/login"
+        element={
+          isStaffAuthenticated ? (
+            <Navigate to="/staff/dashboard" replace />
+          ) : (
+            <StaffLoginPage onLogin={handleStaffLogin} isStaff={true} />
+          )
+        }
+      />
+
+      {/* 🛡️ Protected Dashboard Layout (Admin) */}
       <Route
         path="/dashboard"
         element={
-          isAuthenticated ? (
-            <DashboardLayout token={token} onLogout={handleLogout} />
+          isAdminAuthenticated ? (
+            <DashboardLayout token={adminToken} onLogout={handleAdminLogout} />
           ) : (
             <Navigate to="/login" replace />
           )
         }
       >
-        {/* Default dashboard path redirects /dashboard directly to /dashboard/users */}
         <Route index element={<Navigate to="users" replace />} />
         
-        {/* Dashboard Sub-routes */}
-        <Route path="users" element={<UsersPage token={token} />} />
-        <Route path="main" element={<AdminDashboard token={token} />} />
-        <Route path="merchants" element={<MerchantsPage token={token} />} />
-        <Route path="merchant-edit-requests" element={<AdminMerchantEditRequests token={token}/>}/>
-        <Route path="privacy" element={<PolicyEditor token={token} />} />
-        <Route path="categories" element={<CategoryPage token={token} />} />
-        <Route path="subcategories" element={<SubCategoryPage token={token} />} />
-        <Route path="offer-type" element={<AdminOfferTypeManagement token={token} />} />
-        <Route path="templates" element={<AdminTemplateImageManagement token={token} />} />
-        <Route path="calendar" element={<AdminCalendarConfig token={token}/>}/>
-        <Route path="products" element={<AdminProductDashboard token={token}/>}/>
-        <Route path="offers" element={<AdminOffersDashboard token={token}/>}/>
-        <Route path="suboffer-type" element={<SubOfferTypePage token={token}/>}/>
-        <Route path="adminbanner" element={<AdminBanner token={token}/>}/> 
-        <Route path="area" element={<AdminAreasDashboard token={token} googleMapsApiKey={gmaps_key}/>}/> 
-        <Route path="bannerTypes" element={<BannerTypesDashboard token={token}/>}/>
-        <Route path="quickOffer" element={<QuickOfferDashboard token={token}/>}/>
-        <Route path="faq" element={<AdminFaqManagement token={token}/>}/>
-        <Route path="helpArticle" element={<AdminHelpArticleManagement token={token}/>}/>
-        <Route path="league" element={<AdminLeagueManagement token={token}/>}/>
-        <Route path="task-management" element={<AdminTaskManagement token={token}/>}/>
-        <Route path="notifications" element={<AdminNotificationCenter token={token}/>}/>
-        <Route path="quest" element={<AdminQuestManagement token={token}/>}/>
-        <Route path="help-support" element={<HelpSupportPage token={token}/>}/>
-        <Route path="qr-template" element={<AdminQrTemplateManagement token={token}/>}/>
-        <Route path="offer-reviews" element={<OfferReviewsManager token={token}/>}/>
-        <Route path="product-suggestions" element={<ProductSuggestionsManager token={token}/>}/>
-        <Route path="service-suggestions" element={<ServiceSuggestionsManager token={token}/>}/>
-        <Route path="service-suggestions" element={<ServiceSuggestionsManager token={token}/>}/>
-        <Route path="service-verification-suggestions" element={<ServiceVerificationManager token={token}/>}/>
-        <Route path="tag-suggestions" element={<TagSuggestionAdminPage token={token}/>}/>
-        <Route path="callback" element={<CallbackAdminPage token={token}/>}/>
-        <Route path="offer-review" element={<AdminOfferReviewDashboard token={token}/>}/>
-        <Route path="shop/:shopId" element={<AdminShopDetailView token={token}/>}/>
-        
+        <Route path="users" element={<UsersPage token={adminToken} />} />
+        <Route path="main" element={<AdminDashboard token={adminToken} />} />
+        <Route path="merchants" element={<MerchantsPage token={adminToken} />} />
+        <Route path="merchant-edit-requests" element={<AdminMerchantEditRequests token={adminToken}/>}/>
+        <Route path="privacy" element={<PolicyEditor token={adminToken} />} />
+        <Route path="categories" element={<CategoryPage token={adminToken} />} />
+        <Route path="subcategories" element={<SubCategoryPage token={adminToken} />} />
+        <Route path="offer-type" element={<AdminOfferTypeManagement token={adminToken} />} />
+        <Route path="templates" element={<AdminTemplateImageManagement token={adminToken} />} />
+        <Route path="calendar" element={<AdminCalendarConfig token={adminToken}/>}/>
+        <Route path="products" element={<AdminProductDashboard token={adminToken}/>}/>
+        <Route path="offers" element={<AdminOffersDashboard token={adminToken}/>}/>
+        <Route path="suboffer-type" element={<SubOfferTypePage token={adminToken}/>}/>
+        <Route path="adminbanner" element={<AdminBanner token={adminToken}/>}/> 
+        <Route path="area" element={<AdminAreasDashboard token={adminToken} googleMapsApiKey={gmaps_key}/>}/> 
+        <Route path="bannerTypes" element={<BannerTypesDashboard token={adminToken}/>}/>
+        <Route path="quickOffer" element={<QuickOfferDashboard token={adminToken}/>}/>
+        <Route path="faq" element={<AdminFaqManagement token={adminToken}/>}/>
+        <Route path="helpArticle" element={<AdminHelpArticleManagement token={adminToken}/>}/>
+        <Route path="league" element={<AdminLeagueManagement token={adminToken}/>}/>
+        <Route path="task-management" element={<AdminTaskManagement token={adminToken}/>}/>
+        <Route path="notifications" element={<AdminNotificationCenter token={adminToken}/>}/>
+        <Route path="quest" element={<AdminQuestManagement token={adminToken}/>}/>
+        <Route path="help-support" element={<HelpSupportPage token={adminToken}/>}/>
+        <Route path="qr-template" element={<AdminQrTemplateManagement token={adminToken}/>}/>
+        <Route path="offer-reviews" element={<OfferReviewsManager token={adminToken}/>}/>
+        <Route path="product-suggestions" element={<ProductSuggestionsManager token={adminToken}/>}/>
+        <Route path="service-suggestions" element={<ServiceSuggestionsManager token={adminToken}/>}/>
+        <Route path="service-verification-suggestions" element={<ServiceVerificationManager token={adminToken}/>}/>
+        <Route path="tag-suggestions" element={<TagSuggestionAdminPage token={adminToken}/>}/>
+        <Route path="callback" element={<AdminCallbackPage token={adminToken}/>}/>
+        <Route path="offer-review" element={<AdminOfferReviewDashboard token={adminToken}/>}/>
+        <Route path="shop/:shopId" element={<AdminShopDetailView token={adminToken}/>}/>
+        <Route path="staff" element={<AdminStaffManagement token={adminToken}/>}/>
       </Route>
 
-      {/* 🔁 Fallback Catch-All for unknown URLs */}
-      {/* <Route
-        path="*"
+      {/* 🛡️ Protected Staff Dashboard Layout */}
+      <Route
+        path="/staff"
         element={
-          <Navigate to={isAuthenticated ? "/dashboard/users" : "/login"} replace />
+          isStaffAuthenticated ? (
+            <StaffDashboardLayout token={staffToken} onLogout={handleStaffLogout} />
+          ) : (
+            <Navigate to="/staff/login" replace />
+          )
         }
-      /> */}
+      >
+        <Route index element={<Navigate to="dashboard" replace />} />
+        <Route path="dashboard" element={<StaffDashboard token={staffToken} />} />
+        <Route path="products" element={<StaffProductDashboard token={staffToken} />} />
+        <Route path="productsuggestion" element={<StaffProductSuggestionsManager token={staffToken} />} />
+        
+        <Route path="services" element={<StaffServiceVerificationManager token={staffToken} />} />
+        <Route path="services-suggestion" element={<StaffServiceSuggestionsManager token={staffToken} />} />
+        
+        <Route path="offers" element={<StaffOfferReviewsManager token={staffToken} />} />
+        
+        
+      </Route>
     </Routes>
   );
 }

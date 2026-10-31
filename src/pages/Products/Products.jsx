@@ -4,7 +4,7 @@ import {
   Loader2, ChevronLeft, ChevronRight, MessageSquare, Tag, Info, 
   RotateCcw, Eye, Store, Package, Scale, Droplets, Calendar, 
   ExternalLink, IndianRupee, Image as ImageIcon, CheckCircle2, XCircle,
-  LayoutGrid, List, Maximize2, Download, Upload, Edit3, Save, Sparkles
+  LayoutGrid, List, Maximize2, Download, Upload, Edit3, Save, Sparkles, Shield
 } from "lucide-react";
 import { accountClient, buildAuthHeaders } from "../../lib/api";
 
@@ -86,10 +86,21 @@ const AdminProductDashboard = ({ token }) => {
     fetchData();
   };
 
-  // Inspect Trigger (Sets product and primary active image)
-  const handleOpenDetails = (product) => {
-    setInspectedProduct(product);
-    setActiveGalleryImage(product.thumbnail || (product.images && product.images[0]) || null);
+  // Inspect Trigger (Fetches full details including verifier metadata)
+  const handleOpenDetails = async (product) => {
+    try {
+      const res = await accountClient.get(`/merchant/products/${product._id}`, { headers });
+      if (res.data.success && res.data.product) {
+        setInspectedProduct(res.data.product);
+        setActiveGalleryImage(res.data.product.thumbnail || (res.data.product.images && res.data.product.images[0]) || null);
+      } else {
+        setInspectedProduct(product);
+        setActiveGalleryImage(product.thumbnail || (product.images && product.images[0]) || null);
+      }
+    } catch (err) {
+      setInspectedProduct(product);
+      setActiveGalleryImage(product.thumbnail || (product.images && product.images[0]) || null);
+    }
   };
 
   // Process Item Verification States (PATCH Engine)
@@ -126,6 +137,10 @@ const AdminProductDashboard = ({ token }) => {
         ...inspectedProduct,
         approval_status: status,
         rejection_reason: status === "rejected" ? reason : null,
+        approved_by: resProduct?.approved_by,
+        approved_by_model: resProduct?.approved_by_model,
+        approval_date: resProduct?.approval_date,
+        verifier: resProduct?.verifier,
         ...(updatedThumbnail ? { thumbnail: updatedThumbnail } : {}),
         ...updatedData
       };
@@ -310,7 +325,7 @@ const AdminProductDashboard = ({ token }) => {
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          setLightboxImage({ src: product.thumbnail, label: `${product.name} - Product Showcase` });
+                          setLightboxImage({ src: product.thumbnail, label: `${product.name} Product Showcase` });
                         }}
                         className="absolute bottom-2.5 right-2.5 p-2 bg-slate-900/60 hover:bg-slate-900 text-white rounded-xl backdrop-blur-xs opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer shadow-xs"
                         title="Fullscreen Image"
@@ -416,8 +431,8 @@ const AdminProductDashboard = ({ token }) => {
         </div>
       ) : (
         /* =========================================================
-            VIEW MODE 2: TABLE LIST LEDGER VIEW
-            ========================================================= */
+           VIEW MODE 2: TABLE LIST LEDGER VIEW
+           ========================================================= */
         <div className="bg-white rounded-2xl border border-solid border-slate-200/80 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse min-w-[950px]">
@@ -454,7 +469,7 @@ const AdminProductDashboard = ({ token }) => {
                           <div 
                             onClick={() => {
                               if (product.thumbnail) {
-                                setLightboxImage({ src: product.thumbnail, label: `${product.name} - Showcase` });
+                                setLightboxImage({ src: product.thumbnail, label: `${product.name} Showcase` });
                               }
                             }}
                             className={`w-14 h-14 rounded-xl bg-slate-100 border border-slate-200/80 flex items-center justify-center p-1 overflow-hidden shrink-0 ${product.thumbnail ? 'cursor-zoom-in' : ''}`}
@@ -669,7 +684,7 @@ const AdminProductDashboard = ({ token }) => {
 };
 
 // =========================================================
-// SUB-COMPONENT: PRODUCT DETAILS MODAL WITH SUGGESTION TOGGLE BUTTON
+// SUB-COMPONENT: PRODUCT DETAILS MODAL WITH AUDIT BANNER
 // =========================================================
 const ProductDetailsModal = ({
   product,
@@ -750,7 +765,7 @@ const ProductDetailsModal = ({
             </span>
           </div>
 
-          {/* NEW: Toggle Global Suggestion Button in Header */}
+          {/* Toggle Global Suggestion Button in Header */}
           <button
             type="button"
             disabled={togglingSuggestion}
@@ -777,6 +792,39 @@ const ProductDetailsModal = ({
         {/* Modal Scrollable Body */}
         <div className="p-6 sm:p-8 space-y-6 sm:space-y-8">
           
+          {/* --- AUDIT VERIFIER ATTRIBUTION BANNER --- */}
+          {product.approval_status !== "pending" && (
+            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-white shrink-0 ${
+                  product.verifier?.isStaff ? "bg-amber-600" : "bg-blue-600"
+                }`}>
+                  <Shield size={18} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-black text-slate-900">
+                      {product.verifier?.name || product.approved_by?.name || "System Administrator"}
+                    </span>
+                    <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider ${
+                      product.verifier?.isStaff ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800"
+                    }`}>
+                      {product.verifier?.roleType || product.approved_by_model || "Admin"}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    {product.approval_status === "approved" ? "Verified and authorized by" : "Declined by"} {product.verifier?.email || product.approved_by?.email || "authorized personnel"}
+                  </p>
+                </div>
+              </div>
+              {product.approval_date && (
+                <div className="text-[11px] text-slate-400 font-mono flex items-center gap-1 sm:text-right">
+                  <Calendar size={13} /> {new Date(product.approval_date).toLocaleString()}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Product Header & Gallery Grid */}
           <div className="grid grid-cols-1 md:grid-cols-12 gap-6 sm:gap-8 items-start">
             
@@ -788,7 +836,7 @@ const ProductDetailsModal = ({
                     src={thumbnailPreviewUrl} 
                     alt="Product Showcase" 
                     className="w-full h-full object-contain cursor-pointer"
-                    onClick={() => onOpenLightbox(thumbnailPreviewUrl, `${product.name} - Showcase`)}
+                    onClick={() => onOpenLightbox(thumbnailPreviewUrl, `${product.name} Showcase`)}
                   />
                 ) : (
                   <ImageIcon size={48} className="text-slate-300" />
@@ -817,7 +865,7 @@ const ProductDetailsModal = ({
                   {thumbnailPreviewUrl && (
                     <button
                       type="button"
-                      onClick={() => onOpenLightbox(thumbnailPreviewUrl, `${product.name} - Showcase`)}
+                      onClick={() => onOpenLightbox(thumbnailPreviewUrl, `${product.name} Showcase`)}
                       className="p-1.5 bg-black/60 hover:bg-black/80 text-white rounded-xl backdrop-blur-md transition cursor-pointer shadow-lg"
                       title="Fullscreen Preview"
                     >

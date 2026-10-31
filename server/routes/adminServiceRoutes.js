@@ -17,10 +17,16 @@ const serviceUploadFields = upload.fields([
   { name: "provider_image", maxCount: 1 },
 ]);
 
+
+
+
 // Apply admin protection
 router.use(protectSuperAdmin);
 
 router.get("/", getAllServicesAdmin);
+
+
+
 router.get("/:id", getServiceDetailsAdmin);
 router.patch("/:id/verify", upload.single("thumbnail"),verifyServiceListing);
 router.put("/:id", serviceUploadFields, updateServiceAdmin);

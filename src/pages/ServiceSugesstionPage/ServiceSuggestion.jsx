@@ -4,7 +4,7 @@ import {
   Image as ImageIcon, Search, Filter, Eye, Tag, X, Layers,
   Box, Sparkles, RefreshCw, ChevronDown, CheckCircle2,
   DollarSign, Power, Clock, Check, AlertCircle, LayoutGrid,
-  List, Maximize2, Download, Hash, Calendar, Building2, ChevronLeft, ChevronRight
+  List, Maximize2, Download, Hash, Calendar, Building2, ChevronLeft, ChevronRight, Shield
 } from "lucide-react";
 import { accountClient, buildAuthHeaders } from "../../lib/api";
 
@@ -146,8 +146,17 @@ const ServiceSuggestionsManager = ({ token }) => {
     setView("form");
   };
 
-  const openSuggestionDetails = (item) => {
-    setSelectedSuggestion(item);
+  const openSuggestionDetails = async (item) => {
+    try {
+      const res = await accountClient.get(`/admin/service-suggestions/${item._id}`, { headers });
+      if (res.data.success && res.data.suggestion) {
+        setSelectedSuggestion(res.data.suggestion);
+      } else {
+        setSelectedSuggestion(item);
+      }
+    } catch (err) {
+      setSelectedSuggestion(item);
+    }
     setView("details");
   };
 
@@ -674,7 +683,7 @@ const ServiceSuggestionsManager = ({ token }) => {
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              setLightboxImage({ src: item.image, label: `${item.name} - Service Icon` });
+                              setLightboxImage({ src: item.image, label: `${item.name} Service Asset` });
                             }}
                             className="absolute bottom-2.5 right-2.5 p-2 bg-slate-900/60 hover:bg-slate-900 text-white rounded-xl backdrop-blur-xs opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer shadow-xs"
                             title="Fullscreen Graphic"
@@ -774,8 +783,8 @@ const ServiceSuggestionsManager = ({ token }) => {
             </div>
           ) : (
             /* =========================================================
-                VIEW MODE 2: TABLE LIST LEDGER VIEW
-                ========================================================= */
+               VIEW MODE 2: TABLE LIST LEDGER VIEW
+               ========================================================= */
             <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse min-w-[750px]">
@@ -815,7 +824,7 @@ const ServiceSuggestionsManager = ({ token }) => {
                                 onClick={(e) => {
                                   if (item.image) {
                                     e.stopPropagation();
-                                    setLightboxImage({ src: item.image, label: `${item.name} - Illustration` });
+                                    setLightboxImage({ src: item.image, label: `${item.name} Illustration` });
                                   }
                                 }}
                                 className={`w-12 h-12 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center p-1 overflow-hidden shrink-0 ${item.image ? 'cursor-zoom-in group/img' : ''}`}
@@ -1006,7 +1015,7 @@ const ServiceSuggestionDetailsView = ({
               src={suggestion.image} 
               alt={suggestion.name}
               className="w-full h-full object-contain drop-shadow-sm group-hover:scale-105 transition-transform duration-500 cursor-pointer"
-              onClick={() => onOpenLightbox(suggestion.image, `${suggestion.name} - Service Asset`)}
+              onClick={() => onOpenLightbox(suggestion.image, `${suggestion.name} Service Asset`)}
             />
           ) : (
             <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 gap-2">
@@ -1017,7 +1026,7 @@ const ServiceSuggestionDetailsView = ({
 
           {suggestion.image && (
             <button
-              onClick={() => onOpenLightbox(suggestion.image, `${suggestion.name} - Service Asset`)}
+              onClick={() => onOpenLightbox(suggestion.image, `${suggestion.name} Service Asset`)}
               className="absolute bottom-4 right-4 flex items-center gap-2 px-3.5 py-2 bg-black/60 hover:bg-black/80 text-white rounded-xl backdrop-blur-md text-xs font-bold transition cursor-pointer shadow-lg"
             >
               <Maximize2 size={14} /> Open Fullscreen
@@ -1032,7 +1041,7 @@ const ServiceSuggestionDetailsView = ({
                   : "bg-slate-600 text-white"
                 : suggestion.status === "pending"
                 ? "bg-amber-500 text-white"
-                : "bg-rose-500 text-white"
+                : "bg-rose-50 text-white"
             }`}>
               {suggestion.status === "approved" ? (suggestion.is_active ? "Live in Catalog" : "Disabled") : suggestion.status}
             </span>
@@ -1046,6 +1055,40 @@ const ServiceSuggestionDetailsView = ({
 
         {/* Content Body */}
         <div className="p-5 sm:p-8 space-y-6">
+          
+          {/* --- CREATOR & VERIFIER ATTRIBUTION BANNER --- */}
+          {(suggestion.created_by || suggestion.approved_by || suggestion.suggested_by) && (
+            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-white shrink-0 ${
+                  suggestion.created_by_model === "Staff" || suggestion.approved_by_model === "Staff" ? "bg-amber-600" : "bg-blue-600"
+                }`}>
+                  <Shield size={18} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-black text-slate-900">
+                      {suggestion.created_by?.name || suggestion.approved_by?.name || suggestion.suggested_by?.name || suggestion.suggested_by?.businessName || "System Administrator"}
+                    </span>
+                    <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider ${
+                      (suggestion.created_by_model === "Staff" || suggestion.approved_by_model === "Staff") ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800"
+                    }`}>
+                      {suggestion.created_by_model || suggestion.approved_by_model || (suggestion.suggested_by ? "Merchant" : "Admin")}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    {suggestion.suggested_by ? "Suggested by merchant partner" : "Created and authorized by authorized personnel"}
+                  </p>
+                </div>
+              </div>
+              {suggestion.createdAt && (
+                <div className="text-[11px] text-slate-400 font-mono flex items-center gap-1 sm:text-right">
+                  <Calendar size={13} /> {new Date(suggestion.createdAt).toLocaleString()}
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <h2 className="text-xl sm:text-3xl font-black text-slate-900 tracking-tight">

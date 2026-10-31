@@ -6,6 +6,7 @@ import MerchantShop from '../models/merchantShopModel.js'
 import Area from '../models/AreaModel.js';
 import mongoose from "mongoose";
 import { notifyNearbyUsersForNewOffer } from "../utils/offerNotificationHelper.js";
+import { triggerAdminNotification } from "../utils/adminNotificationHelper.js";
 
 // Helper to isolate date segments and force UTC Midnight matching your schemas
 const normalizeToMidnight = (dateString) => {
@@ -471,6 +472,13 @@ export const createOffer = async (req, res) => {
       }
     })();
 
+     await triggerAdminNotification(req, {
+          title: "Merchant Offer Creation Submitted",
+          message: `${merchant.name || "A merchant"} has updated their profile details and is pending review.`,
+          category: "offer_review",
+          referenceId: merchantId
+        });
+
     return res.status(201).json({
       success: true,
       message: "Offer campaign submitted and listed successfully.",
@@ -685,6 +693,13 @@ export const createAllTypeOffer = async (req, res) => {
         }
       })();
     }
+
+    await triggerAdminNotification(req, {
+          title: "Merchant Offer Creation Submitted",
+          message: `${merchant.name || "A merchant"} has updated their profile details and is pending review.`,
+          category: "offer_review",
+          referenceId: merchantId
+        });
 
     return res.status(201).json({
       success: true,

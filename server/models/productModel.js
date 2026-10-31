@@ -108,7 +108,6 @@ const productSchema = new mongoose.Schema(
     },
 
     // --- Dynamic Key-Value Specifications Array ---
-    // Example: [{ key: "Weight", value: "500g" }, { key: "Flavour", value: "Chocolate" }]
     specifications: {
       type: [specificationSchema],
       default: [],
@@ -130,11 +129,21 @@ const productSchema = new mongoose.Schema(
       default: "pending",
       index: true,
     },
+    
+    // --- Updated Approval Tracking Fields ---
     approved_by: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Admin",
+      default: null,
+      // Note: If you want dynamic refing between SuperAdmin/Admin and Staff, 
+      // you can use a refPath or leave ref out if you handle population manually in controllers.
+      refPath: "approved_by_model", 
+    },
+    approved_by_model: {
+      type: String,
+      enum: ["SuperAdmin",  "Staff"],
       default: null,
     },
+
     approval_date: {
       type: Date,
       default: null,

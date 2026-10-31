@@ -4,6 +4,7 @@ import Offer from "../models/offerModel.js";
 import ProductSuggestion from "../models/productSuggestionModel.js";
 import Wishlist from "../models/wishlistModel.js";
 import { notifyWishlistUsersOnPriceDrop } from "../utils/priceDropNotificationHelper.js";
+import { triggerAdminNotification } from "../utils/adminNotificationHelper.js";
 
 // ==========================================
 // HELPERS
@@ -217,6 +218,13 @@ export const createProduct = async (req, res) => {
       });
     }
 
+     await triggerAdminNotification(req, {
+              title: "Merchant Offer Creation Submitted",
+              message: `${data.name || "A merchant"} product has been created`,
+              category: "product_review",
+              referenceId: data.merchant._id
+            });
+
     return res.status(201).json({
       success: true,
       message: isAutoApproved
@@ -381,15 +389,34 @@ export const getProduct = async (req, res) => {
       .populate("merchant_id", "name email phone")
       .populate("category_id", "label")
       .populate("subcategory_id", "label")
-      .populate("approved_by", "name email")
+      .populate("approved_by", "name email phone role") // Dynamically populates SuperAdmin, Admin, or Staff
       .lean();
 
     if (!product) {
       return res.status(404).json({ success: false, message: "Product not found" });
     }
 
-    return res.json({ success: true, product });
+    // Format audit metadata for the frontend
+    let verifierDetails = null;
+    if (product.approved_by) {
+      verifierDetails = {
+        _id: product.approved_by._id,
+        name: product.approved_by.name || "Unknown",
+        email: product.approved_by.email || null,
+        roleType: product.approved_by_model, // "SuperAdmin", "Admin", or "Staff"
+        isStaff: product.approved_by_model === "Staff", // Boolean flag for easy UI checks
+      };
+    }
+
+    return res.json({ 
+      success: true, 
+      product: {
+        ...product,
+        verifier: verifierDetails, // Clean separated object containing who approved/rejected it
+      } 
+    });
   } catch (error) {
+    console.error("Get Product Details Error:", error);
     return res.status(500).json({ success: false, message: "Error fetching product details", error: error.message });
   }
 };
@@ -641,11 +668,24 @@ export const reviewProductAdmin = async (req, res) => {
       });
     }
 
+    // --- IDENTIFY VERIFIER (Admin vs Staff) ---
+    const verifierId = req.superAdmin?._id || req.admin?._id || req.staff?._id || req.user?._id;
+    let verifierModel = null;
+
+    if (req.superAdmin || req.admin) {
+      verifierModel = "SuperAdmin"; // Adjust to "Admin" if your admin model is named Admin
+    } else if (req.staff) {
+      verifierModel = "Staff";
+    } else if (req.user) {
+      verifierModel = req.user.role === "staff" ? "Staff" : "SuperAdmin";
+    }
+
     // Base review update payload
     const reviewPayload = {
       approval_status: status,
-      approved_by: status === "approved" ? (req.superAdmin?._id || req.admin?._id) : null,
-      approval_date: status === "approved" ? new Date() : null,
+      approved_by: status !== "pending" ? verifierId : null,
+      approved_by_model: status !== "pending" ? verifierModel : null,
+      approval_date: status !== "pending" ? new Date() : null,
       rejection_reason: status === "rejected" ? rejection_reason.trim() : "",
       ...(status === "rejected" && { is_active: false }),
     };

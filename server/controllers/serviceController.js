@@ -1,6 +1,7 @@
 import Service from "../models/serviceModel.js";
 import ServiceReference from "../models/serviceSuggestionModel.js";
 import mongoose from "mongoose";
+import { triggerAdminNotification } from "../utils/adminNotificationHelper.js";
 
 // Helper to reliably parse service_provider whether sent as JSON string or individual form-data fields
 const parseServiceProvider = (body, files) => {
@@ -255,6 +256,13 @@ export const createService = async (req, res) => {
     });
 
     await newService.save();
+
+     await triggerAdminNotification(req, {
+              title: "Merchant Service Creation Submitted",
+              message: `${finalName || "A merchant"} service has been created by a merchant.`,
+              category: "service_review",
+              referenceId: merchantId
+            });
 
     return res.status(201).json({
       success: true,
