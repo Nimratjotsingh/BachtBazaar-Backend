@@ -154,6 +154,74 @@ export const sendOtp = async (req, res) => {
   }
 };
 
+export const sendRegisterOtp = async (req, res) => {
+  try {
+    const { phone } = validate(phoneSchema, req.body);
+
+    const formattedPhone = formatPhone(phone);
+    const merchant = await Merchant.findOne({ phone: formattedPhone });
+
+    if(merchant){
+      return res.status(409).json({
+        success: false,
+        message: "Phone number already registered. Please login instead.",
+      });
+    }
+
+    // Clean phone number (strip non-digits, e.g. 919478273358)
+    const cleanedMobile = formattedPhone.replace(/\D/g, "");
+
+    const authKey = process.env.MSG91_AUTH_KEY;
+    const accountId = process.env.MSG91_ACCOUNT_ID;
+    const templateId = process.env.MSG91_OTP_TEMPLATE_ID;
+
+    // Dispatch OTP via MSG91 v5 API
+    const response = await axios.post(
+      "https://control.msg91.com/api/v5/otp",
+      null,
+      {
+        params: {
+          template_id: templateId,
+          mobile: cleanedMobile,
+          otp_expiry: 5
+        },
+        headers: {
+          authkey: authKey,
+          "account-id": accountId,
+          "Content-Type": "application/json",
+        },
+        timeout: 10000,
+      }
+    );
+
+    const msg91Data = response.data;
+
+    if (msg91Data?.type !== "success") {
+      return res.status(502).json({
+        success: false,
+        message: msg91Data?.message || "Failed to dispatch OTP from SMS gateway.",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      exists: !!merchant,
+      requestId: msg91Data.request_id,
+      message: "OTP sent successfully.",
+    });
+  } catch (error) {
+    if (error.response?.data) {
+      console.error("MSG91 Send OTP Error:", error.response.data);
+      return res.status(502).json({
+        success: false,
+        message: error.response.data.message || "Failed to dispatch OTP.",
+      });
+    }
+
+    return handleValidation(res, error, "Error sending OTP");
+  }
+};
+
 export const registerMerchantSendOtp = async (req, res) => {
   try {
     const { phone } = validate(phoneSchema, req.body);

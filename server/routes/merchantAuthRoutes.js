@@ -20,7 +20,8 @@ import {
   hardDeleteMerchantAccount,
   recoverMerchantAccount,
   getDeliveryPricing,
-  updateDeliveryPricing
+  updateDeliveryPricing,
+  sendRegisterOtp
 } from "../controllers/merchantAuthController.js";
 
 import {getNearbyCustomerRequestsForMerchant} from '../controllers/MerchantBidController.js'
@@ -30,15 +31,15 @@ import { getDeliveryOrderById } from "../controllers/deliveryController.js";
 
 const router = express.Router();
 
-router.post("/register/send-otp", registerMerchantSendOtp);
-router.post("/register/verify-otp", registerMerchantVerifyOtp);
+router.post("/register/send-otp", sendRegisterOtp);
+router.post("/register/verify-otp", verifyOtp);
 router.post('/register/test',createTestMerchant)
-router.post("/send-otp", sendOtp);
+router.post("/send-otp", sendOtp)
 router.post("/verify-otp", verifyOtp);
 router.post('/resend-otp',retryOtp)
 router.post("/set-password", protectMerchant, setPassword);
 router.post("/login-password", loginWithPassword);
-router.post("/login-otp", loginWithOtp);
+router.post("/login-otp", sendOtp);
 router.post("/forgot-password", protectMerchant,forgotPassword);
 router.post("/temp-change-pass",tempUpdatePass);
 router.put("/password", protectMerchant, updatePassword);
