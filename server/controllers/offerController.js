@@ -230,12 +230,12 @@ export const createOffer = async (req, res) => {
     const endOfToday = new Date();
     endOfToday.setUTCHours(23, 59, 59, 999);
 
-    const escapedTitle = trimmedTitle.replace(/[.*+?^\${}()|[\]\\]/g, "\\$&");
+    const escapedTitle = trimmedTitle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const duplicateOfferToday = await Offer.findOne({
       merchant_id: merchantId,
       title: { $regex: new RegExp(`^${escapedTitle}$`, "i") },
       is_deleted: false,
-      createdAt: { $gte: startOfToday,$lte: endOfToday },
+      createdAt: { $gte: startOfToday, $lte: endOfToday },
     }).select("title createdAt");
 
     if (duplicateOfferToday) {
@@ -266,10 +266,31 @@ export const createOffer = async (req, res) => {
       });
     }
 
-    // 1. Process File Upload path from Multer if a background asset was included
-    if (req.file) {
-      data.thumbnail = `/uploads/${req.file.filename}`;
+    // --- 1. PROCESS THUMBNAIL ASSET(S) ---
+    let thumbnailsArray = [];
+
+    // If multiple files were uploaded via fields (e.g. upload.fields([{ name: 'thumbnail', maxCount: 5 }]))
+    if (req.files?.thumbnail) {
+      thumbnailsArray = req.files.thumbnail.map((f) => `/uploads/${f.filename}`);
+    } 
+    // If a single file upload middleware was used (upload.single('thumbnail'))
+    else if (req.file) {
+      thumbnailsArray = [`/uploads/${req.file.filename}`];
+    } 
+    // If thumbnails were passed via req.body (array, comma-separated string, or single string)
+    else if (data.thumbnail) {
+      if (Array.isArray(data.thumbnail)) {
+        thumbnailsArray = data.thumbnail;
+      } else if (typeof data.thumbnail === "string") {
+        try {
+          const parsed = JSON.parse(data.thumbnail);
+          thumbnailsArray = Array.isArray(parsed) ? parsed : [data.thumbnail];
+        } catch {
+          thumbnailsArray = data.thumbnail.split(",").map((t) => t.trim()).filter(Boolean);
+        }
+      }
     }
+    data.thumbnail = thumbnailsArray;
 
     const { display_type, start_date, end_date } = data;
 
@@ -283,7 +304,6 @@ export const createOffer = async (req, res) => {
     let targetAreaId = null;
 
     // --- GEOLOCATION BOUNDARY RESOLUTION ---
-    // Look up the closest active system geofenced Area using an aggregation pipeline
     const geoResults = await Area.aggregate([
       {
         $geoNear: {
@@ -361,13 +381,11 @@ export const createOffer = async (req, res) => {
       const globalDefaultLimit = 5;
       const targetDateLookup = new Date(finalStartDate);
 
-      // Find all shops registered in this specific resolved Area perimeter
       const areaMerchantIds = await mongoose
         .model("MerchantShop")
         .find({ area_id: targetAreaId })
         .distinct("merchantId");
 
-      // Concurrently query active regional booking metrics
       const [dateRule, currentAreaBookingsCount] = await Promise.all([
         CalendarConfig.findOne({ area_id: targetAreaId, date: targetDateLookup }).lean(),
         Offer.countDocuments({
@@ -427,6 +445,7 @@ export const createOffer = async (req, res) => {
       start_date: finalStartDate,
       end_date: finalEndDate,
       location: data.location,
+      thumbnail: data.thumbnail || [],
       is_text_shown: parseBoolean(data.is_text_shown, true),
       isCustomImage: parseBoolean(data.isCustomImage, false),
       discount_percentage: data.discount_percentage ? Number(data.discount_percentage) : null,
@@ -441,7 +460,7 @@ export const createOffer = async (req, res) => {
 
     await newOffer.save();
 
-    // 5. Post-Save Step: Increment regional slot counters on config matrix tracking entries
+    // 5. Post-Save Step: Increment regional slot counters
     if (display_type === "calendar") {
       const targetDateLookup = new Date(finalStartDate);
       await CalendarConfig.findOneAndUpdate(
@@ -472,12 +491,12 @@ export const createOffer = async (req, res) => {
       }
     })();
 
-     await triggerAdminNotification(req, {
-          title: "Merchant Offer Creation Submitted",
-          message: `${merchant.name || "A merchant"} has updated their profile details and is pending review.`,
-          category: "offer_review",
-          referenceId: merchantId
-        });
+    await triggerAdminNotification(req, {
+      title: "Merchant Offer Creation Submitted",
+      message: `${req.merchant.name || "A merchant"} has created a new offer and is pending review.`,
+      category: "offer_review",
+      referenceId: merchantId,
+    });
 
     return res.status(201).json({
       success: true,
@@ -1194,6 +1213,66 @@ export const getAllOffersAdmin = async (req, res) => {
       success: false, 
       message: "An internal server error occurred while retrieving offers.", 
       error: error.message 
+    });
+  }
+};
+
+export const disableOfferAdmin = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { pause_reason } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: "Invalid Offer ID format." });
+    }
+
+    const offer = await Offer.findOne({ _id: id, is_deleted: false });
+    if (!offer) {
+      return res.status(404).json({
+        success: false,
+        message: "Target offer not found in directory.",
+      });
+    }
+
+    // --- IDENTIFY VERIFIER (Admin vs Staff) ---
+    const verifierId = req.superAdmin?._id || req.admin?._id || req.staff?._id || req.user?._id || null;
+    let verifierModel = null;
+
+    if (req.superAdmin || req.admin) {
+      verifierModel = "SuperAdmin";
+    } else if (req.staff) {
+      verifierModel = "Staff";
+    } else if (req.user) {
+      verifierModel = req.user.role === "staff" ? "Staff" : "SuperAdmin";
+    }
+
+    // Apply disable & pause state
+    offer.is_active = false;
+    offer.is_paused = true;
+    offer.paused_at = new Date();
+    if (pause_reason && pause_reason.trim()) {
+      offer.pause_reason = pause_reason.trim();
+    }
+
+    // --- RECORD AUDIT TRAIL ---
+    if (verifierId) {
+      offer.approved_by = verifierId;
+      offer.approved_by_model = verifierModel;
+    }
+
+    await offer.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Offer has been successfully disabled and paused.",
+      data: offer,
+    });
+  } catch (error) {
+    console.error("Disable Offer Admin Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to disable offer campaign.",
+      error: error.message,
     });
   }
 };

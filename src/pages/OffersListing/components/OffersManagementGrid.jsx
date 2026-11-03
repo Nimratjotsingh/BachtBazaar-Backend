@@ -1,9 +1,9 @@
 import React, { useState } from "react";
 import {
   Search, SlidersHorizontal, RotateCcw, ChevronLeft, ChevronRight,
-  MoreVertical, TrendingUp, TrendingDown, Eye, Plus, Upload, 
-  Download, Calendar, BarChart3, Tag, Percent, X, Store, User, Mail, Phone, MapPin, Clock, ShieldCheck, Sliders, EyeOff,
-  Loader2, Layers, LayoutGrid, List, Maximize2, Ticket, QrCode, CheckCircle2, AlertCircle, Hash, DollarSign, Check, Shield
+  Eye, 
+ Tag, Percent, X, Store, Mail, Phone, MapPin,  ShieldCheck, Sliders, 
+  Loader2, Layers, LayoutGrid, List, Maximize2,  Check, Shield, Power
 } from "lucide-react";
 
 const OffersManagementGrid = ({ 
@@ -33,6 +33,10 @@ const OffersManagementGrid = ({
   // Rejection reason prompt input state for verification drawer
   const [rejectionInput, setRejectionInput] = useState("");
   const [showRejectInput, setShowRejectInput] = useState(false);
+
+  // Disable / Pause reason prompt input state
+  const [disableInput, setDisableInput] = useState("");
+  const [showDisableInput, setShowDisableInput] = useState(false);
 
   const handleApplyFilters = () => {
     if (onFilterChange) {
@@ -81,7 +85,7 @@ const OffersManagementGrid = ({
             { label: "Active", key: "active", count: offers.filter(o => o.status === 'active').length },
             { label: "Scheduled", key: "scheduled", count: offers.filter(o => o.status === 'scheduled').length },
             { label: "Expired", key: "expired", count: offers.filter(o => o.status === 'expired').length },
-            { label: "Paused", key: "paused", count: offers.filter(o => o.status === 'paused').length }
+            { label: "Paused", key: "paused", count: offers.filter(o => o.status === 'paused' || o.is_paused).length }
           ].map((tab, idx) => (
             <button
               key={`${tab.key}-${idx}`}
@@ -212,9 +216,9 @@ const OffersManagementGrid = ({
                           {offer.discount_expression}
                         </span>
                         <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider shadow-xs ${
-                          offer.status === 'active' ? 'bg-emerald-600 text-white' : 'bg-slate-700 text-slate-200'
+                          offer.is_paused || !offer.is_active ? 'bg-rose-600 text-white' : offer.status === 'active' ? 'bg-emerald-600 text-white' : 'bg-slate-700 text-slate-200'
                         }`}>
-                          {offer.status}
+                          {offer.is_paused ? 'Paused' : !offer.is_active ? 'Disabled' : offer.status}
                         </span>
                       </div>
 
@@ -266,16 +270,31 @@ const OffersManagementGrid = ({
                   <div className="px-4 sm:px-5 pb-4 pt-1">
                     <div className="flex items-center justify-between border-t border-slate-100 pt-3 text-[10px] font-bold text-slate-400">
                       <span>{offer.formatted_start} - {offer.formatted_end}</span>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onActionTrigger && onActionTrigger("inspect_offer_row", offer);
-                        }}
-                        className="px-2.5 py-1 text-xs font-bold text-indigo-600 hover:bg-indigo-50 rounded-lg transition cursor-pointer border border-indigo-100"
-                      >
-                        Inspect
-                      </button>
+                      <div className="flex items-center gap-1.5">
+                        {offer.is_active && !offer.is_paused && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onActionTrigger && onActionTrigger("disable_offer", { offerId: offer._id, pauseReason: "Disabled from grid view" });
+                            }}
+                            className="p-1 text-rose-600 hover:bg-rose-50 rounded-md transition cursor-pointer border border-rose-100"
+                            title="Disable Offer"
+                          >
+                            <Power size={12} />
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onActionTrigger && onActionTrigger("inspect_offer_row", offer);
+                          }}
+                          className="px-2.5 py-1 text-xs font-bold text-indigo-600 hover:bg-indigo-50 rounded-lg transition cursor-pointer border border-indigo-100"
+                        >
+                          Inspect
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -296,7 +315,7 @@ const OffersManagementGrid = ({
                   <th className="px-4 pb-3">Placement</th>
                   <th className="px-4 pb-3">Discount Matrix</th>
                   <th className="px-4 pb-3">Status</th>
-                  <th className="w-6 pb-3 text-center">Review</th>
+                  <th className="w-16 pb-3 text-center">Review</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50 text-xs font-semibold">
@@ -338,23 +357,39 @@ const OffersManagementGrid = ({
                     </td>
                     <td className="px-4 py-4">
                       <span className={`inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider ${
-                        offer.status === 'active' ? 'text-emerald-600' : 'text-slate-500'
+                        offer.is_paused || !offer.is_active ? 'text-rose-600' : offer.status === 'active' ? 'text-emerald-600' : 'text-slate-500'
                       }`}>
-                        {offer.status}
+                        {offer.is_paused ? 'Paused' : !offer.is_active ? 'Disabled' : offer.status}
                       </span>
                     </td>
                     
                     <td className="py-4 text-center">
-                      <button 
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onActionTrigger && onActionTrigger("inspect_offer_row", offer);
-                        }}
-                        className="p-2 bg-white border border-slate-200 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50/50 hover:border-indigo-100 rounded-xl transition shadow-2xs cursor-pointer"
-                      >
-                        <Eye size={14} />
-                      </button>
+                      <div className="flex items-center justify-center gap-1">
+                        {offer.is_active && !offer.is_paused && (
+                          <button 
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onActionTrigger && onActionTrigger("disable_offer", { offerId: offer._id, pauseReason: "Disabled from table view" });
+                            }}
+                            className="p-2 bg-white border border-rose-200 text-rose-500 hover:bg-rose-50 rounded-xl transition shadow-2xs cursor-pointer"
+                            title="Disable Campaign"
+                          >
+                            <Power size={14} />
+                          </button>
+                        )}
+                        <button 
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onActionTrigger && onActionTrigger("inspect_offer_row", offer);
+                          }}
+                          className="p-2 bg-white border border-slate-200 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50/50 hover:border-indigo-100 rounded-xl transition shadow-2xs cursor-pointer"
+                          title="Inspect Campaign"
+                        >
+                          <Eye size={14} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -400,13 +435,16 @@ const OffersManagementGrid = ({
               {/* --- VERIFICATION & AUDIT ACTIONS BAR --- */}
               <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Moderation Status</span>
-                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase ${
-                    selectedOfferDetail.approval_status === "approved" ? "bg-emerald-100 text-emerald-800" :
-                    selectedOfferDetail.approval_status === "rejected" ? "bg-rose-100 text-rose-800" : "bg-amber-100 text-amber-800"
-                  }`}>
-                    {selectedOfferDetail.approval_status || "approved"}
-                  </span>
+                  <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Moderation & Status</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase ${
+                      selectedOfferDetail.is_paused || !selectedOfferDetail.is_active ? "bg-rose-100 text-rose-800" :
+                      selectedOfferDetail.approval_status === "approved" ? "bg-emerald-100 text-emerald-800" :
+                      selectedOfferDetail.approval_status === "rejected" ? "bg-rose-100 text-rose-800" : "bg-amber-100 text-amber-800"
+                    }`}>
+                      {selectedOfferDetail.is_paused ? "Paused" : !selectedOfferDetail.is_active ? "Disabled" : selectedOfferDetail.approval_status || "approved"}
+                    </span>
+                  </div>
                 </div>
 
                 {/* Verifier Attribution Stamp if available */}
@@ -462,45 +500,91 @@ const OffersManagementGrid = ({
                       </button>
                     </div>
                   </div>
+                ) : showDisableInput ? (
+                  <div className="space-y-2 pt-1 border-t border-slate-200/60">
+                    <textarea
+                      rows={2}
+                      placeholder="Reason for disabling this campaign..."
+                      value={disableInput}
+                      onChange={(e) => setDisableInput(e.target.value)}
+                      className="w-full p-2 bg-white border border-slate-200 rounded-xl text-xs outline-none text-slate-800"
+                    />
+                    <div className="flex gap-2 justify-end">
+                      <button 
+                        onClick={() => setShowDisableInput(false)}
+                        className="px-2.5 py-1 text-xs text-slate-500 hover:bg-slate-200 rounded-lg cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                      <button 
+                        onClick={() => {
+                          onActionTrigger && onActionTrigger("disable_offer", { 
+                            offerId: selectedOfferDetail._id, 
+                            pauseReason: disableInput.trim() || "Disabled by admin" 
+                          });
+                          setShowDisableInput(false);
+                          setDisableInput("");
+                        }}
+                        className="px-3 py-1 bg-rose-600 text-white rounded-lg text-xs font-bold shadow-xs cursor-pointer"
+                      >
+                        Confirm Disable
+                      </button>
+                    </div>
+                  </div>
                 ) : (
-                  <div className="flex gap-2 pt-1 border-t border-slate-200/60">
-                    <button
-                      onClick={() => onActionTrigger && onActionTrigger("review_offer", { offerId: selectedOfferDetail._id, status: "approved" })}
-                      className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-extrabold flex items-center justify-center gap-1 transition shadow-xs cursor-pointer"
-                    >
-                      <Check size={14} /> Approve
-                    </button>
-                    <button
-                      onClick={() => setShowRejectInput(true)}
-                      className="flex-1 py-2 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1 transition border border-rose-200 cursor-pointer"
-                    >
-                      <X size={14} /> Reject
-                    </button>
+                  <div className="flex flex-col gap-2 pt-1 border-t border-slate-200/60">
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => onActionTrigger && onActionTrigger("review_offer", { offerId: selectedOfferDetail._id, status: "approved" })}
+                        className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-extrabold flex items-center justify-center gap-1 transition shadow-xs cursor-pointer"
+                      >
+                        <Check size={14} /> Approve
+                      </button>
+                      <button
+                        onClick={() => setShowRejectInput(true)}
+                        className="flex-1 py-2 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1 transition border border-rose-200 cursor-pointer"
+                      >
+                        <X size={14} /> Reject
+                      </button>
+                    </div>
+                    {selectedOfferDetail.is_active && !selectedOfferDetail.is_paused && (
+                      <button
+                        onClick={() => setShowDisableInput(true)}
+                        className="w-full py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-extrabold flex items-center justify-center gap-1 transition cursor-pointer shadow-xs"
+                      >
+                        <Power size={13} /> Disable / Pause Campaign
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
 
-              {/* Proportional Preview Container */}
+              {/* Proportional Preview Container (Supports Thumbnails Array) */}
               <div className="space-y-3">
-                <div 
-                  onClick={() => {
-                    if (selectedOfferDetail.thumbnail) {
-                      onActionTrigger && onActionTrigger("open_lightbox", { src: selectedOfferDetail.thumbnail, label: `${selectedOfferDetail.title} Banner` });
-                    }
-                  }}
-                  className={`w-full aspect-[16/10] bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden shadow-inner flex items-center justify-center p-3 relative group ${selectedOfferDetail.thumbnail ? 'cursor-zoom-in' : ''}`}
-                >
-                  {selectedOfferDetail.thumbnail ? (
-                    <>
-                      <img src={selectedOfferDetail.thumbnail} className="w-full h-full object-contain" alt="" />
-                      <div className="absolute bottom-2.5 right-2.5 p-1.5 bg-black/60 rounded-lg text-white opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Maximize2 size={12} />
-                      </div>
-                    </>
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-slate-600"><Percent size={28} /></div>
-                  )}
-                </div>
+                {(() => {
+                  const thumbSrc = Array.isArray(selectedOfferDetail.thumbnail) ? selectedOfferDetail.thumbnail[0] : selectedOfferDetail.thumbnail;
+                  return (
+                    <div 
+                      onClick={() => {
+                        if (thumbSrc) {
+                          onActionTrigger && onActionTrigger("open_lightbox", { src: thumbSrc, label: `${selectedOfferDetail.title} Banner` });
+                        }
+                      }}
+                      className={`w-full aspect-[16/10] bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden shadow-inner flex items-center justify-center p-3 relative group ${thumbSrc ? 'cursor-zoom-in' : ''}`}
+                    >
+                      {thumbSrc ? (
+                        <>
+                          <img src={thumbSrc} className="w-full h-full object-contain" alt="" />
+                          <div className="absolute bottom-2.5 right-2.5 p-1.5 bg-black/60 rounded-lg text-white opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Maximize2 size={12} />
+                          </div>
+                        </>
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-slate-600"><Percent size={28} /></div>
+                      )}
+                    </div>
+                  );
+                })()}
                 <div>
                   <h4 className="text-base font-black text-slate-900 leading-tight">{selectedOfferDetail.title}</h4>
                   <p className="text-xs text-slate-400 font-medium mt-1 leading-relaxed">{selectedOfferDetail.description || "No layout descriptive parameters configured."}</p>

@@ -11,7 +11,6 @@ const userMilestoneGoalSchema = new mongoose.Schema(
     shopId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "MerchantShop",
-      
       index: true,
     },
     userId: {
@@ -20,6 +19,15 @@ const userMilestoneGoalSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    
+    // --- Optional Associated Product Reference(s) ---
+    product_id: {
+      type: [mongoose.Schema.Types.ObjectId],
+      ref: "Product",
+      default: [],
+      index: true,
+    },
+
     title: {
       type: String,
       required: [true, "Goal title is required"],
@@ -77,6 +85,7 @@ const userMilestoneGoalSchema = new mongoose.Schema(
 );
 
 userMilestoneGoalSchema.index({ userId: 1, merchantId: 1, status: 1 });
+userMilestoneGoalSchema.index({ product_id: 1 });
 
 const UserMilestoneGoal =
   mongoose.models.UserMilestoneGoal ||

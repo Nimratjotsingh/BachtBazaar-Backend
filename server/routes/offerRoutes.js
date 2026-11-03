@@ -17,7 +17,8 @@ import {
   getMerchantSlotStatus,
   revivePastOffersBatch,
   togglePauseOffer,
-  createAllTypeOffer
+  createAllTypeOffer,
+  disableOfferAdmin
 } from "../controllers/offerController.js";
 
 import { protectSuperAdmin } from "../middleware/superAuthMiddleware.js";
@@ -27,10 +28,11 @@ const router = express.Router();
 router.get("/today", getActiveOffersForToday);
 router.get("/admin/master-list", protectSuperAdmin, getAllOffersAdmin);
 router.get("/admin/detail/:id", protectSuperAdmin, getOfferDetailWithMerchantAdmin);
+router.patch("/admin/offers/:id/disable", protectSuperAdmin, disableOfferAdmin);
 
 router.get('/merchant/slot-status',protectMerchant,getMerchantSlotStatus);
 // Base profile actions bound to authorization layers
-router.post("/", protectMerchant, upload.single("thumbnail"), createOffer);
+router.post("/", protectMerchant,upload.fields([{ name: "thumbnail", maxCount: 5 }]), createOffer);
 router.post("/all",protectMerchant,upload.single("thumbnail"),createAllTypeOffer)
 router.get("/", protectMerchant, getMerchantOffers);
 router.get("/search/:display_type", protectMerchant, searchOffersByDisplayType);

@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { accountClient, buildAuthHeaders } from "../../lib/api";
-import { Loader2, AlertCircle, RefreshCw, X, Download, Maximize2 } from "lucide-react";
+import { Loader2, AlertCircle, RefreshCw, X, Download, Maximize2, Power } from "lucide-react";
 
 // --- Import Sub-Components ---
 import OffersStatsHeader from "./components/OffersStatsHeader";
 import OffersManagementGrid from "./components/OffersManagementGrid";
+import OfferDetailModal from "./components/OffersModel"; // Updated popup modal component
 
 const AdminOffersDashboard = ({ token }) => {
   // --- Central Loading & Error Engine ---
@@ -117,33 +118,39 @@ const AdminOffersDashboard = ({ token }) => {
         totalItems: offersRes.data.total || serverOffers.length,
       };
 
-      // Map raw response database model variants over to the clean UI keys required by the Grid view
-      const mappedGridRows = serverOffers.map((offer) => ({
-        _id: offer._id,
-        rawOffer: offer,
-        title: offer.title,
-        code: offer.code || offer._id.substring(18).toUpperCase(),
-        thumbnail: offer.thumbnail,
-        description: offer.description,
-        merchant_name: offer.merchant_id?.name || offer.merchant_id?.store_name || "Unknown Partner",
-        category_label: offer.offer_type_id?.label || offer.category_id?.label || "General",
-        offer_type_label: offer.display_type,
-        discount_expression: offer.discount_percentage ? `${offer.discount_percentage}% OFF` : (offer.discount_value ? `₹${offer.discount_value} OFF` : "Exclusive Offer"),
-        discount_percentage: offer.discount_percentage,
-        discount_value: offer.discount_value,
-        minimum_purchase_amount: offer.minimum_purchase_amount || 0,
-        status: offer.is_paused ? "paused" : (new Date(offer.end_date) < new Date() ? "expired" : (new Date(offer.start_date) > new Date() ? "scheduled" : "active")),
-        approval_status: offer.approval_status || "approved",
-        approved_by: offer.approved_by,
-        approved_by_model: offer.approved_by_model,
-        approval_date: offer.approval_date,
-        rejection_reason: offer.rejection_reason,
-        formatted_start: new Date(offer.start_date).toLocaleDateString("en-IN", { day: "numeric", month: "short" }),
-        formatted_end: new Date(offer.end_date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }),
-        redemptions_count: offer.redeemedCount || offer.number_of_winners || 0,
-        claimed_count: offer.claimedCount || 0,
-        redemption_trend: offer.number_of_winners ? "12.5% increase" : null,
-      }));
+      // Map raw response database model variants over to clean UI keys
+      const mappedGridRows = serverOffers.map((offer) => {
+        const primaryThumb = Array.isArray(offer.thumbnail) ? offer.thumbnail[0] : offer.thumbnail;
+        return {
+          _id: offer._id,
+          rawOffer: offer,
+          title: offer.title,
+          code: offer.code || offer._id.substring(18).toUpperCase(),
+          thumbnail: primaryThumb,
+          thumbnails: Array.isArray(offer.thumbnail) ? offer.thumbnail : [offer.thumbnail].filter(Boolean),
+          description: offer.description,
+          merchant_name: offer.merchant_id?.name || offer.merchant_id?.store_name || "Unknown Partner",
+          category_label: offer.offer_type_id?.label || offer.category_id?.label || "General",
+          offer_type_label: offer.display_type,
+          discount_expression: offer.discount_percentage ? `${offer.discount_percentage}% OFF` : (offer.discount_value ? `₹${offer.discount_value} OFF` : "Exclusive Offer"),
+          discount_percentage: offer.discount_percentage,
+          discount_value: offer.discount_value,
+          minimum_purchase_amount: offer.minimum_purchase_amount || 0,
+          status: offer.is_paused ? "paused" : (new Date(offer.end_date) < new Date() ? "expired" : (new Date(offer.start_date) > new Date() ? "scheduled" : "active")),
+          is_active: offer.is_active,
+          is_paused: offer.is_paused,
+          approval_status: offer.approval_status || "approved",
+          approved_by: offer.approved_by,
+          approved_by_model: offer.approved_by_model,
+          approval_date: offer.approval_date,
+          rejection_reason: offer.rejection_reason,
+          formatted_start: new Date(offer.start_date).toLocaleDateString("en-IN", { day: "numeric", month: "short" }),
+          formatted_end: new Date(offer.end_date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }),
+          redemptions_count: offer.redeemedCount || offer.number_of_winners || 0,
+          claimed_count: offer.claimedCount || 0,
+          redemption_trend: offer.number_of_winners ? "12.5% increase" : null,
+        };
+      });
 
       setOffersList(mappedGridRows);
       setPaginationData(parsedPagination);
@@ -189,7 +196,6 @@ const AdminOffersDashboard = ({ token }) => {
       }
     } catch (err) {
       console.error("Popup item sync metrics failure:", err);
-      // Fallback to local raw copy if endpoint fails
       const fallback = offersList.find(o => o._id === offerId)?.rawOffer;
       setSelectedOfferProfile(fallback || null);
     } finally {
@@ -198,7 +204,7 @@ const AdminOffersDashboard = ({ token }) => {
   };
 
   // =========================================================
-  // PIPELINE 4: REVIEW / VERIFICATION ACTION HANDLER
+  // PIPELINE 4: REVIEW & DISABLE ACTION HANDLERS
   // =========================================================
   const handleReviewOfferStatus = async (offerId, newStatus, rejectionReason = "") => {
     try {
@@ -210,14 +216,25 @@ const AdminOffersDashboard = ({ token }) => {
       const res = await accountClient.patch(`/offers/admin/review/${offerId}`, payload, { headers });
       if (res.data.success) {
         const updatedDoc = res.data.data || {};
-        
-        // Refresh local details drawer & master table list
         setSelectedOfferProfile(updatedDoc);
         syncOffersGridAndMetadata();
         syncWorkspaceMetrics();
       }
     } catch (err) {
       alert(err.response?.data?.message || "Failed to commit offer review status.");
+    }
+  };
+
+  const handleDisableOffer = async (offerId, pauseReason = "Disabled by administrator") => {
+    try {
+      const res = await accountClient.patch(`/offers/admin/offers/${offerId}/disable`, { pause_reason: pauseReason }, { headers });
+      if (res.data.success) {
+        setSelectedOfferProfile(res.data.data);
+        syncOffersGridAndMetadata();
+        syncWorkspaceMetrics();
+      }
+    } catch (err) {
+      alert(err.response?.data?.message || "Failed to disable campaign.");
     }
   };
 
@@ -250,6 +267,9 @@ const AdminOffersDashboard = ({ token }) => {
         break;
       case "review_offer":
         handleReviewOfferStatus(dataPayload.offerId, dataPayload.status, dataPayload.rejectionReason);
+        break;
+      case "disable_offer":
+        handleDisableOffer(dataPayload.offerId, dataPayload.pauseReason);
         break;
       default:
         console.log(`Action context missing for: ${actionKey}`, dataPayload);
@@ -311,15 +331,21 @@ const AdminOffersDashboard = ({ token }) => {
               totalPages: paginationData.totalPages,
               totalItems: paginationData.totalItems,
             }}
-            selectedOfferDetail={selectedOfferProfile}
-            detailLoading={detailPaneLoading}
-            onClearDetail={() => setSelectedOfferProfile(null)}
             onPageChange={(targetPage) => setPage(targetPage)}
             onFilterChange={handleFilterUpdate}
             onActionTrigger={handleActionExecution}
           />
         )}
       </div>
+
+      {/* POPUP OFFER INSPECTION MODAL */}
+      <OfferDetailModal
+        open={Boolean(selectedOfferProfile)}
+        offer={selectedOfferProfile}
+        loading={detailPaneLoading}
+        onClose={() => setSelectedOfferProfile(null)}
+        onActionTrigger={handleActionExecution}
+      />
 
       {/* ROOT LEVEL FULLSCREEN IMAGE LIGHTBOX MODAL */}
       {lightboxImage && (
@@ -367,7 +393,7 @@ const ImageLightboxModal = ({ image, onClose }) => {
         </div>
       </div>
 
-      {/* Scaled Center Image Fitted for Handheld & Desktop Screens */}
+      {/* Scaled Center Image */}
       <div 
         className="w-full h-full flex items-center justify-center p-2 sm:p-4 max-w-[95vw] sm:max-w-5xl max-h-[80vh]"
         onClick={(e) => {

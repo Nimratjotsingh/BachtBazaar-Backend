@@ -12,7 +12,8 @@ import {trackDailyMetric,trackDailyMetric2, trackFullAnalytics, trackOfferMetric
 import { onOfferClickedHook } from "../hooks/mileStoneProgressHooks.js";
 import MerchantDailyAnalytics from "../models/MerchantDailyAnalytics.js";
 
-
+import UserOfferReview from "../models/userOfferReviewModel.js";
+import ComboOffer from "../models/ComboOfferModel.js";
 
 
 export const getAllShops = async (req, res) => {
@@ -285,6 +286,8 @@ const computeDeliveryFeeEstimate = (merchantDoc, shopDoc, userLat, userLng, orde
 // MAIN CONTROLLER
 // ==========================================
 
+
+
 export const getShopDetails = async (req, res) => {
   try {
     const { id } = req.params;
@@ -318,8 +321,8 @@ export const getShopDetails = async (req, res) => {
 
     const merchantId = shopDoc.merchantId._id;
 
-    // 2. Fetch Products, Services, Active Offers, User Wishlist, and Review Metrics in parallel
-    const [products, services, offers, userWishlist, reviewStats] = await Promise.all([
+    // 2. Fetch Products, Services, Offers, Combo Offers, User Wishlist, Review Metrics, and Offer Reviews in parallel
+    const [products, services, offers, combos, userWishlist, reviewStats, offerReviewsAgg] = await Promise.all([
       Product.find({
         merchant_id: merchantId,
         is_deleted: false,
@@ -335,7 +338,6 @@ export const getShopDetails = async (req, res) => {
         is_deleted: false,
         is_active: true,
       })
-       
         .sort({ createdAt: -1 })
         .lean(),
 
@@ -343,7 +345,7 @@ export const getShopDetails = async (req, res) => {
         merchant_id: merchantId,
         is_active: true,
         is_deleted: false,
-        is_paused:false,
+        is_paused: false,
         start_date: { $lte: rightNow },
         end_date: { $gte: rightNow },
       })
@@ -351,6 +353,20 @@ export const getShopDetails = async (req, res) => {
           "title description thumbnail display_type discount_percentage discount_value minimum_purchase_amount end_date code"
         )
         .populate("offer_type_id", "label value")
+        .sort({ createdAt: -1 })
+        .lean(),
+
+      // Fetch active Combo Offers matching shop/merchant and valid date window
+      ComboOffer.find({
+        merchantId,
+        $or: [{ shopId: id }, { shopId: null }],
+        is_active: true,
+        is_deleted: false,
+        approval_status: "approved",
+        start_date: { $lte: rightNow },
+        end_date: { $gte: rightNow },
+      })
+        .populate("products.productId", "name thumbnail price")
         .sort({ createdAt: -1 })
         .lean(),
 
@@ -372,13 +388,41 @@ export const getShopDetails = async (req, res) => {
           },
         },
       ]),
+
+      // Aggregate review metrics per offer for this merchant/shop
+      UserOfferReview.aggregate([
+        {
+          $match: {
+            merchantId: new mongoose.Types.ObjectId(merchantId),
+            shopId: new mongoose.Types.ObjectId(id),
+            approvalStatus: "approved",
+            is_deleted: false,
+          },
+        },
+        {
+          $group: {
+            _id: "$offerId",
+            avgRating: { $avg: "$rating" },
+            totalReviews: { $sum: 1 },
+          },
+        },
+      ]),
     ]);
 
-    // 3. Create Wishlist Lookup Sets for O(1) performance
+    // 3. Create Wishlist & Offer Review Lookup Maps/Sets for O(1) performance
     const wishlistedShopsSet = new Set((userWishlist?.shops || []).map((sId) => sId.toString()));
     const wishlistedProductsSet = new Set((userWishlist?.products || []).map((pId) => pId.toString()));
     const wishlistedServicesSet = new Set((userWishlist?.services || []).map((sId) => sId.toString()));
     const wishlistedOffersSet = new Set((userWishlist?.offers || []).map((oId) => oId.toString()));
+    const wishlistedCombosSet = new Set((userWishlist?.combos || []).map((cId) => cId.toString())); // Optional if combo wishlist is tracked
+
+    const offerReviewMap = {};
+    offerReviewsAgg.forEach((item) => {
+      offerReviewMap[item._id.toString()] = {
+        averageRating: Math.round(item.avgRating * 10) / 10,
+        reviewCount: item.totalReviews,
+      };
+    });
 
     // 4. Calculate dynamic delivery charges using req.user.latitude and req.user.longitude
     const userLat = req.user?.latitude;
@@ -417,27 +461,30 @@ export const getShopDetails = async (req, res) => {
       isWishlisted: wishlistedServicesSet.has(service._id.toString()),
     }));
 
-    const formattedOffers = offers.map((offer) => ({
-      ...offer,
-      isWishlisted: wishlistedOffersSet.has(offer._id.toString()),
+    // Attach review metrics to each active offer
+    const formattedOffers = offers.map((offer) => {
+      const offerIdStr = offer._id.toString();
+      return {
+        ...offer,
+        isWishlisted: wishlistedOffersSet.has(offerIdStr),
+        offerReviews: offerReviewMap[offerIdStr] || { averageRating: 0, reviewCount: 0 },
+      };
+    });
+
+    const formattedCombos = combos.map((combo) => ({
+      ...combo,
+      isWishlisted: wishlistedCombosSet.has(combo._id.toString()),
     }));
 
     // 6. Track Daily Analytics metric (non-blocking)
-    const todayUTC = new Date();
-    todayUTC.setUTCHours(0, 0, 0, 0);
-
-    // MerchantDailyAnalytics.findOneAndUpdate(
-    //   { merchantId, shopId: shopDoc._id, date: todayUTC },
-    //   { $inc: { shopViews: 1, totalImpressions: 1 } },
-    //   { upsert: true, setDefaultsOnInsert: true }
-    // ).catch((err) => console.error("Merchant Daily Analytics tracking error:", err.message));
-
-        await trackFullAnalytics({
-      merchantId,
-      shopId: shop._id,
-      metric: "store_click", // Increments totalViewers (deduplicated per user per day)
-      userData: { userId: req.user._id },
-    });
+    if (req.user?._id) {
+      await trackFullAnalytics({
+        merchantId,
+        shopId: shop._id,
+        metric: "store_click", // Increments totalViewers (deduplicated per user per day)
+        userData: { userId: req.user._id },
+      });
+    }
 
     // 7. Return synchronized response payload
     return res.status(200).json({
@@ -448,9 +495,11 @@ export const getShopDetails = async (req, res) => {
           productCount: formattedProducts.length,
           serviceCount: formattedServices.length,
           offerCount: formattedOffers.length,
+          comboCount: formattedCombos.length,
           products: formattedProducts,
           services: formattedServices,
           offers: formattedOffers,
+          combos: formattedCombos,
         },
       },
     });
@@ -1719,13 +1768,15 @@ export const getNearbyShops15KmForUser = async (req, res) => {
     const totalWithinRadius = validShopsInRadius.length;
     const paginatedShops = validShopsInRadius.slice(skip, skip + currentLimit);
 
-    // 6. Wishlist, Offers, Products & Live Status Stitching
+    // 6. Wishlist, Offers, Combo Offers, Products & Live Status Stitching
     if (paginatedShops.length > 0) {
       const merchantIds = paginatedShops
         .map((shop) => shop.merchantId?._id || shop.merchantId)
         .filter(Boolean);
 
-      const [userWishlist, liveOffers] = await Promise.all([
+      const paginatedShopIds = paginatedShops.map((shop) => shop._id);
+
+      const [userWishlist, liveOffers, liveCombos] = await Promise.all([
         Wishlist.findOne({ userId: req.user._id }).lean(),
         Offer.find({
           merchant_id: { $in: merchantIds },
@@ -1742,6 +1793,18 @@ export const getNearbyShops15KmForUser = async (req, res) => {
           .select(
             "title description thumbnail display_type discount_percentage discount_value merchant_id start_date end_date product_id"
           )
+          .sort({ createdAt: -1 })
+          .lean(),
+        ComboOffer.find({
+          merchantId: { $in: merchantIds },
+          $or: [{ shopId: { $in: paginatedShopIds } }, { shopId: null }],
+          is_active: true,
+          is_deleted: false,
+          approval_status: "approved",
+          start_date: { $lte: now },
+          end_date: { $gte: now },
+        })
+          .populate("products.productId", "name thumbnail price")
           .sort({ createdAt: -1 })
           .lean(),
       ]);
@@ -1788,6 +1851,14 @@ export const getNearbyShops15KmForUser = async (req, res) => {
         offersMap[mId].push(offer);
       });
 
+      const combosMap = {};
+      liveCombos.forEach((combo) => {
+        if (!combo.merchantId) return;
+        const mId = combo.merchantId.toString();
+        if (!combosMap[mId]) combosMap[mId] = [];
+        combosMap[mId].push(combo);
+      });
+
       paginatedShops.forEach((shop) => {
         const shopIdStr = shop._id.toString();
         shop.isWishlisted = wishlistedShopIdsSet.has(shopIdStr);
@@ -1795,6 +1866,13 @@ export const getNearbyShops15KmForUser = async (req, res) => {
         const lookupKey =
           shop.merchantId?._id?.toString() || shop.merchantId?.toString();
         shop.offers = lookupKey ? offersMap[lookupKey] || [] : [];
+        
+        // Attach combo offers matching this merchant (filtered by shop if shopId is set)
+        shop.combos = lookupKey 
+          ? (combosMap[lookupKey] || []).filter(
+              (c) => !c.shopId || c.shopId.toString() === shopIdStr
+            ) 
+          : [];
 
         // Dynamic Open/Closed Status
         if (typeof checkShopOpenStatus === "function") {

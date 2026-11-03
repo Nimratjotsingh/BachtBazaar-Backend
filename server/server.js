@@ -87,7 +87,11 @@ import staffServicesRoutes from './routes/staff/staffServicesRoutes.js';
 import staffOfferRoutes from './routes/staff/staffOfferRoutes.js'
 import staffProductSuggestionRoutes from './routes/staff/staffProductSuggestionRoutes.js'
 import staffSreviceSuggestionRoutes from './routes/staff/staffServiceSuggestionRoutes.js';
-import adminNotificationRoutes from './routes/adminNotificationRoutes.js'
+import adminNotificationRoutes from './routes/adminNotificationRoutes.js';
+import userOfferReviewRoutes from './routes/userOfferReviewRoutes.js';
+import comboOfferRoutes from "./routes/comboOfferRoutes.js";
+
+
 dotenv.config();
 
 import './utils/firebase.js';
@@ -172,6 +176,13 @@ app.use('/api/staff/services', staffServicesRoutes);
 app.use('/api/staff/offers', staffOfferRoutes);
 app.use('/api/staff/product-suggestions', staffProductSuggestionRoutes);
 app.use('/api/staff/service-suggestions', staffSreviceSuggestionRoutes);
+
+
+//User Routes
+app.use('/api/user/offer-review',userOfferReviewRoutes);
+
+//Merchant Routes
+app.use("/api/merchant/combo-offers", comboOfferRoutes);
 
 app.use("/api/merchant/auth", merchantAuthRoutes);
 app.use("/api/merchants", merchantAuthRoutes);

@@ -87,7 +87,8 @@ const offerSchema = new mongoose.Schema(
       type: String,
     },
     thumbnail: {
-      type: String,
+      type: [String],
+      default: [],
     },
     minimum_purchase_amount: {
       type: Number,

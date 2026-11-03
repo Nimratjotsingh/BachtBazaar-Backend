@@ -39,6 +39,7 @@ export const getCreatedMilestonesForMerchant = async (req, res) => {
       UserMilestoneGoal.find(query)
         .populate("userId", "name phone profileImage avatar image email")
         .populate("shopId", "shopName address city")
+        .populate("product_id", "name thumbnail price discounted_price sku") // Populating associated products
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limitNum)
@@ -103,6 +104,7 @@ export const getCreatedMilestonesForMerchant = async (req, res) => {
         completedAt: goal.completedAt,
         claimedAt: goal.claimedAt,
         createdAt: goal.createdAt,
+        products: goal.product_id || [],
         user: user
           ? {
               _id: user._id,
@@ -170,6 +172,7 @@ export const cancelMilestoneGoal = async (req, res) => {
     });
   }
 };
+
 export const getInteractedUsersForMerchant = async (req, res) => {
   try {
     const merchantId = req.merchant._id;
@@ -323,6 +326,7 @@ export const createMilestoneGoal = async (req, res) => {
       targetCount,
       rewardDescription,
       expiryDays = 90,
+      product_id, // Optional product ID or array of product IDs
     } = req.body;
 
     if (!userIds || !title || !actionType || !targetCount || !rewardDescription) {
@@ -332,21 +336,23 @@ export const createMilestoneGoal = async (req, res) => {
       });
     }
 
-    const shop = await MerchantShop.findOne({ merchantId }).select("_id");
-    // if (!shop) {
-    //   return res.status(404).json({
-    //     success: false,
-    //     message: "Merchant shop not configured.",
-    //   });
-    // }
+    const shop = await MerchantShop.findOne({ merchantId }).select("_id shopName");
 
     const targetUserIdsArray = Array.isArray(userIds) ? userIds : [userIds];
     const expiresAt = new Date(Date.now() + Number(expiryDays) * 24 * 60 * 60 * 1000);
 
+    // Normalize product_id to an array of ObjectIds if provided
+    let normalizedProductIds = [];
+    if (product_id) {
+      const prodArray = Array.isArray(product_id) ? product_id : [product_id];
+      normalizedProductIds = prodArray.map((pId) => new mongoose.Types.ObjectId(pId));
+    }
+
     const goalDocuments = targetUserIdsArray.map((uId) => ({
       merchantId,
-      shopId: shop? shop._id :null,
+      shopId: shop ? shop._id : null,
       userId: uId,
+      product_id: normalizedProductIds,
       title: title.trim(),
       actionType,
       targetCount: Number(targetCount),
