@@ -74,7 +74,6 @@ export const createComboOffer = async (req, res) => {
     }
 
     // 5. Handle File Uploads (Multer fields or single files)
-    // req.files can contain combo banner images or per-product images if mapped
     const files = req.files || {};
     let comboBannerImage = null;
     if (files.banner && files.banner[0]) {
@@ -83,8 +82,10 @@ export const createComboOffer = async (req, res) => {
       comboBannerImage = `/uploads/${req.file.filename}`;
     }
 
-    // 6. Process and Verify Products Items
+    // 6. Process and Verify Products Items & Track Custom/New Products
     const formattedProducts = [];
+    let hasCustomProduct = false; // Flag to determine if moderation review is required
+
     for (let i = 0; i < parsedProducts.length; i++) {
       const item = parsedProducts[i];
 
@@ -109,10 +110,15 @@ export const createComboOffer = async (req, res) => {
         if (catalogProduct) {
           verifiedProductId = catalogProduct._id;
           if (!itemImage) itemImage = catalogProduct.thumbnail;
+        } else {
+          hasCustomProduct = true; // Product ID provided but not found in catalog -> treat as custom
         }
+      } else {
+        // No valid productId provided -> indicates a new/ad-hoc product created specifically for this combo
+        hasCustomProduct = true;
       }
 
-      // Check if a specific file was uploaded for this product index via multer (e.g. productImages_0)
+      // Check if a specific image file was uploaded for this product index via multer (e.g., product_0)
       if (files[`product_${i}`] && files[`product_${i}`][0]) {
         itemImage = `/uploads/${files[`product_${i}`][0].filename}`;
       }
@@ -137,7 +143,10 @@ export const createComboOffer = async (req, res) => {
       normalizedTags = tags.map((t) => t.trim()).filter(Boolean);
     }
 
-    // 8. Create and Save Combo Offer Document
+    // 8. Determine Approval Status (Pending if custom/ad-hoc products are included, approved otherwise)
+    const approvalStatus = hasCustomProduct ? "pending" : "approved";
+
+    // 9. Create and Save Combo Offer Document
     const newComboOffer = new ComboOffer({
       merchantId,
       shopId: targetShopId,
@@ -149,7 +158,7 @@ export const createComboOffer = async (req, res) => {
       end_date: endDateObj,
       offer_quantity: offer_quantity !== undefined && offer_quantity !== "" ? Number(offer_quantity) : null,
       terms_and_conditions: terms_and_conditions.trim(),
-      approval_status: "approved", // Set to "pending" if review queue is required
+      approval_status: approvalStatus,
       is_active: true,
     });
 
@@ -157,7 +166,9 @@ export const createComboOffer = async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      message: "Combo offer created successfully.",
+      message: hasCustomProduct
+        ? "Combo offer created successfully and submitted for admin review because it contains custom items."
+        : "Combo offer created and approved successfully.",
       data: newComboOffer,
     });
   } catch (error) {

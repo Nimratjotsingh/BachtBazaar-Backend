@@ -25,6 +25,8 @@ const staffNavItems = [
   { label: "Staff Services", to: "/staff/services", icon: Store, permission: "manage_services" },
   { label: "Staff Services Suggestion", to: "/staff/services-suggestion", icon: MessageSquareCheck, permission: "manage_service_suggestions" },
   { label: "Staff Offers", to: "/staff/offers", icon: Coins, permission: "manage_offers" },
+  { label: "Staff Combo Offers", to: "/staff/combo-offers", icon: Coins, permission: "manage_offers" },
+
 ];
 
 const StaffDashboardLayout = ({ token, onLogout }) => {

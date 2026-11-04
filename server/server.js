@@ -90,8 +90,8 @@ import staffSreviceSuggestionRoutes from './routes/staff/staffServiceSuggestionR
 import adminNotificationRoutes from './routes/adminNotificationRoutes.js';
 import userOfferReviewRoutes from './routes/userOfferReviewRoutes.js';
 import comboOfferRoutes from "./routes/comboOfferRoutes.js";
-
-
+import adminComboOfferRoutes from './routes/adminComboOfferRoutes.js';
+import comboOfferStaffRoutes from './routes/staff/staffComboOfferRoutes.js';
 dotenv.config();
 
 import './utils/firebase.js';
@@ -168,6 +168,7 @@ app.use("/api/admin/entity/", imageUpdateRoute);
 app.use("/api/admin/offers", adminOfferRoutes);
 app.use('/api/admin/staff', adminStaffRoutes);
 app.use('/api/admin/notifications', adminNotificationRoutes);
+app.use('/api/admin/combo-offers',adminComboOfferRoutes)
 
 // Staff Routes
 app.use('/api/staff', staffAuthRoutes);
@@ -176,6 +177,7 @@ app.use('/api/staff/services', staffServicesRoutes);
 app.use('/api/staff/offers', staffOfferRoutes);
 app.use('/api/staff/product-suggestions', staffProductSuggestionRoutes);
 app.use('/api/staff/service-suggestions', staffSreviceSuggestionRoutes);
+app.use('/api/staff/combo-offers',comboOfferStaffRoutes)
 
 
 //User Routes

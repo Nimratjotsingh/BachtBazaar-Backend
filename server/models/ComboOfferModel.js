@@ -114,7 +114,8 @@ const comboOfferSchema = new mongoose.Schema(
       required: [true, "Terms and conditions are required"],
       trim: true,
     },
-    // Moderation and operational flags
+
+    // --- MODERATION & APPROVAL AUDIT TRAIL ---
     approval_status: {
       type: String,
       enum: ["approved", "pending", "rejected"],
@@ -125,6 +126,21 @@ const comboOfferSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+    approved_by: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+      refPath: "approved_by_model", // Dynamically links to SuperAdmin, Admin, or Staff
+    },
+    approved_by_model: {
+      type: String,
+      enum: ["SuperAdmin", "Admin", "Staff"],
+      default: null,
+    },
+    approval_date: {
+      type: Date,
+      default: null,
+    },
+
     is_active: {
       type: Boolean,
       default: true,

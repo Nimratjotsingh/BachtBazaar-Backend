@@ -48,6 +48,7 @@ const navItems = [
   { label: "Offers", to: "/dashboard/offers", icon: LucideActivity },
   { label: "Offer Reviews from Merchants", to: "/dashboard/offer-reviews", icon: MessageSquareCheck },
   { label: "Offer Review", to: "/dashboard/offer-review", icon: MessageSquareCheck },
+  { label: "Combo Offer Review", to: "/dashboard/combo-offers", icon: MessageSquareCheck },
   { label: "AdminBanner", to: "/dashboard/adminbanner", icon: LucideActivity },
   { label: "Banner Types", to: "/dashboard/bannerTypes", icon: LucideActivity },
   { label: "Quick Offer Merchant Bid", to: "/dashboard/quickOffer", icon: LucideActivity },

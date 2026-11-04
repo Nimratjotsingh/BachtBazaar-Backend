@@ -47,6 +47,8 @@ import StaffServiceVerificationManager from "./staff-pages/Services/StaffService
 import StaffOfferReviewsManager from "./staff-pages/Offers/StaffOfferReviewManager.jsx";
 import StaffProductSuggestionsManager from "./staff-pages/ProductSuggestionManager/StaffProductSuggestionManager.jsx";
 import StaffServiceSuggestionsManager from "./staff-pages/ServiceSuggestion/ServiceSuggestion.jsx";
+import AdminComboOffersManager from "./pages/AdminComboOfferManager/AdminComboOfferManager.jsx";
+import StaffComboOffersManager from "./staff-pages/ComboOffers/StaffComboOffers.jsx";
 
 const ADMIN_TOKEN_KEY = "bb_admin_token";
 const STAFF_TOKEN_KEY = "bb_staff_token";
@@ -141,6 +143,7 @@ function App() {
         <Route path="calendar" element={<AdminCalendarConfig token={adminToken}/>}/>
         <Route path="products" element={<AdminProductDashboard token={adminToken}/>}/>
         <Route path="offers" element={<AdminOffersDashboard token={adminToken}/>}/>
+        <Route path="combo-offers" element={<AdminComboOffersManager token={adminToken}/>}/>
         <Route path="suboffer-type" element={<SubOfferTypePage token={adminToken}/>}/>
         <Route path="adminbanner" element={<AdminBanner token={adminToken}/>}/> 
         <Route path="area" element={<AdminAreasDashboard token={adminToken} googleMapsApiKey={gmaps_key}/>}/> 
@@ -185,6 +188,7 @@ function App() {
         <Route path="services-suggestion" element={<StaffServiceSuggestionsManager token={staffToken} />} />
         
         <Route path="offers" element={<StaffOfferReviewsManager token={staffToken} />} />
+        <Route path="combo-offers" element={<StaffComboOffersManager token={staffToken}/>}/>
         
         
       </Route>

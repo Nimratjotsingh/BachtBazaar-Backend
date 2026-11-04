@@ -322,8 +322,14 @@ export const getBidsForUserRequest = async (req, res) => {
       });
     }
 
-    // Secure request confirmation: Make sure the requesting user actually owns the parent request
-    const requestVerification = await BestPriceRequest.findOne({ _id: requestId, userId: req.user._id });
+    // Secure request confirmation with populated product details
+    const requestVerification = await BestPriceRequest.findOne({ 
+      _id: requestId, 
+      userId: req.user._id 
+    })
+      .populate("productId", "name description price discounted_price thumbnail images unit_size specifications stock")
+      .lean();
+
     if (!requestVerification) {
       return res.status(403).json({
         success: false,
@@ -344,8 +350,15 @@ export const getBidsForUserRequest = async (req, res) => {
       success: true,
       requestDetails: {
         title: requestVerification.title,
+        description: requestVerification.description || null,
         userBudget: requestVerification.budget,
-        status: requestVerification.status
+        timeframe: requestVerification.timeframe,
+        status: requestVerification.status,
+        images: requestVerification.images || [],
+        formattedAddress: requestVerification.formattedAddress || "",
+        city: requestVerification.city || "",
+        // Attached catalog product reference details (null if request was custom-created)
+        product: requestVerification.productId || null
       },
       totalBidsReceived: incomingBids.length,
       data: incomingBids
