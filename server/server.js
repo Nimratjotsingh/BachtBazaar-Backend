@@ -92,6 +92,9 @@ import userOfferReviewRoutes from './routes/userOfferReviewRoutes.js';
 import comboOfferRoutes from "./routes/comboOfferRoutes.js";
 import adminComboOfferRoutes from './routes/adminComboOfferRoutes.js';
 import comboOfferStaffRoutes from './routes/staff/staffComboOfferRoutes.js';
+import userNavbarRoutes from './routes/userNavbarRoutes.js';
+import merchantNavbarRoutes from './routes/merchantNavbarRoutes.js';
+
 dotenv.config();
 
 import './utils/firebase.js';
@@ -182,9 +185,11 @@ app.use('/api/staff/combo-offers',comboOfferStaffRoutes)
 
 //User Routes
 app.use('/api/user/offer-review',userOfferReviewRoutes);
+app.use('/api/user/bottom-navbar',userNavbarRoutes);
 
 //Merchant Routes
 app.use("/api/merchant/combo-offers", comboOfferRoutes);
+app.use('/api/merchant/bottom-navbar',merchantNavbarRoutes);
 
 app.use("/api/merchant/auth", merchantAuthRoutes);
 app.use("/api/merchants", merchantAuthRoutes);
