@@ -715,7 +715,7 @@ export const createAllTypeOffer = async (req, res) => {
 
     await triggerAdminNotification(req, {
           title: "Merchant Offer Creation Submitted",
-          message: `${merchant.name || "A merchant"} has updated their profile details and is pending review.`,
+          message: `${"A merchant"} has created an offer.`,
           category: "offer_review",
           referenceId: merchantId
         });
