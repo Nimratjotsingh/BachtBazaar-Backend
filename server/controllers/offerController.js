@@ -769,11 +769,25 @@ export const getMerchantOffers = async (req, res) => {
 
     const offers = await Offer.find(query)
       .populate("offer_type_id", "label value")
-      .sort({ createdAt: -1 });
+      .populate({
+        path: "product_id",
+        select: "name thumbnail images price discounted_price unit_size stock specifications"
+      })
+      .sort({ createdAt: -1 })
+      .lean();
 
-    res.status(200).json({ success: true, count: offers.length, data: offers });
+    res.status(200).json({ 
+      success: true, 
+      count: offers.length, 
+      data: offers 
+    });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    console.error("Get Merchant Offers Error:", error);
+    res.status(500).json({ 
+      success: false, 
+      message: "Failed to retrieve merchant offers.", 
+      error: error.message 
+    });
   }
 };
 

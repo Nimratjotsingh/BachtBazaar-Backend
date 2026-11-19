@@ -819,7 +819,7 @@ export const getActiveUserOffers = async (req, res) => {
 
     // 1. Establish strict live availability baseline rules using exact schema keys
     const campaignQuery = {
-      is_paused:false,
+      is_paused: false,
       is_active: true,
       is_deleted: false,
       start_date: { $lte: rightNow },
@@ -832,50 +832,81 @@ export const getActiveUserOffers = async (req, res) => {
     }
 
     // 3. Location Filter Strategy (Filter campaigns based on Merchant Shop City limits)
+    let validMerchantIds = [];
+    let validShopIds = [];
+
     if (city) {
-      // Find all merchant IDs operating in the target city boundary pool
-      // Note: populate/query uses 'merchantId' from your merchantShopModel fields
       const activeShopsInCity = await MerchantShop.find({
         city: { $regex: `^${city.trim()}$`, $options: "i" }
-      }).select("merchantId");
+      }).select("merchantId _id");
 
-      const validMerchantIds = activeShopsInCity.map(shop => shop.merchantId);
+      validMerchantIds = activeShopsInCity.map(shop => shop.merchantId);
+      validShopIds = activeShopsInCity.map(shop => shop._id);
       
-      // Pin down query scope to match only local city merchants
       campaignQuery.merchant_id = { $in: validMerchantIds };
     }
 
-    // 4. Fetch matching live offer profiles using lean queries for rapid runtime performance
-    const activeOffersPool = await Offer.find()
-      .populate({
-        path: "merchant_id",
-        select: "name store_name email profileImage _id city merchant_id",
-        model: "Merchant" // Ensures it points exactly to your user model export
-      })
-      .populate("offer_type_id", "label value icon") // References parent template option
-      .populate("sub_offer_type_id", "label value icon") // Standalone sub-tier template option
-      .populate("product_id", "name price discounted_price thumbnail stock") // Hydrates array of products
-      .sort({ createdAt: -1 })
-      .lean();
+    // Build query for Combo Offers matching active city merchants/shops
+    const comboQuery = {
+      is_active: true,
+      is_deleted: false,
+      approval_status: "approved",
+      start_date: { $lte: rightNow },
+      end_date: { $gte: rightNow }
+    };
 
-     
+    if (city && validMerchantIds.length > 0) {
+      comboQuery.merchantId = { $in: validMerchantIds };
+      comboQuery.$or = [
+        { shopId: { $in: validShopIds } },
+        { shopId: null }
+      ];
+    }
 
-    // 5. Separate the consolidated pool into the three target front-end structures
+    // 4. Fetch matching live offer profiles and combo offers in parallel
+    const [activeOffersPool, activeCombosPool] = await Promise.all([
+      Offer.find(campaignQuery)
+        .populate({
+          path: "merchant_id",
+          select: "name store_name email profileImage _id city merchant_id",
+          model: "Merchant"
+        })
+        .populate("offer_type_id", "label value icon")
+        .populate("sub_offer_type_id", "label value icon")
+        .populate({
+          path: "product_id",
+          select: "name price discounted_price thumbnail images unit_size stock specifications" // Included images here!
+        })
+        .sort({ createdAt: -1 })
+        .lean(),
+
+      ComboOffer.find(comboQuery)
+        .populate({
+          path: "merchantId",
+          select: "name store_name email profileImage _id city",
+          model: "Merchant"
+        })
+        .populate("shopId", "shopName address city")
+        .populate("products.productId", "name thumbnail images price")
+        .sort({ createdAt: -1 })
+        .lean()
+    ]);
+
+    // 5. Separate the consolidated pool into target front-end structures
     const banners = [];
     const calendarSlots = [];
     const standardOffers = [];
 
     activeOffersPool.forEach((offer) => {
-      // Safeguard: If the merchant account is banned or blocked by admin, drop campaign dynamically
+      // Safeguard: Drop campaign if merchant account is banned or blocked
       if (offer.merchant_id?.status === "banned" || offer.merchant_id?.isBlocked === true) {
         return; 
       }
 
-      // Format dynamic expression badges cleanly based on rules configured inside document
       let expressionBadge = "Special Offer";
-      if (offer.discount_percentage !== null) {
+      if (offer.discount_percentage !== null && offer.discount_percentage !== undefined) {
         expressionBadge = `${offer.discount_percentage}% OFF`;
-      } else if (offer.discount_value !== null) {
+      } else if (offer.discount_value !== null && offer.discount_value !== undefined) {
         expressionBadge = `₹${offer.discount_value} OFF`;
       } else if (offer.free_quantity) {
         expressionBadge = `Get ${offer.free_quantity} Free`;
@@ -899,7 +930,7 @@ export const getActiveUserOffers = async (req, res) => {
         mechanicType: offer.offer_type_id?.label || "General Deal",
         subMechanicType: offer.sub_offer_type_id?.label || null,
         linkedProductsCount: offer.product_id?.length || 0,
-        products: offer.product_id || [], // Available nested inventory array
+        products: offer.product_id || [], // Nested inventory array with full thumbnail and image fields
         restrictions: {
           walkInOnly: offer.only_for_walk_in_customers,
           qrRequired: offer.qr_redemption_required,
@@ -907,31 +938,51 @@ export const getActiveUserOffers = async (req, res) => {
         }
       };
 
-      // Sort into target layout locations based on exact schema 'display_type' parameters
       if (offer.display_type === "banner") {
         banners.push(normalizedPayload);
       } else if (offer.display_type === "calendar") {
         calendarSlots.push(normalizedPayload);
       } else {
-        // Fallback or explicit 'all' value maps straight into scrollable general feed grid
         standardOffers.push(normalizedPayload);
       }
     });
+
+    // Normalize Combo Offers for frontend display
+    const combos = activeCombosPool
+      .filter(combo => combo.merchantId?.status !== "banned" && combo.merchantId?.isBlocked !== true)
+      .map(combo => ({
+        _id: combo._id,
+        name: combo.name,
+        description: combo.description,
+        tags: combo.tags || [],
+        products: combo.products || [],
+        startDate: combo.start_date,
+        endDate: combo.end_date,
+        remainingDays: Math.ceil((new Date(combo.end_date) - rightNow) / (1000 * 60 * 60 * 24)),
+        termsAndConditions: combo.terms_and_conditions,
+        merchant: {
+          _id: combo.merchantId?._id,
+          name: combo.merchantId?.store_name || combo.merchantId?.name || "BachatBazarr Partner",
+          avatar: combo.merchantId?.profileImage || null
+        }
+      }));
 
     // 6. Return response package optimized for fast feed painting
     return res.status(200).json({
       success: true,
       data: {
-        totalLiveCampaigns: banners.length + calendarSlots.length + standardOffers.length,
+        totalLiveCampaigns: banners.length + calendarSlots.length + standardOffers.length + combos.length,
         counts: {
           bannerCount: banners.length,
           calendarCount: calendarSlots.length,
-          standardCount: standardOffers.length
+          standardCount: standardOffers.length,
+          comboCount: combos.length
         },
         payload: {
           banners,        // Carousel Banner items
           calendarSlots,  // Limited Availability Calendar Deals
-          standardOffers  // Scrollable General Feed Offers Grid
+          standardOffers, // Scrollable General Feed Offers Grid
+          combos          // Active Merchant Combo Offers & Bundles
         }
       }
     });
@@ -944,7 +995,6 @@ export const getActiveUserOffers = async (req, res) => {
     });
   }
 };
-
 export const getAllOffers= async(req,res)=>{
   const result = await Offer.find();
   console.log(result)
