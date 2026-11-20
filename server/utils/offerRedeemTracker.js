@@ -8,33 +8,45 @@ import OfferRedeem from "../models/offerRedeemModel.js";
  * @param {String} redemptionCode 
  * @param {String|ObjectId} [shopId=null] 
  */
-export const trackOfferRedemption = async (offerId, merchantId, userId,  shopId = null) => {
+export const trackOfferRedemption = async (
+  offerId,
+  merchantId,
+  userId,
+  shopId = null,
+  offerModel = "Offer"
+) => {
   try {
-    if (!offerId || !merchantId || !userId ) return;
+    if (!offerId || !merchantId || !userId) return;
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const baseFilter = { merchantId, offerId, date: today };
+    const baseFilter = { merchantId, offerId, offerModel, date: today };
 
     // Step 1: Ensure daily document exists for today
     await OfferRedeem.updateOne(
       baseFilter,
-      { $setOnInsert: { date: today, merchantId, offerId, shopId, totalRedeems: 0 } },
+      {
+        $setOnInsert: {
+          date: today,
+          merchantId,
+          offerId,
+          offerModel,
+          shopId,
+          totalRedeems: 0,
+        },
+      },
       { upsert: true }
     );
 
     // Step 2: Push redemption record and increment total redemptions
-    await OfferRedeem.updateOne(
-      baseFilter,
-      {
-        $push: { 
-          redeemedUsers: { userId, redeemedAt: new Date() } 
-        },
-        $inc: { totalRedeems: 1 },
-      }
-    );
+    await OfferRedeem.updateOne(baseFilter, {
+      $push: {
+        redeemedUsers: { userId, redeemedAt: new Date() },
+      },
+      $inc: { totalRedeems: 1 },
+    });
   } catch (error) {
-    console.error("Failed to track offer redemption:", error.message);
+    console.error("Failed to track offer/combo redemption:", error.message);
   }
 };

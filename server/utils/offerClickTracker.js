@@ -6,31 +6,33 @@ import OfferClick from "../models/offerClickModel.js";
  * @param {String|ObjectId} merchantId 
  * @param {String|ObjectId} userId 
  */
-export const trackUniqueOfferClick = async (offerId, merchantId, userId) => {
-  try {
-    if (!offerId || !merchantId || !userId) return;
+export const trackUniqueOfferClick = async (
+  offerId,
+  merchantId,
+  userId,
+  offerModel = "Offer"
+) => {
+  const todayUTC = new Date();
+  todayUTC.setUTCHours(0, 0, 0, 0);
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+  // Atomically add the user only if they haven't clicked this offer/combo today,
+  // and increment totalClicks only when a new user is added.
+  const existingRecord = await OfferClick.findOne({
+    merchantId,
+    offerId,
+    offerModel,
+    date: todayUTC,
+    "clickedUsers.userId": userId,
+  }).lean();
 
-    const baseFilter = { merchantId, offerId, date: today };
-
-    // Step 1: Ensure daily document exists for today
-    await OfferClick.updateOne(
-      baseFilter,
-      { $setOnInsert: { date: today, merchantId, offerId, totalClicks: 0 } },
-      { upsert: true }
-    );
-
-    // Step 2: Push user and increment count ONLY if userId is not already present in clickedUsers
-    await OfferClick.updateOne(
-      { ...baseFilter, "clickedUsers.userId": { $ne: userId } },
+  if (!existingRecord) {
+    await OfferClick.findOneAndUpdate(
+      { merchantId, offerId, offerModel, date: todayUTC },
       {
-        $push: { clickedUsers: { userId, clickedAt: new Date() } },
         $inc: { totalClicks: 1 },
-      }
+        $push: { clickedUsers: { userId, clickedAt: new Date() } },
+      },
+      { upsert: true, setDefaultsOnInsert: true }
     );
-  } catch (error) {
-    console.error("Failed to track unique offer click:", error.message);
   }
 };

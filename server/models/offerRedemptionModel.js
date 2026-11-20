@@ -4,8 +4,15 @@ const offerRedemptionSchema = new mongoose.Schema(
   {
     offerId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Offer",
       required: true,
+      refPath: "offerModel", // Dynamically references either "Offer" or "ComboOffer"
+      index: true,
+    },
+    offerModel: {
+      type: String,
+      required: true,
+      enum: ["Offer", "ComboOffer"],
+      default: "Offer",
       index: true,
     },
     userId: {
@@ -55,8 +62,8 @@ const offerRedemptionSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Prevent user from double-redeeming the same active offer if per-user limit is 1
-offerRedemptionSchema.index({ offerId: 1, userId: 1, status: 1 });
+// Prevent user from double-redeeming the same active offer/combo if per-user limit is 1
+offerRedemptionSchema.index({ offerId: 1, offerModel: 1, userId: 1, status: 1 });
 
 const OfferRedemption =
   mongoose.models.OfferRedemption ||

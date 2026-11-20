@@ -10,8 +10,15 @@ const offerClickSchema = new mongoose.Schema(
     },
     offerId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Offer",
       required: true,
+      refPath: "offerModel", // Dynamically references either "Offer" or "ComboOffer"
+      index: true,
+    },
+    offerModel: {
+      type: String,
+      required: true,
+      enum: ["Offer", "ComboOffer"],
+      default: "Offer",
       index: true,
     },
     date: {
@@ -24,7 +31,7 @@ const offerClickSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
-    // Array to store unique users who clicked the offer today to prevent duplicate counting
+    // Array to store unique users who clicked the offer/combo today to prevent duplicate counting
     clickedUsers: [
       {
         userId: {
@@ -43,9 +50,13 @@ const offerClickSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Compound unique index ensuring one record per merchant, offer, and calendar day
-offerClickSchema.index({ merchantId: 1, offerId: 1, date: 1 }, { unique: true });
+// Compound unique index ensuring one record per merchant, campaign (offer or combo), and calendar day
+offerClickSchema.index(
+  { merchantId: 1, offerId: 1, offerModel: 1, date: 1 },
+  { unique: true }
+);
 
-const OfferClick = mongoose.models.OfferClick || mongoose.model("OfferClick", offerClickSchema);
+const OfferClick =
+  mongoose.models.OfferClick || mongoose.model("OfferClick", offerClickSchema);
 
 export default OfferClick;

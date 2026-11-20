@@ -6,6 +6,8 @@ import MerchantShop from '../models/merchantShopModel.js';
 import { onOfferClaimedHook, onOfferRedeemedHook,onFootfallVisitHook } from "../hooks/mileStoneProgressHooks.js";
 import { notifyOnOfferRedemption } from "../utils/redemptionNotificationHelper.js";
 
+import mongoose from "mongoose";
+import ComboOffer from '../models/ComboOfferModel.js'
 // ==========================================
 //   USER SIDE CONTROLLERS
 // ==========================================
@@ -18,87 +20,167 @@ export const redeemOffer = async (req, res) => {
   try {
     const { offerId } = req.params;
     const userId = req.user._id;
-
-    // 1. Fetch active, non-deleted offer
-    const offer = await Offer.findOne({ _id: offerId, is_active: true, is_deleted: false });
-    if (!offer) {
-      return res.status(404).json({
-        success: false,
-        message: "The requested offer is unavailable or no longer active."
-      });
-    }
-
-    // 2. Check if the offer duration has expired
+    const requestedType = req.query.type || req.body?.type;
     const now = new Date();
-    if (offer.end_date && offer.end_date < now) {
+
+    if (!mongoose.Types.ObjectId.isValid(offerId)) {
       return res.status(400).json({
         success: false,
-        message: "This offer campaign has expired."
+        message: "Invalid Offer or Combo ID format.",
       });
     }
 
-    // 3. ENFORCE CLAIM LIMIT AT REDEMPTION
-    if (offer.claim_limit !== undefined && offer.claim_limit !== null) {
-      if (offer.redeemedCount >= offer.claim_limit) {
-        return res.status(400).json({
-          success: false,
-          message: `All available redemptions (${offer.claim_limit}) for this offer have been claimed.`
+    let resolvedModel = "Offer";
+    let campaign = null;
+
+    // 1. Resolve campaign from Offer or ComboOffer
+    if (requestedType === "ComboOffer") {
+      campaign = await ComboOffer.findOne({
+        _id: offerId,
+        is_active: true,
+        is_deleted: false,
+        approval_status: "approved",
+      });
+      resolvedModel = "ComboOffer";
+    } else if (requestedType === "Offer") {
+      campaign = await Offer.findOne({
+        _id: offerId,
+        is_active: true,
+        is_deleted: false,
+      });
+      resolvedModel = "Offer";
+    } else {
+      // Auto-resolve: Check Offer first, then fall back to ComboOffer
+      campaign = await Offer.findOne({
+        _id: offerId,
+        is_active: true,
+        is_deleted: false,
+      });
+
+      if (campaign) {
+        resolvedModel = "Offer";
+      } else {
+        campaign = await ComboOffer.findOne({
+          _id: offerId,
+          is_active: true,
+          is_deleted: false,
+          approval_status: "approved",
         });
+        resolvedModel = "ComboOffer";
+      }
+    }
+
+    if (!campaign) {
+      return res.status(404).json({
+        success: false,
+        message: `The requested ${resolvedModel === "ComboOffer" ? "combo offer" : "offer"} is unavailable or no longer active.`,
+      });
+    }
+
+    // 2. Check campaign validity window (start_date & end_date)
+    if (campaign.start_date && campaign.start_date > now) {
+      return res.status(400).json({
+        success: false,
+        message: "This campaign has not started yet.",
+      });
+    }
+
+    if (campaign.end_date && campaign.end_date < now) {
+      return res.status(400).json({
+        success: false,
+        message: `This ${resolvedModel === "ComboOffer" ? "combo offer" : "offer"} campaign has expired.`,
+      });
+    }
+
+    // 3. Enforce overall claim/quantity limits
+    if (resolvedModel === "Offer") {
+      if (campaign.claim_limit !== undefined && campaign.claim_limit !== null) {
+        if (campaign.redeemedCount >= campaign.claim_limit) {
+          return res.status(400).json({
+            success: false,
+            message: `All available redemptions (${campaign.claim_limit}) for this offer have been claimed.`,
+          });
+        }
+      }
+    } else {
+      if (campaign.offer_quantity !== undefined && campaign.offer_quantity !== null) {
+        if (campaign.sold_count >= campaign.offer_quantity) {
+          return res.status(400).json({
+            success: false,
+            message: `All available redemptions (${campaign.offer_quantity}) for this combo offer have been claimed.`,
+          });
+        }
       }
     }
 
     // 4. Enforce per-user limit
     const userRedemptionCount = await OfferRedemption.countDocuments({
       offerId,
+      offerModel: resolvedModel,
       userId,
-      status: { $in: ["redeemed", "claimed"] }
+      status: { $in: ["redeemed", "claimed"] },
     });
 
-    if (offer.per_user_limit && userRedemptionCount >= offer.per_user_limit) {
+    const perUserLimit = campaign.per_user_limit || (resolvedModel === "ComboOffer" ? 1 : null);
+    if (perUserLimit && userRedemptionCount >= perUserLimit) {
       return res.status(400).json({
         success: false,
-        message: `You have reached your limit of ${offer.per_user_limit} redemption(s) for this offer.`
+        message: `You have reached your limit of ${perUserLimit} redemption(s) for this ${resolvedModel === "ComboOffer" ? "combo offer" : "offer"}.`,
       });
     }
 
-    // 5. Calculate expiration based on `redeem_time_hours` or `end_date`
-    const hoursToMs = (offer.redeem_time_hours || 24) * 60 * 60 * 1000;
+    // 5. Calculate expiration based on `redeem_time_hours` (default 24h) or `end_date`
+    const hoursToMs = (campaign.redeem_time_hours || 24) * 60 * 60 * 1000;
     const calculatedExpiry = new Date(Date.now() + hoursToMs);
 
-    // If campaign end_date is earlier than calculated window, cap it at campaign end_date
-    const finalExpiresAt = offer.end_date && offer.end_date < calculatedExpiry 
-      ? offer.end_date 
-      : calculatedExpiry;
+    const finalExpiresAt =
+      campaign.end_date && campaign.end_date < calculatedExpiry
+        ? campaign.end_date
+        : calculatedExpiry;
 
-    // 6. Generate a unique 6-character redemption code
+    // 6. Resolve Merchant ID & Shop ID
+    const targetMerchantId =
+      resolvedModel === "ComboOffer" ? campaign.merchantId : campaign.merchant_id;
+
+    let targetShopId = resolvedModel === "ComboOffer" ? campaign.shopId : campaign.shop_id;
+    if (!targetShopId) {
+      const merchantShop = await MerchantShop.findOne({ merchantId: targetMerchantId })
+        .select("_id")
+        .lean();
+      targetShopId = merchantShop?._id || targetMerchantId;
+    }
+
+    // 7. Generate a unique 6-character redemption code
     const redemptionCode = "BB-" + crypto.randomBytes(3).toString("hex").toUpperCase();
 
     const redemption = new OfferRedemption({
       offerId,
+      offerModel: resolvedModel,
       userId,
-      shopId: offer.merchant_id, // Map target shop/merchant
-      merchantId: offer.merchant_id,
+      shopId: targetShopId,
+      merchantId: targetMerchantId,
       redemptionCode,
       expiresAt: finalExpiresAt,
-      status: "redeemed"
+      status: "redeemed",
     });
-
-    // await trackDailyMetric2( offer.merchant_id, "redeems", { userId: req.user._id, offerId, redemptionCode });
-    // await onOfferRedeemedHook(offer.merchant_id, req.user._id);
-
-    
-    
 
     await redemption.save();
 
-    // 7. Atomically increment redeemedCount on the offer
-    await Offer.findByIdAndUpdate(offerId, { $inc: { redeemedCount: 1 } });
+    // 8. Atomically increment redemption counter on Offer or ComboOffer
+    if (resolvedModel === "ComboOffer") {
+      await ComboOffer.findByIdAndUpdate(offerId, { $inc: { sold_count: 1 } });
+    } else {
+      await Offer.findByIdAndUpdate(offerId, { $inc: { redeemedCount: 1 } });
+    }
 
+    // 9. Trigger notification
+    const campaignTitle = resolvedModel === "ComboOffer" ? campaign.name : campaign.title;
     notifyOnOfferRedemption({
       userId,
-      merchantId: offer.merchant_id,
-      offerId: offer._id,
-      offerTitle: offer.title,
+      merchantId: targetMerchantId,
+      offerId: campaign._id,
+      offerModel: resolvedModel,
+      offerTitle: campaignTitle,
       redemptionCode: redemption.redemptionCode,
       expiresAt: redemption.expiresAt,
       userName: req.user.name,
@@ -106,21 +188,21 @@ export const redeemOffer = async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      message: "Offer redeemed successfully! Show this code or QR in-store to claim your discount.",
+      message: `${resolvedModel === "ComboOffer" ? "Combo offer" : "Offer"} redeemed successfully! Show this code or QR in-store to claim your discount.`,
       data: {
         redemptionId: redemption._id,
+        offerModel: resolvedModel,
         redemptionCode: redemption.redemptionCode,
         expiresAt: redemption.expiresAt,
-        status: redemption.status
-      }
+        status: redemption.status,
+      },
     });
-
   } catch (error) {
-    console.error("Redeem Offer Processing Error:", error);
+    console.error("Redeem Offer/Combo Processing Error:", error);
     return res.status(500).json({
       success: false,
       message: "An internal server error occurred while processing your redemption.",
-      error: error.message
+      error: error.message,
     });
   }
 };
@@ -133,40 +215,75 @@ export const redeemOffer = async (req, res) => {
 
 export const claimOfferInStore = async (req, res) => {
   try {
-    const { redemptionCode, offerId, userId } = req.body;
+    const { redemptionCode, offerId, userId, type } = req.body;
 
     if (!req.merchant) {
       return res.status(401).json({
         success: false,
-        message: "Access Denied: Missing merchant authentication profile."
+        message: "Access Denied: Missing merchant authentication profile.",
       });
     }
 
-    if (!offerId) {
+    if (!offerId || !mongoose.Types.ObjectId.isValid(offerId)) {
       return res.status(400).json({
         success: false,
-        message: "Target offerId is required to verify in-store claim."
+        message: "Valid target offerId is required to verify in-store claim.",
       });
     }
 
-    // 1. Verify that the offer exists and belongs to this merchant
-    const offer = await Offer.findOne({
-      _id: offerId,
-      merchant_id: req.merchant._id,
-      is_deleted: false
-    });
+    let resolvedModel = "Offer";
+    let campaign = null;
 
-    if (!offer) {
+    // 1. Resolve campaign belonging to this merchant (Offer or ComboOffer)
+    if (type === "ComboOffer") {
+      campaign = await ComboOffer.findOne({
+        _id: offerId,
+        merchantId: req.merchant._id,
+        is_deleted: false,
+      });
+      resolvedModel = "ComboOffer";
+    } else if (type === "Offer") {
+      campaign = await Offer.findOne({
+        _id: offerId,
+        merchant_id: req.merchant._id,
+        is_deleted: false,
+      });
+      resolvedModel = "Offer";
+    } else {
+      // Auto-resolve: Check Offer first, then fall back to ComboOffer
+      campaign = await Offer.findOne({
+        _id: offerId,
+        merchant_id: req.merchant._id,
+        is_deleted: false,
+      });
+
+      if (campaign) {
+        resolvedModel = "Offer";
+      } else {
+        campaign = await ComboOffer.findOne({
+          _id: offerId,
+          merchantId: req.merchant._id,
+          is_deleted: false,
+        });
+        resolvedModel = "ComboOffer";
+      }
+    }
+
+    if (!campaign) {
       return res.status(404).json({
         success: false,
-        message: "Offer not found or does not belong to your store profile."
+        message: "Offer or Combo Offer not found or does not belong to your store profile.",
       });
     }
+
+    const campaignTitle =
+      resolvedModel === "ComboOffer" ? campaign.name : campaign.title;
 
     // 2. Locate the redemption document
     const redemptionQuery = {
       offerId,
-      merchantId: req.merchant._id
+      offerModel: resolvedModel,
+      merchantId: req.merchant._id,
     };
 
     if (redemptionCode) {
@@ -177,7 +294,8 @@ export const claimOfferInStore = async (req, res) => {
     } else {
       return res.status(400).json({
         success: false,
-        message: "Provide either a redemptionCode or userId to identify the target redemption record."
+        message:
+          "Provide either a redemptionCode or userId to identify the target redemption record.",
       });
     }
 
@@ -186,7 +304,7 @@ export const claimOfferInStore = async (req, res) => {
     if (!redemption) {
       return res.status(404).json({
         success: false,
-        message: "No active redemption found for this offer matching the provided code/user."
+        message: `No active redemption found for this ${resolvedModel === "ComboOffer" ? "combo offer" : "offer"} matching the provided code/user.`,
       });
     }
 
@@ -194,24 +312,37 @@ export const claimOfferInStore = async (req, res) => {
     if (redemption.status === "claimed") {
       return res.status(400).json({
         success: false,
-        message: `This offer was already claimed on ${redemption.claimedAt?.toLocaleString()}.`
+        message: `This ${resolvedModel === "ComboOffer" ? "combo offer" : "offer"} was already claimed on ${redemption.claimedAt?.toLocaleString()}.`,
       });
     }
 
     if (redemption.status === "expired" || redemption.expiresAt < new Date()) {
       return res.status(400).json({
         success: false,
-        message: "This redemption window has expired."
+        message: "This redemption window has expired.",
       });
     }
 
-    // 4. Enforce claim limit as safeguard
-    if (offer.claim_limit !== undefined && offer.claim_limit !== null) {
-      if (offer.claimedCount >= offer.claim_limit) {
-        return res.status(400).json({
-          success: false,
-          message: `Claim limit reached: All ${offer.claim_limit} claims for this offer have been processed.`
-        });
+    // 4. Enforce claim/quantity limit as safeguard
+    if (resolvedModel === "Offer") {
+      if (campaign.claim_limit !== undefined && campaign.claim_limit !== null) {
+        if (campaign.claimedCount >= campaign.claim_limit) {
+          return res.status(400).json({
+            success: false,
+            message: `Claim limit reached: All ${campaign.claim_limit} claims for this offer have been processed.`,
+          });
+        }
+      }
+    } else {
+      // Note: sold_count is incremented when the user reserves/redeems the combo;
+      // guard against exceeding offer_quantity if > is violated
+      if (campaign.offer_quantity !== undefined && campaign.offer_quantity !== null) {
+        if (campaign.sold_count > campaign.offer_quantity) {
+          return res.status(400).json({
+            success: false,
+            message: `Claim limit reached: All ${campaign.offer_quantity} claims for this combo offer have been processed.`,
+          });
+        }
       }
     }
 
@@ -220,37 +351,48 @@ export const claimOfferInStore = async (req, res) => {
     redemption.claimedAt = new Date();
     await redemption.save();
 
-    // 6. Atomically increment claimedCount on primary offer document
-    await Offer.findByIdAndUpdate(offerId, { $inc: { claimedCount: 1 } });
+    // 6. Atomically increment claimedCount on standard Offer (ComboOffer tracks via sold_count at redeem time)
+    if (resolvedModel === "Offer") {
+      await Offer.findByIdAndUpdate(offerId, { $inc: { claimedCount: 1 } });
+    }
 
-    const code  = redemption.redemptionCode;
+    const targetUserId = userId || redemption.userId;
+    const code = redemption.redemptionCode;
+
     // 7. Fire metric tracking pipelines
-    await onOfferClaimedHook(req.merchant._id, userId);
+    if (typeof onOfferClaimedHook === "function") {
+      await onOfferClaimedHook(req.merchant._id, targetUserId);
+    }
 
-
-    //await trackDailyMetric2( offer.merchant_id, "redeems", { userId: req.user._id, offerId, redemptionCode });
-  
-     await trackOfferMetric(offerId, req.merchant._id, "claims", { userId: userId, code });
-     await trackOfferMetric(offerId, req.merchant._id, "footfall", { userId: userId, code });
-    // await onFootfallVisitHook(req.merchant._id, userId);
-   
+    if (typeof trackOfferMetric === "function") {
+      await trackOfferMetric(offerId, req.merchant._id, "claims", {
+        userId: targetUserId,
+        offerModel: resolvedModel,
+        code,
+      });
+      await trackOfferMetric(offerId, req.merchant._id, "footfall", {
+        userId: targetUserId,
+        offerModel: resolvedModel,
+        code,
+      });
+    }
 
     return res.status(200).json({
       success: true,
-      message: "Offer successfully verified and claimed in-store!",
+      message: `${resolvedModel === "ComboOffer" ? "Combo offer" : "Offer"} successfully verified and claimed in-store!`,
       data: {
-        offerTitle: offer.title,
+        offerModel: resolvedModel,
+        offerTitle: campaignTitle,
         redemptionCode: redemption.redemptionCode,
-        claimedAt: redemption.claimedAt
-      }
+        claimedAt: redemption.claimedAt,
+      },
     });
-
   } catch (error) {
     console.error("In-Store Claim Verification Error:", error);
     return res.status(500).json({
       success: false,
       message: "An internal server error occurred while verifying the claim.",
-      error: error.message
+      error: error.message,
     });
   }
 };
@@ -487,15 +629,31 @@ export const userSelfClaimOffer2 = async (req, res) => {
   try {
     const { offerId } = req.params;
     const userId = req.user._id;
+    const requestedType = req.query.type || req.body?.type; // Optional hint: "Offer" | "ComboOffer"
+
+    if (!mongoose.Types.ObjectId.isValid(offerId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid Offer or Combo ID format.",
+      });
+    }
 
     // 0. Extract user coordinates from body or query
     const rawLat = req.body.latitude ?? req.body.lat ?? req.query.lat;
     const rawLng = req.body.longitude ?? req.body.lng ?? req.query.lng;
 
-    if (rawLat === undefined || rawLng === undefined || rawLat === null || rawLng === null || rawLat === "" || rawLng === "") {
+    if (
+      rawLat === undefined ||
+      rawLng === undefined ||
+      rawLat === null ||
+      rawLng === null ||
+      rawLat === "" ||
+      rawLng === ""
+    ) {
       return res.status(400).json({
         success: false,
-        message: "Your device location coordinates (latitude and longitude) are required to verify in-store redemption.",
+        message:
+          "Your device location coordinates (latitude and longitude) are required to verify in-store redemption.",
       });
     }
 
@@ -509,35 +667,88 @@ export const userSelfClaimOffer2 = async (req, res) => {
       });
     }
 
-    // 1. Fetch active, non-deleted, and non-paused offer
-    const offer = await Offer.findOne({
-      _id: offerId,
-      is_active: true,
-      is_deleted: false,
-      is_draft: false,
-      is_paused: false,
-    });
+    // 1. Resolve active, non-deleted campaign from Offer or ComboOffer
+    let resolvedModel = "Offer";
+    let campaign = null;
 
-    if (!offer) {
+    if (requestedType === "ComboOffer") {
+      campaign = await ComboOffer.findOne({
+        _id: offerId,
+        is_active: true,
+        is_deleted: false,
+        approval_status: "approved",
+      });
+      resolvedModel = "ComboOffer";
+    } else if (requestedType === "Offer") {
+      campaign = await Offer.findOne({
+        _id: offerId,
+        is_active: true,
+        is_deleted: false,
+        is_draft: false,
+        is_paused: false,
+      });
+      resolvedModel = "Offer";
+    } else {
+      // Auto-resolve: Check Offer first, then fall back to ComboOffer
+      campaign = await Offer.findOne({
+        _id: offerId,
+        is_active: true,
+        is_deleted: false,
+        is_draft: false,
+        is_paused: false,
+      });
+
+      if (campaign) {
+        resolvedModel = "Offer";
+      } else {
+        campaign = await ComboOffer.findOne({
+          _id: offerId,
+          is_active: true,
+          is_deleted: false,
+          approval_status: "approved",
+        });
+        resolvedModel = "ComboOffer";
+      }
+    }
+
+    if (!campaign) {
       return res.status(404).json({
         success: false,
-        message: "The requested offer is no longer available or is currently paused.",
+        message: `The requested ${resolvedModel === "ComboOffer" ? "combo offer" : "offer"} is no longer available or is currently paused.`,
       });
     }
 
+    const targetMerchantId =
+      resolvedModel === "ComboOffer" ? campaign.merchantId : campaign.merchant_id;
+    const targetShopId =
+      resolvedModel === "ComboOffer" ? campaign.shopId : campaign.shop_id;
+    const campaignTitle =
+      resolvedModel === "ComboOffer" ? campaign.name : campaign.title;
+
     // 2. Locate the Merchant's physical shop for coordinate validation
-    const shop = await MerchantShop.findOne({ merchantId: offer.merchant_id })
+    const shopQuery = targetShopId
+      ? { _id: targetShopId }
+      : { merchantId: targetMerchantId };
+
+    const shop = await MerchantShop.findOne(shopQuery)
       .select("latitude longitude shopName")
       .lean();
 
     // Fallback coordinates: check shop schema first, then offer location GeoJSON Point
-    const shopLat = shop?.latitude ?? (offer.location?.coordinates?.[1] || null);
-    const shopLng = shop?.longitude ?? (offer.location?.coordinates?.[0] || null);
+    const shopLat =
+      shop?.latitude ??
+      (resolvedModel === "Offer" ? campaign.location?.coordinates?.[1] : null) ??
+      null;
+    const shopLng =
+      shop?.longitude ??
+      (resolvedModel === "Offer" ? campaign.location?.coordinates?.[0] : null) ??
+      null;
 
     if (shopLat === null || shopLng === null) {
       return res.status(400).json({
         success: false,
-        message: "Merchant shop GPS coordinates are not configured. Cannot verify in-store presence.",
+        message:
+          "Merchant shop GPS coordinates are not configured. Cannot verify in-store presence.",
       });
     }
 
@@ -548,7 +759,7 @@ export const userSelfClaimOffer2 = async (req, res) => {
     if (distanceMeters > MAX_ALLOWED_DISTANCE_METERS) {
       return res.status(403).json({
         success: false,
-        message: `You are not at the shop, cannot redeem. You must be within 50 meters of the store to claim this offer (current distance: ${distanceMeters}m).`,
+        message: `You are not at the shop, cannot redeem. You must be within 50 meters of the store to claim this ${resolvedModel === "ComboOffer" ? "combo offer" : "offer"} (current distance: ${distanceMeters}m).`,
         data: {
           currentDistanceMeters: distanceMeters,
           requiredRadiusMeters: MAX_ALLOWED_DISTANCE_METERS,
@@ -556,42 +767,64 @@ export const userSelfClaimOffer2 = async (req, res) => {
       });
     }
 
-    // 4. Validate offer expiration date
+    // 4. Validate campaign start & expiration dates
     const now = new Date();
-    if (offer.end_date && new Date(offer.end_date) < now) {
+    if (campaign.start_date && new Date(campaign.start_date) > now) {
       return res.status(400).json({
         success: false,
-        message: "This offer campaign has expired.",
+        message: "This campaign has not started yet.",
       });
     }
 
-    // 5. ENFORCE OVERALL CLAIM LIMIT
-    if (offer.claim_limit !== undefined && offer.claim_limit !== null) {
-      if (offer.claimedCount >= offer.claim_limit) {
-        return res.status(400).json({
-          success: false,
-          message: `Claim limit reached! All ${offer.claim_limit} claims for this offer have already been taken.`,
-        });
+    if (campaign.end_date && new Date(campaign.end_date) < now) {
+      return res.status(400).json({
+        success: false,
+        message: `This ${resolvedModel === "ComboOffer" ? "combo offer" : "offer"} campaign has expired.`,
+      });
+    }
+
+    // 5. ENFORCE OVERALL CLAIM / QUANTITY LIMIT
+    if (resolvedModel === "Offer") {
+      if (campaign.claim_limit !== undefined && campaign.claim_limit !== null) {
+        if (campaign.claimedCount >= campaign.claim_limit) {
+          return res.status(400).json({
+            success: false,
+            message: `Claim limit reached! All ${campaign.claim_limit} claims for this offer have already been taken.`,
+          });
+        }
+      }
+    } else {
+      if (campaign.offer_quantity !== undefined && campaign.offer_quantity !== null) {
+        if (campaign.sold_count >= campaign.offer_quantity) {
+          return res.status(400).json({
+            success: false,
+            message: `Claim limit reached! All ${campaign.offer_quantity} claims for this combo offer have already been taken.`,
+          });
+        }
       }
     }
 
     // 6. ENFORCE PER-USER LIMIT
     const userClaimCount = await OfferRedemption.countDocuments({
       offerId,
+      offerModel: resolvedModel,
       userId,
       status: "claimed",
     });
 
-    if (offer.per_user_limit && userClaimCount >= offer.per_user_limit) {
+    const perUserLimit =
+      campaign.per_user_limit || (resolvedModel === "ComboOffer" ? 1 : null);
+    if (perUserLimit && userClaimCount >= perUserLimit) {
       return res.status(400).json({
         success: false,
-        message: `You have already claimed this offer ${offer.per_user_limit} time(s).`,
+        message: `You have already claimed this ${resolvedModel === "ComboOffer" ? "combo offer" : "offer"} ${perUserLimit} time(s).`,
       });
     }
 
     // 7. Check for an existing uncompleted "redeemed" record
     let redemption = await OfferRedemption.findOne({
       offerId,
+      offerModel: resolvedModel,
       userId,
       status: "redeemed",
     });
@@ -606,22 +839,24 @@ export const userSelfClaimOffer2 = async (req, res) => {
     } else {
       // Direct claim without prior reserve
       wasDirectClaim = true;
-      const uniqueCode = typeof generateUniqueClaimCode === "function"
-        ? generateUniqueClaimCode()
-        : Math.floor(100000 + Math.random() * 900000).toString();
+      const uniqueCode =
+        typeof generateUniqueClaimCode === "function"
+          ? generateUniqueClaimCode()
+          : Math.floor(100000 + Math.random() * 900000).toString();
 
-      const hoursToMs = (offer.redeem_time_hours || 24) * 60 * 60 * 1000;
+      const hoursToMs = (campaign.redeem_time_hours || 24) * 60 * 60 * 1000;
       const calculatedExpiry = new Date(Date.now() + hoursToMs);
       const finalExpiresAt =
-        offer.end_date && new Date(offer.end_date) < calculatedExpiry
-          ? new Date(offer.end_date)
+        campaign.end_date && new Date(campaign.end_date) < calculatedExpiry
+          ? new Date(campaign.end_date)
           : calculatedExpiry;
 
       redemption = new OfferRedemption({
         offerId,
+        offerModel: resolvedModel,
         userId,
-        shopId: shop?._id || offer.merchant_id,
-        merchantId: offer.merchant_id,
+        shopId: shop?._id || targetShopId || targetMerchantId,
+        merchantId: targetMerchantId,
         redemptionCode: uniqueCode,
         expiresAt: finalExpiresAt,
         status: "claimed",
@@ -632,57 +867,73 @@ export const userSelfClaimOffer2 = async (req, res) => {
       await redemption.save();
     }
 
-    // 8. Atomically update offer counters
-    await Offer.findByIdAndUpdate(offerId, {
-      $inc: {
-        claimedCount: 1,
-        ...(wasDirectClaim ? { redeemedCount: 1 } : {}),
-      },
-    });
+    // 8. Atomically update campaign counters
+    if (resolvedModel === "ComboOffer") {
+      // Only increment sold_count on direct claim if pre-redeem didn't already increment it
+      if (wasDirectClaim) {
+        await ComboOffer.findByIdAndUpdate(offerId, {
+          $inc: { sold_count: 1 },
+        });
+      }
+    } else {
+      await Offer.findByIdAndUpdate(offerId, {
+        $inc: {
+          claimedCount: 1,
+          ...(wasDirectClaim ? { redeemedCount: 1 } : {}),
+        },
+      });
+    }
 
     const redemptionCode = redemption.redemptionCode;
 
     // 9. Track analytics and execute hooks
     if (wasDirectClaim) {
       if (typeof trackOfferMetric === "function") {
-        await trackOfferMetric(offerId, offer.merchant_id, "redeems", { userId });
+        await trackOfferMetric(offerId, targetMerchantId, "redeems", {
+          userId,
+          offerModel: resolvedModel,
+        });
       }
       if (typeof trackDailyMetric2 === "function") {
-        await trackDailyMetric2(offer.merchant_id, "redeems", {
+        await trackDailyMetric2(targetMerchantId, "redeems", {
           userId,
           offerId,
+          offerModel: resolvedModel,
           redemptionCode,
         });
       }
       if (typeof onOfferRedeemedHook === "function") {
-        await onOfferRedeemedHook(offer.merchant_id, userId);
+        await onOfferRedeemedHook(targetMerchantId, userId);
       }
     }
 
     if (typeof trackDailyMetric2 === "function") {
-      await trackDailyMetric2(offer.merchant_id, "footfall", {
+      await trackDailyMetric2(targetMerchantId, "footfall", {
         userId,
         offerId,
+        offerModel: resolvedModel,
         redemptionCode,
       });
     }
 
     if (typeof trackOfferMetric === "function") {
-      await trackOfferMetric(offerId, offer.merchant_id, "claims", {
+      await trackOfferMetric(offerId, targetMerchantId, "claims", {
         userId,
+        offerModel: resolvedModel,
         redemptionCode,
       });
     }
 
     if (typeof onOfferClaimedHook === "function") {
-      await onOfferClaimedHook(offer.merchant_id, userId);
+      await onOfferClaimedHook(targetMerchantId, userId);
     }
 
     return res.status(200).json({
       success: true,
-      message: "Offer successfully claimed! Show this confirmation screen to the shopkeeper.",
+      message: `${resolvedModel === "ComboOffer" ? "Combo offer" : "Offer"} successfully claimed! Show this confirmation screen to the shopkeeper.`,
       data: {
-        offerTitle: offer.title,
+        offerModel: resolvedModel,
+        offerTitle: campaignTitle,
         redemptionCode: redemption.redemptionCode,
         claimedAt: redemption.claimedAt,
         status: redemption.status,
@@ -702,7 +953,7 @@ export const userSelfClaimOffer2 = async (req, res) => {
 export const getUserOfferHistory = async (req, res) => {
   try {
     const userId = req.user._id;
-    const { status = "all", page = 1, limit = 10 } = req.query;
+    const { status = "all", page = 1, limit = 10, type = "all" } = req.query;
 
     // 1. Build Query Filter
     const query = { userId };
@@ -716,6 +967,11 @@ export const getUserOfferHistory = async (req, res) => {
       query.status = { $in: ["redeemed", "claimed"] };
     }
 
+    // Optional filter: "Offer" | "ComboOffer" | "all"
+    if (type === "Offer" || type === "ComboOffer") {
+      query.offerModel = type;
+    }
+
     // 2. Setup Pagination
     const currentLimit = Number(limit);
     const skip = (Math.max(1, Number(page)) - 1) * currentLimit;
@@ -723,49 +979,80 @@ export const getUserOfferHistory = async (req, res) => {
     // 3. Count total matching redemptions/claims
     const totalRecords = await OfferRedemption.countDocuments(query);
 
-    // 4. Fetch list with populated Offer and Shop/Merchant details
+    // 4. Fetch list with dynamic refPath population (Offer & ComboOffer) and Shop/Merchant details
     const history = await OfferRedemption.find(query)
       .populate({
         path: "offerId",
-        select: "title description thumbnail discount_percentage discount_value start_date end_date redeem_time_hours only_for_walk_in_customers"
+        select:
+          "title name description thumbnail products tags discount_percentage discount_value start_date end_date redeem_time_hours only_for_walk_in_customers terms_and_conditions",
+      })
+      .populate({
+        path: "shopId",
+        select: "shopName address city phone logo banner",
       })
       .populate({
         path: "merchantId",
-        select: "shopName address city phone logo banner"
+        select: "name store_name shopName address city phone logo banner profileImage",
       })
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(currentLimit)
       .lean();
 
-    // 5. Format payload and add dynamic status flags (e.g. check if a 'redeemed' code has passed its expiry)
+    // 5. Format payload and normalize Offer vs ComboOffer fields
     const now = new Date();
     const formattedData = history.map((record) => {
       const isExpired = record.status === "redeemed" && record.expiresAt < now;
+      const isCombo = record.offerModel === "ComboOffer";
+      const campaign = record.offerId;
+
+      // Resolve shop info from shopId first, falling back to merchantId
+      const shopSource = record.shopId?.shopName ? record.shopId : record.merchantId;
+
+      // For ComboOffers, use first product image as fallback thumbnail if no dedicated thumbnail exists
+      const resolvedThumbnail = isCombo
+        ? campaign?.thumbnail || campaign?.products?.[0]?.image || null
+        : campaign?.thumbnail || null;
 
       return {
         redemptionId: record._id,
+        offerModel: record.offerModel || "Offer",
         redemptionCode: record.redemptionCode,
-        status: isExpired ? "expired" : record.status, // Gracefully surface expired status
+        status: isExpired ? "expired" : record.status,
         redeemedAt: record.redeemedAt,
         claimedAt: record.claimedAt,
         expiresAt: record.expiresAt,
-        offerDetails: record.offerId ? {
-          offerId: record.offerId._id,
-          title: record.offerId.title,
-          description: record.offerId.description,
-          thumbnail: record.offerId.thumbnail,
-          discountPercentage: record.offerId.discount_percentage,
-          discountValue: record.offerId.discount_value,
-        } : null,
-        shopDetails: record.merchantId ? {
-          shopId: record.merchantId._id,
-          shopName: record.merchantId.shopName,
-          address: record.merchantId.address,
-          city: record.merchantId.city,
-          phone: record.merchantId.phone,
-          logo: record.merchantId.logo
-        } : null
+        offerDetails: campaign
+          ? {
+              offerId: campaign._id,
+              offerModel: record.offerModel || "Offer",
+              title: isCombo ? campaign.name : campaign.title,
+              description: campaign.description,
+              thumbnail: resolvedThumbnail,
+              discountPercentage: isCombo ? null : campaign.discount_percentage,
+              discountValue: isCombo ? null : campaign.discount_value,
+              // Combo-specific fields included cleanly when applicable
+              ...(isCombo && {
+                tags: campaign.tags || [],
+                products: campaign.products || [],
+                termsAndConditions: campaign.terms_and_conditions || null,
+              }),
+            }
+          : null,
+        shopDetails: shopSource
+          ? {
+              shopId: shopSource._id,
+              shopName:
+                shopSource.shopName ||
+                shopSource.store_name ||
+                shopSource.name ||
+                "BachatBazarr Partner",
+              address: shopSource.address || "",
+              city: shopSource.city || "",
+              phone: shopSource.phone || "",
+              logo: shopSource.logo || shopSource.profileImage || null,
+            }
+          : null,
       };
     });
 
@@ -774,15 +1061,14 @@ export const getUserOfferHistory = async (req, res) => {
       total: totalRecords,
       pages: Math.ceil(totalRecords / currentLimit) || 1,
       currentPage: Number(page),
-      data: formattedData
+      data: formattedData,
     });
-
   } catch (error) {
     console.error("User Offer History Fetch Error:", error);
     return res.status(500).json({
       success: false,
       message: "An internal server error occurred while retrieving your offer history.",
-      error: error.message
+      error: error.message,
     });
   }
 };

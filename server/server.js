@@ -94,7 +94,7 @@ import adminComboOfferRoutes from './routes/adminComboOfferRoutes.js';
 import comboOfferStaffRoutes from './routes/staff/staffComboOfferRoutes.js';
 import userNavbarRoutes from './routes/userNavbarRoutes.js';
 import merchantNavbarRoutes from './routes/merchantNavbarRoutes.js';
-
+import merchantUserOffferReviewRoutes from './routes/merchantUserOfferReviewRoutes.js'
 dotenv.config();
 
 import './utils/firebase.js';
@@ -235,6 +235,7 @@ app.use("/api/merchant-bids", MerchantBidRoutes);
 app.use("/api/quick-offer-routes", QuickOfferRoutes);
 app.use('/api/offer-redemption/user', offerRedemptionRoutes);
 app.use('/api/offer-redemption/merchant', offerRedemptionMerchantRoutes);
+app.use('/api/merchant/user-offer-reviews',merchantUserOffferReviewRoutes)
 app.use('/api/merchant/analytics', merchantAnalyticRoutes);
 
 app.use('/api/merchant/goals', goalsRoutes);

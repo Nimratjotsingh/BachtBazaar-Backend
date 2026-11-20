@@ -10,8 +10,15 @@ const offerRedeemSchema = new mongoose.Schema(
     },
     offerId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Offer",
       required: true,
+      refPath: "offerModel", // Dynamically references either "Offer" or "ComboOffer"
+      index: true,
+    },
+    offerModel: {
+      type: String,
+      required: true,
+      enum: ["Offer", "ComboOffer"],
+      default: "Offer",
       index: true,
     },
     shopId: {
@@ -30,7 +37,7 @@ const offerRedeemSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
-    // Array to log each successful coupon/offer redemption transaction for the day
+    // Array to log each successful coupon/offer/combo redemption transaction for the day
     redeemedUsers: [
       {
         userId: {
@@ -38,7 +45,6 @@ const offerRedeemSchema = new mongoose.Schema(
           ref: "User",
           required: true,
         },
-        
         redeemedAt: {
           type: Date,
           default: Date.now,
@@ -50,9 +56,13 @@ const offerRedeemSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Compound unique index ensuring one daily analytical document per offer and merchant
-offerRedeemSchema.index({ merchantId: 1, offerId: 1, date: 1 }, { unique: true });
+// Compound unique index ensuring one daily analytical document per merchant, campaign (offer or combo), and calendar day
+offerRedeemSchema.index(
+  { merchantId: 1, offerId: 1, offerModel: 1, date: 1 },
+  { unique: true }
+);
 
-const OfferRedeem = mongoose.models.OfferRedeem || mongoose.model("OfferRedeem", offerRedeemSchema);
+const OfferRedeem =
+  mongoose.models.OfferRedeem || mongoose.model("OfferRedeem", offerRedeemSchema);
 
 export default OfferRedeem;

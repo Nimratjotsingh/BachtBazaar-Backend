@@ -17,8 +17,15 @@ const userOfferReviewSchema = new mongoose.Schema(
     },
     offerId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Offer",
-      required: [true, "Offer ID is required"],
+      required: [true, "Offer or Combo Offer ID is required"],
+      refPath: "offerModel", // Dynamically references either "Offer" or "ComboOffer"
+      index: true,
+    },
+    offerModel: {
+      type: String,
+      required: true,
+      enum: ["Offer", "ComboOffer"],
+      default: "Offer",
       index: true,
     },
     shopId: {
@@ -55,7 +62,7 @@ const userOfferReviewSchema = new mongoose.Schema(
       trim: true,
       maxlength: [1000, "Review description cannot exceed 1000 characters"],
     },
-    
+
     // --- Media Attachments ---
     images: {
       type: [String], // Array of image URLs/paths uploaded by the user (e.g. food, bill, store ambiance)
@@ -75,12 +82,12 @@ const userOfferReviewSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
       index: true,
-      // True if the system verified the user actually claimed or redeemed the offer
+      // True if the system verified the user actually claimed or redeemed the offer/combo
     },
     approvalStatus: {
       type: String,
       enum: ["approved", "pending", "rejected"],
-      default: "approved", // Set to "pending" if you want automated content moderation queues
+      default: "approved",
       index: true,
     },
     rejectionReason: {
@@ -111,13 +118,16 @@ const userOfferReviewSchema = new mongoose.Schema(
 );
 
 // --- Indexes for High-Performance Queries ---
-// Ensure a user can only review the same offer/redemption once
-userOfferReviewSchema.index({ userId: 1, offerId: 1 }, { unique: true, sparse: true });
+// Ensure a user can only review the same offer/combo once
+userOfferReviewSchema.index(
+  { userId: 1, offerId: 1, offerModel: 1 },
+  { unique: true, sparse: true }
+);
 
-// Optimize lookups when fetching reviews per merchant, shop, or offer
+// Optimize lookups when fetching reviews per merchant, shop, or offer/combo
 userOfferReviewSchema.index({ merchantId: 1, approvalStatus: 1, createdAt: -1 });
 userOfferReviewSchema.index({ shopId: 1, rating: 1 });
-userOfferReviewSchema.index({ offerId: 1, approvalStatus: 1 });
+userOfferReviewSchema.index({ offerId: 1, offerModel: 1, approvalStatus: 1 });
 
 const UserOfferReview =
   mongoose.models.UserOfferReview ||

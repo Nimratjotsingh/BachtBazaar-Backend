@@ -1,19 +1,23 @@
 import mongoose from "mongoose";
-import UserOfferReview from "../models/userOfferReviewModel.js";
-import OfferRedemption from "../models/offerRedemptionModel.js";
 import Offer from "../models/offerModel.js";
+import ComboOffer from "../models/ComboOfferModel.js";
 import MerchantShop from "../models/merchantShopModel.js";
+import OfferRedemption from "../models/offerRedemptionModel.js";
+import UserOfferReview from "../models/userOfferReviewModel.js";
 
 /**
  * POST /api/user/offer-reviews
- * Creates a new user review for a merchant offer.
+ * Body: { offerId, type?: "Offer" | "ComboOffer", redemptionId?, shopId?, rating, title, description, images?, tags? }
+ * Submits a user review for either a standard Offer or a ComboOffer.
  */
 export const createUserOfferReview = async (req, res) => {
   try {
-    const userId = req.user?._id; // Extracted from user authentication middleware
+    const userId = req.user?._id;
     const {
       offerId,
+      type, // Optional hint: "Offer" | "ComboOffer"
       redemptionId,
+      shopId: bodyShopId,
       rating,
       title,
       description,
@@ -28,62 +32,105 @@ export const createUserOfferReview = async (req, res) => {
       });
     }
 
-    if (!offerId ||  !rating || !title || !description) {
+    if (!offerId || !rating || !title || !description) {
       return res.status(400).json({
         success: false,
-        message: "Missing required fields (offerId, shopId, rating, title, description).",
+        message: "Missing required fields (offerId, rating, title, description).",
       });
     }
 
-    // 1. Fetch Offer to verify it exists and get its merchantId
-    const offer = await Offer.findOne({ _id: offerId, is_deleted: false });
-    if (!offer) {
+    if (!mongoose.Types.ObjectId.isValid(offerId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid Offer or Combo Offer ID format.",
+      });
+    }
+
+    // 1. Resolve campaign from Offer or ComboOffer
+    let resolvedModel = "Offer";
+    let campaign = null;
+
+    if (type === "ComboOffer") {
+      campaign = await ComboOffer.findOne({ _id: offerId, is_deleted: false }).lean();
+      resolvedModel = "ComboOffer";
+    } else if (type === "Offer") {
+      campaign = await Offer.findOne({ _id: offerId, is_deleted: false }).lean();
+      resolvedModel = "Offer";
+    } else {
+      // Auto-resolve: Check Offer first, then fall back to ComboOffer
+      campaign = await Offer.findOne({ _id: offerId, is_deleted: false }).lean();
+      if (campaign) {
+        resolvedModel = "Offer";
+      } else {
+        campaign = await ComboOffer.findOne({ _id: offerId, is_deleted: false }).lean();
+        resolvedModel = "ComboOffer";
+      }
+    }
+
+    if (!campaign) {
       return res.status(404).json({
         success: false,
-        message: "The target offer does not exist or has been removed.",
+        message: "The target offer or combo offer does not exist or has been removed.",
       });
     }
 
-    const merchantId = offer.merchant_id;
+    const merchantId =
+      resolvedModel === "ComboOffer" ? campaign.merchantId : campaign.merchant_id;
 
-    // 2. Verify Shop belongs to this merchant
-    const shop = await MerchantShop.findOne({  merchantId });
+    // 2. Resolve and verify Shop belonging to this merchant
+    const preferredShopId =
+      bodyShopId ||
+      (resolvedModel === "ComboOffer" ? campaign.shopId : campaign.shop_id) ||
+      null;
+
+    const shopQuery = preferredShopId
+      ? { _id: preferredShopId, merchantId }
+      : { merchantId };
+
+    const shop = await MerchantShop.findOne(shopQuery).select("_id").lean();
     if (!shop) {
       return res.status(404).json({
         success: false,
         message: "The specified merchant shop location is invalid.",
       });
     }
-    let shopId = shop._id;
+    const shopId = shop._id;
 
-    // 3. Check for duplicate review from this user on this offer
-    const existingReview = await UserOfferReview.findOne({ userId, offerId, is_deleted: false });
+    // 3. Check for duplicate review from this user on this offer/combo
+    const existingReview = await UserOfferReview.findOne({
+      userId,
+      offerId,
+      offerModel: resolvedModel,
+      is_deleted: false,
+    }).lean();
+
     if (existingReview) {
       return res.status(409).json({
         success: false,
-        message: "You have already submitted a review for this offer.",
+        message: `You have already submitted a review for this ${resolvedModel === "ComboOffer" ? "combo offer" : "offer"}.`,
       });
     }
 
-    // 4. Verify purchase/redemption status if redemptionId is provided
+    // 4. Verify purchase/redemption status (checks OfferRedemption across both Offer & ComboOffer)
     let isVerifiedPurchase = false;
-    if (redemptionId) {
+    if (redemptionId && mongoose.Types.ObjectId.isValid(redemptionId)) {
       const redemption = await OfferRedemption.findOne({
         _id: redemptionId,
         userId,
         offerId,
+        offerModel: resolvedModel,
         status: { $in: ["redeemed", "claimed"] },
-      });
+      }).lean();
       if (redemption) {
         isVerifiedPurchase = true;
       }
     } else {
-      // Alternatively, check if the user has any completed/redeemed history for this offer
       const anyRedemption = await OfferRedemption.findOne({
         userId,
         offerId,
+        offerModel: resolvedModel,
         status: { $in: ["redeemed", "claimed"] },
-      });
+      }).lean();
       if (anyRedemption) {
         isVerifiedPurchase = true;
       }
@@ -92,8 +139,8 @@ export const createUserOfferReview = async (req, res) => {
     // 5. Normalize and validate images and tags arrays
     const normalizedImages = Array.isArray(images)
       ? images.slice(0, 5)
-      : typeof images === "string"
-      ? [images]
+      : typeof images === "string" && images.trim()
+      ? [images.trim()]
       : [];
 
     const normalizedTags = Array.isArray(tags)
@@ -102,11 +149,12 @@ export const createUserOfferReview = async (req, res) => {
       ? tags.split(",").map((t) => t.trim()).filter(Boolean)
       : [];
 
-    // 6. Create the review document
+    // 6. Create and save the review document
     const newReview = new UserOfferReview({
       userId,
       merchantId,
       offerId,
+      offerModel: resolvedModel,
       shopId,
       redemptionId: redemptionId || null,
       rating: Number(rating),
@@ -115,18 +163,18 @@ export const createUserOfferReview = async (req, res) => {
       images: normalizedImages,
       tags: normalizedTags,
       isVerifiedPurchase,
-      approvalStatus: "approved", // Set to "pending" if moderation queue is preferred
+      approvalStatus: "approved",
     });
 
     await newReview.save();
 
     return res.status(201).json({
       success: true,
-      message: "Offer review submitted successfully.",
+      message: `${resolvedModel === "ComboOffer" ? "Combo offer" : "Offer"} review submitted successfully.`,
       data: newReview,
     });
   } catch (error) {
-    console.error("Create User Offer Review Error:", error);
+    console.error("Create User Offer/Combo Review Error:", error);
     if (error.code === 11000) {
       return res.status(409).json({
         success: false,

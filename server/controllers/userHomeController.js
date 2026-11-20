@@ -322,107 +322,148 @@ export const getShopDetails = async (req, res) => {
     const merchantId = shopDoc.merchantId._id;
 
     // 2. Fetch Products, Services, Offers, Combo Offers, User Wishlist, Review Metrics, and Offer Reviews in parallel
-    const [products, services, offers, combos, userWishlist, reviewStats, offerReviewsAgg] = await Promise.all([
-      Product.find({
-        merchant_id: merchantId,
-        is_deleted: false,
-        is_active: true,
-        approval_status: "approved",
-      })
-        .select("name price discounted_price thumbnail stock is_featured ratings specifications")
-        .sort({ createdAt: -1 })
-        .lean(),
+    const [products, services, offers, combos, userWishlist, reviewStats, rawOfferReviews] =
+      await Promise.all([
+        Product.find({
+          merchant_id: merchantId,
+          is_deleted: false,
+          is_active: true,
+          approval_status: "approved",
+        })
+          .select("name price discounted_price thumbnail stock is_featured ratings specifications")
+          .sort({ createdAt: -1 })
+          .lean(),
 
-      Service.find({
-        merchant_id: merchantId,
-        is_deleted: false,
-        is_active: true,
-      })
-        .sort({ createdAt: -1 })
-        .lean(),
+        Service.find({
+          merchant_id: merchantId,
+          is_deleted: false,
+          is_active: true,
+        })
+          .sort({ createdAt: -1 })
+          .lean(),
 
-      Offer.find({
-        merchant_id: merchantId,
-        is_active: true,
-        is_deleted: false,
-        is_paused: false,
-        start_date: { $lte: rightNow },
-        end_date: { $gte: rightNow },
-      })
-        .select(
-          "title description thumbnail display_type discount_percentage discount_value minimum_purchase_amount end_date code"
-        )
-        .populate("offer_type_id", "label value")
-        .sort({ createdAt: -1 })
-        .lean(),
+        Offer.find({
+          merchant_id: merchantId,
+          is_active: true,
+          is_deleted: false,
+          is_paused: false,
+          start_date: { $lte: rightNow },
+          end_date: { $gte: rightNow },
+        })
+          .select(
+            "title description thumbnail display_type discount_percentage discount_value minimum_purchase_amount end_date code"
+          )
+          .populate("offer_type_id", "label value")
+          .sort({ createdAt: -1 })
+          .lean(),
 
-      // Fetch active Combo Offers matching shop/merchant and valid date window
-      ComboOffer.find({
-        merchantId,
-        $or: [{ shopId: id }, { shopId: null }],
-        is_active: true,
-        is_deleted: false,
-        approval_status: "approved",
-        start_date: { $lte: rightNow },
-        end_date: { $gte: rightNow },
-      })
-        .populate("products.productId", "name thumbnail price")
-        .sort({ createdAt: -1 })
-        .lean(),
+        // Fetch active Combo Offers matching shop/merchant and valid date window
+        ComboOffer.find({
+          merchantId,
+          $or: [{ shopId: id }, { shopId: null }],
+          is_active: true,
+          is_deleted: false,
+          approval_status: "approved",
+          start_date: { $lte: rightNow },
+          end_date: { $gte: rightNow },
+        })
+          .populate("products.productId", "name thumbnail price")
+          .sort({ createdAt: -1 })
+          .lean(),
 
-      req.user ? Wishlist.findOne({ userId: req.user._id }).lean() : null,
+        req.user ? Wishlist.findOne({ userId: req.user._id }).lean() : null,
 
-      Review.aggregate([
-        {
-          $match: {
-            merchantId,
-            status: "published",
-            isDeleted: false,
+        Review.aggregate([
+          {
+            $match: {
+              merchantId,
+              status: "published",
+              isDeleted: false,
+            },
           },
-        },
-        {
-          $group: {
-            _id: "$merchantId",
-            avgRating: { $avg: "$rating" },
-            totalReviews: { $sum: 1 },
+          {
+            $group: {
+              _id: "$merchantId",
+              avgRating: { $avg: "$rating" },
+              totalReviews: { $sum: 1 },
+            },
           },
-        },
-      ]),
+        ]),
 
-      // Aggregate review metrics per offer for this merchant/shop
-      UserOfferReview.aggregate([
-        {
-          $match: {
-            merchantId: new mongoose.Types.ObjectId(merchantId),
-            shopId: new mongoose.Types.ObjectId(id),
-            approvalStatus: "approved",
-            is_deleted: false,
-          },
-        },
-        {
-          $group: {
-            _id: "$offerId",
-            avgRating: { $avg: "$rating" },
-            totalReviews: { $sum: 1 },
-          },
-        },
-      ]),
-    ]);
+        // Fetch all approved UserOfferReviews for this merchant/shop with user name and profileImage
+        UserOfferReview.find({
+          merchantId: new mongoose.Types.ObjectId(merchantId),
+          shopId: new mongoose.Types.ObjectId(id),
+          approvalStatus: "approved",
+          is_deleted: false,
+        })
+          .populate("userId", "name profileImage")
+          .select(
+            "offerId offerModel userId rating title description images tags isVerifiedPurchase merchantResponse createdAt"
+          )
+          .sort({ createdAt: -1 })
+          .lean(),
+      ]);
 
     // 3. Create Wishlist & Offer Review Lookup Maps/Sets for O(1) performance
     const wishlistedShopsSet = new Set((userWishlist?.shops || []).map((sId) => sId.toString()));
-    const wishlistedProductsSet = new Set((userWishlist?.products || []).map((pId) => pId.toString()));
-    const wishlistedServicesSet = new Set((userWishlist?.services || []).map((sId) => sId.toString()));
+    const wishlistedProductsSet = new Set(
+      (userWishlist?.products || []).map((pId) => pId.toString())
+    );
+    const wishlistedServicesSet = new Set(
+      (userWishlist?.services || []).map((sId) => sId.toString())
+    );
     const wishlistedOffersSet = new Set((userWishlist?.offers || []).map((oId) => oId.toString()));
-    const wishlistedCombosSet = new Set((userWishlist?.combos || []).map((cId) => cId.toString())); // Optional if combo wishlist is tracked
+    const wishlistedCombosSet = new Set((userWishlist?.combos || []).map((cId) => cId.toString()));
 
+    // Group reviews by offerId and compute running rating totals
     const offerReviewMap = {};
-    offerReviewsAgg.forEach((item) => {
-      offerReviewMap[item._id.toString()] = {
-        averageRating: Math.round(item.avgRating * 10) / 10,
-        reviewCount: item.totalReviews,
-      };
+    rawOfferReviews.forEach((rev) => {
+      const key = rev.offerId.toString();
+      if (!offerReviewMap[key]) {
+        offerReviewMap[key] = {
+          totalRatingSum: 0,
+          reviewCount: 0,
+          reviews: [],
+        };
+      }
+
+      offerReviewMap[key].totalRatingSum += rev.rating;
+      offerReviewMap[key].reviewCount += 1;
+      offerReviewMap[key].reviews.push({
+        _id: rev._id,
+        rating: rev.rating,
+        title: rev.title,
+        description: rev.description,
+        images: rev.images || [],
+        tags: rev.tags || [],
+        isVerifiedPurchase: rev.isVerifiedPurchase,
+        merchantResponse: rev.merchantResponse || null,
+        createdAt: rev.createdAt,
+        user: {
+          _id: rev.userId?._id || null,
+          name: rev.userId?.name || "BachatBazarr User",
+          profileImage: rev.userId?.profileImage || null,
+        },
+      });
     });
+
+    // Helper to extract normalized review summary + reviews list for any offer/combo ID
+    const getReviewBundle = (campaignIdStr) => {
+      const entry = offerReviewMap[campaignIdStr];
+      if (!entry || entry.reviewCount === 0) {
+        return {
+          averageRating: 0,
+          reviewCount: 0,
+          reviews: [],
+        };
+      }
+      return {
+        averageRating: Math.round((entry.totalRatingSum / entry.reviewCount) * 10) / 10,
+        reviewCount: entry.reviewCount,
+        reviews: entry.reviews,
+      };
+    };
 
     // 4. Calculate dynamic delivery charges using req.user.latitude and req.user.longitude
     const userLat = req.user?.latitude;
@@ -437,12 +478,13 @@ export const getShopDetails = async (req, res) => {
     );
 
     // 5. Attach isWishlisted flags, normalized ratings, and delivery details
-    const shopRating = reviewStats.length > 0
-      ? {
-          average: Math.round(reviewStats[0].avgRating * 10) / 10,
-          count: reviewStats[0].totalReviews,
-        }
-      : shopDoc.ratings || { average: 0, count: 0 };
+    const shopRating =
+      reviewStats.length > 0
+        ? {
+            average: Math.round(reviewStats[0].avgRating * 10) / 10,
+            count: reviewStats[0].totalReviews,
+          }
+        : shopDoc.ratings || { average: 0, count: 0 };
 
     const shop = {
       ...shopDoc,
@@ -461,27 +503,32 @@ export const getShopDetails = async (req, res) => {
       isWishlisted: wishlistedServicesSet.has(service._id.toString()),
     }));
 
-    // Attach review metrics to each active offer
+    // Attach review metrics + individual reviews (with user name & image) to each active offer
     const formattedOffers = offers.map((offer) => {
       const offerIdStr = offer._id.toString();
       return {
         ...offer,
         isWishlisted: wishlistedOffersSet.has(offerIdStr),
-        offerReviews: offerReviewMap[offerIdStr] || { averageRating: 0, reviewCount: 0 },
+        offerReviews: getReviewBundle(offerIdStr),
       };
     });
 
-    const formattedCombos = combos.map((combo) => ({
-      ...combo,
-      isWishlisted: wishlistedCombosSet.has(combo._id.toString()),
-    }));
+    // Attach review metrics + individual reviews (with user name & image) to each active combo offer
+    const formattedCombos = combos.map((combo) => {
+      const comboIdStr = combo._id.toString();
+      return {
+        ...combo,
+        isWishlisted: wishlistedCombosSet.has(comboIdStr),
+        offerReviews: getReviewBundle(comboIdStr),
+      };
+    });
 
     // 6. Track Daily Analytics metric (non-blocking)
     if (req.user?._id) {
       await trackFullAnalytics({
         merchantId,
         shopId: shop._id,
-        metric: "store_click", // Increments totalViewers (deduplicated per user per day)
+        metric: "store_click",
         userData: { userId: req.user._id },
       });
     }
@@ -2187,44 +2234,76 @@ export const getNearbyCalendarOffersForUser = async (req, res) => {
     if (!req.user) {
       return res.status(401).json({
         success: false,
-        message: "Access Denied: Missing authenticated user context profile attributes."
+        message: "Access Denied: Missing authenticated user context profile attributes.",
       });
     }
 
     const centerLat = req.user.latitude;
     const centerLng = req.user.longitude;
 
-    if (centerLat === undefined || centerLng === undefined || centerLat === null || centerLng === null) {
+    if (
+      centerLat === undefined ||
+      centerLng === undefined ||
+      centerLat === null ||
+      centerLng === null
+    ) {
       return res.status(400).json({
         success: false,
-        message: "Missing location bounds: Please save your profile location coordinates to load calendar schedules."
+        message:
+          "Missing location bounds: Please save your profile location coordinates to load calendar schedules.",
       });
     }
 
-    // 2. Validate Single Target Date
+    // 2. Validate & Parse Single Target Date cleanly (avoiding UTC off-by-one day shift)
     if (!date) {
       return res.status(400).json({
         success: false,
-        message: "Explicit 'date' query parameter string is required (e.g., YYYY-MM-DD)."
+        message: "Explicit 'date' query parameter string is required (e.g., YYYY-MM-DD).",
       });
     }
 
-    // Set boundaries for the specific single date (start of day to end of day)
-    const targetDateStart = new Date(date);
-    targetDateStart.setHours(0, 0, 0, 0);
+    const dateParts = String(date).trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    let targetDateStart;
+    let targetDateEnd;
+    let formattedTargetDate;
 
-    const targetDateEnd = new Date(date);
-    targetDateEnd.setHours(23, 59, 59, 999);
+    if (dateParts) {
+      const year = Number(dateParts[1]);
+      const month = Number(dateParts[2]);
+      const day = Number(dateParts[3]);
+
+      targetDateStart = new Date(year, month - 1, day, 0, 0, 0, 0);
+      targetDateEnd = new Date(year, month - 1, day, 23, 59, 59, 999);
+      formattedTargetDate = `${dateParts[1]}-${dateParts[2]}-${dateParts[3]}`;
+    } else {
+      const parsed = new Date(date);
+      if (isNaN(parsed.getTime())) {
+        return res.status(400).json({
+          success: false,
+          message: "Provided 'date' is formatted as an invalid date timestamp.",
+        });
+      }
+      targetDateStart = new Date(parsed);
+      targetDateStart.setHours(0, 0, 0, 0);
+
+      targetDateEnd = new Date(parsed);
+      targetDateEnd.setHours(23, 59, 59, 999);
+
+      const y = targetDateStart.getFullYear();
+      const m = String(targetDateStart.getMonth() + 1).padStart(2, "0");
+      const d = String(targetDateStart.getDate()).padStart(2, "0");
+      formattedTargetDate = `${y}-${m}-${d}`;
+    }
 
     if (isNaN(targetDateStart.getTime())) {
       return res.status(400).json({
         success: false,
-        message: "Provided 'date' is formatted as an invalid date timestamp."
+        message: "Provided 'date' is formatted as an invalid date timestamp.",
       });
     }
 
     const targetRadiusKm = 15;
-    
+
     // --- GEOSPATIAL BOUNDING BOX CALCULATION MATRIX (15KM THRESHOLD) ---
     const kmPerDegreeLat = 111.1;
     const kmPerDegreeLng = 111.1 * Math.cos(centerLat * (Math.PI / 180));
@@ -2232,17 +2311,15 @@ export const getNearbyCalendarOffersForUser = async (req, res) => {
     const latDelta = targetRadiusKm / kmPerDegreeLat;
     const lngDelta = targetRadiusKm / kmPerDegreeLng;
 
-    // Numerical range index query constraints bound box configuration matching shops
     const shopQuery = {
       latitude: { $gte: centerLat - latDelta, $lte: centerLat + latDelta },
-      longitude: { $gte: centerLng - lngDelta, $lte: centerLng + lngDelta }
+      longitude: { $gte: centerLng - lngDelta, $lte: centerLng + lngDelta },
     };
 
     if (category) {
       shopQuery.categoryId = category;
     }
 
-    // Identify candidate shop entities
     const rawShops = await MerchantShop.find(shopQuery)
       .populate("merchantId", "name email profileImage")
       .populate("categoryId", "label")
@@ -2254,8 +2331,9 @@ export const getNearbyCalendarOffersForUser = async (req, res) => {
       return res.status(200).json({
         success: true,
         userLocation: { city: req.user.city, lat: centerLat, lng: centerLng },
+        targetDate: formattedTargetDate,
         totalOffers: 0,
-        data: []
+        data: [],
       });
     }
 
@@ -2265,24 +2343,26 @@ export const getNearbyCalendarOffersForUser = async (req, res) => {
 
     rawShops.forEach((shop) => {
       if (shop.latitude && shop.longitude && shop.merchantId) {
-        const R = 6371; // Earth's mean radius in km
+        const R = 6371;
         const dLat = (shop.latitude - centerLat) * (Math.PI / 180);
         const dLng = (shop.longitude - centerLng) * (Math.PI / 180);
-        
-        const a = 
+
+        const a =
           Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-          Math.cos(centerLat * (Math.PI / 180)) * Math.cos(shop.latitude * (Math.PI / 180)) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
-          
+          Math.cos(centerLat * (Math.PI / 180)) *
+            Math.cos(shop.latitude * (Math.PI / 180)) *
+            Math.sin(dLng / 2) *
+            Math.sin(dLng / 2);
+
         const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
         const distanceKm = R * c;
 
-        // Strip box-corner overlaps exceeding true circular boundaries
         if (distanceKm <= targetRadiusKm) {
           shop.distanceKm = Number(distanceKm.toFixed(2));
           const mIdStr = shop.merchantId._id.toString();
-          
+
           validMerchantIds.push(shop.merchantId._id);
-          shopsMap[mIdStr] = shop; 
+          shopsMap[mIdStr] = shop;
         }
       }
     });
@@ -2290,8 +2370,13 @@ export const getNearbyCalendarOffersForUser = async (req, res) => {
     if (validMerchantIds.length === 0) {
       return res.status(200).json({
         success: true,
+        userLocation: { city: req.user.city || "unknown", lat: centerLat, lng: centerLng },
+        targetDate: formattedTargetDate,
         totalOffers: 0,
-        data: []
+        pages: 1,
+        currentPage: Number(page),
+        searchRadius: `${targetRadiusKm}km`,
+        data: [],
       });
     }
 
@@ -2300,55 +2385,61 @@ export const getNearbyCalendarOffersForUser = async (req, res) => {
       merchant_id: { $in: validMerchantIds },
       display_type: { $in: ["calendar"] },
       is_deleted: false,
-      is_paused:false,
+      is_paused: false,
       start_date: { $lte: targetDateEnd },
       $or: [
         { end_date: { $exists: false } },
         { end_date: null },
-        { end_date: { $gte: targetDateStart } }
-      ]
+        { end_date: { $gte: targetDateStart } },
+      ],
     };
 
     const currentLimit = Number(limit);
     const skip = (Math.max(1, Number(page)) - 1) * currentLimit;
 
-    // Fetch total active schedule elements count
-    const totalOffersCount = await Offer.countDocuments(calendarQuery);
+    const [totalOffersCount, liveOffersPool, userWishlist] = await Promise.all([
+      Offer.countDocuments(calendarQuery),
 
-    // Retrieve final dataset lists
-    const liveOffersPool = await Offer.find(calendarQuery)
-      .populate({
-        path: "category_id",
-        select: "label value type image"
-      })
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(currentLimit)
-      .lean();
+      Offer.find(calendarQuery)
+        .populate({
+          path: "category_id",
+          select: "label value type image",
+        })
+        .populate({
+          path: "product_id",
+          select: "name price discounted_price thumbnail images unit_size stock specifications",
+        })
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(currentLimit)
+        .lean(),
 
-    // --- WISHLIST LOOKUP BLOCK ---
-    let wishlistedOfferIdsSet = new Set();
-    if (req.user) {
-      const userWishlist = await Wishlist.findOne({ userId: req.user._id }).lean();
-      if (userWishlist?.offers) {
-        wishlistedOfferIdsSet = new Set(
-          userWishlist.offers.map((id) => id.toString())
-        );
-      }
-    }
+      Wishlist.findOne({ userId: req.user._id }).lean(),
+    ]);
 
-    // 5. Build Formatted JSON response embedding Shop profiles inside Offer structures
+    const wishlistedOfferIdsSet = new Set(
+      (userWishlist?.offers || []).map((id) => id.toString())
+    );
+
+    // 5. Build Formatted JSON response embedding Shop & Product details inside Offer structures
     const formattedOffers = liveOffersPool.map((offer) => {
       const offerIdStr = offer._id.toString();
 
-      const badgeText = offer.discount_percentage !== null
-        ? `${offer.discount_percentage}% OFF`
-        : offer.discount_value !== null
-        ? `₹${offer.discount_value} OFF`
-        : "Exclusive Deal";
+      const badgeText =
+        offer.discount_percentage !== null && offer.discount_percentage !== undefined
+          ? `${offer.discount_percentage}% OFF`
+          : offer.discount_value !== null && offer.discount_value !== undefined
+          ? `₹${offer.discount_value} OFF`
+          : "Exclusive Deal";
 
       const merchantIdStr = offer.merchant_id ? offer.merchant_id.toString() : "";
       const matchedShop = merchantIdStr ? shopsMap[merchantIdStr] : null;
+
+      const productsList = Array.isArray(offer.product_id)
+        ? offer.product_id
+        : offer.product_id
+        ? [offer.product_id]
+        : [];
 
       return {
         _id: offer._id,
@@ -2361,25 +2452,31 @@ export const getNearbyCalendarOffersForUser = async (req, res) => {
         perUserLimit: offer.per_user_limit || 1,
         startDate: offer.start_date,
         endDate: offer.end_date,
-        location: offer.location, 
+        location: offer.location,
         distanceKm: matchedShop ? matchedShop.distanceKm : null,
         merchantId: offer.merchant_id,
-        isWishlisted: wishlistedOfferIdsSet.has(offerIdStr), // Injected dynamic wishlist status flag
-        shop: matchedShop ? {
-          _id: matchedShop._id,
-          shopName: matchedShop.shopName,
-          address: matchedShop.address || "",
-          city: matchedShop.city || "",
-          latitude: matchedShop.latitude,
-          longitude: matchedShop.longitude,
-          logo: matchedShop.logo || null,
-          banner: matchedShop.banner || null
-        } : null,
-        category: offer.category_id ? {
-          _id: offer.category_id._id,
-          label: offer.category_id.label,
-          value: offer.category_id.value
-        } : null
+        isWishlisted: wishlistedOfferIdsSet.has(offerIdStr),
+        linkedProductsCount: productsList.length,
+        products: productsList,
+        shop: matchedShop
+          ? {
+              _id: matchedShop._id,
+              shopName: matchedShop.shopName,
+              address: matchedShop.address || "",
+              city: matchedShop.city || "",
+              latitude: matchedShop.latitude,
+              longitude: matchedShop.longitude,
+              logo: matchedShop.logo || null,
+              banner: matchedShop.banner || null,
+            }
+          : null,
+        category: offer.category_id
+          ? {
+              _id: offer.category_id._id,
+              label: offer.category_id.label,
+              value: offer.category_id.value,
+            }
+          : null,
       };
     });
 
@@ -2388,22 +2485,22 @@ export const getNearbyCalendarOffersForUser = async (req, res) => {
       userLocation: {
         city: req.user.city || "unknown",
         lat: centerLat,
-        lng: centerLng
+        lng: centerLng,
       },
-      targetDate: targetDateStart.toISOString().split('T')[0],
+      targetDate: formattedTargetDate,
       totalOffers: totalOffersCount,
       pages: Math.ceil(totalOffersCount / currentLimit) || 1,
       currentPage: Number(page),
       searchRadius: `${targetRadiusKm}km`,
-      data: formattedOffers
+      data: formattedOffers,
     });
-
   } catch (error) {
     console.error("Geospatial Area Single Date Calendar Schedule Collection Pipeline Exception:", error);
     return res.status(500).json({
       success: false,
-      message: "An internal server error occurred while retrieving nearby single-date calendar schedule offers.",
-      error: error.message
+      message:
+        "An internal server error occurred while retrieving nearby single-date calendar schedule offers.",
+      error: error.message,
     });
   }
 };
