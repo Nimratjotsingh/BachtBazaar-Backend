@@ -186,7 +186,7 @@ export const getUserBestPriceRequests = async (req, res) => {
     if (!req.user) {
       return res.status(401).json({
         success: false,
-        message: "Access Denied: Missing user authentication profile signature keys."
+        message: "Access Denied: Missing user authentication profile signature keys.",
       });
     }
 
@@ -201,29 +201,38 @@ export const getUserBestPriceRequests = async (req, res) => {
     const currentLimit = Number(limit);
     const skip = (Math.max(1, Number(page)) - 1) * currentLimit;
 
-    const total = await BestPriceRequest.countDocuments(query);
-
-    const requestsList = await BestPriceRequest.find(query)
-      .populate("categoryId", "label value image")
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(currentLimit)
-      .lean();
+    const [total, requestsList] = await Promise.all([
+      BestPriceRequest.countDocuments(query),
+      BestPriceRequest.find(query)
+        .populate("categoryId", "label value image")
+        .populate({
+          path: "productId",
+          select:
+            "name description price discounted_price thumbnail images unit_size stock specifications brand tags category_id merchant_id is_active",
+          populate: [
+            { path: "category_id", select: "label value image" },
+            { path: "merchant_id", select: "name store_name email phone profileImage" },
+          ],
+        })
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(currentLimit)
+        .lean(),
+    ]);
 
     return res.status(200).json({
       success: true,
       total,
       pages: Math.ceil(total / currentLimit) || 1,
       currentPage: Number(page),
-      data: requestsList
+      data: requestsList,
     });
-
   } catch (error) {
     console.error("Get User Best Price Requests Processing Fault:", error);
     return res.status(500).json({
       success: false,
       message: "Failed to retrieve your personal best price request logs.",
-      error: error.message
+      error: error.message,
     });
   }
 };

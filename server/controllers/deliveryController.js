@@ -483,7 +483,13 @@ export const respondToDeliveryOrder = async (req, res) => {
   try {
     const merchantId = req.merchant._id;
     const { orderId } = req.params;
-    const { action, declineReason, estimatedMinutes, timeUnit = "minutes" } = req.body;
+    const {
+      action,
+      declineReason,
+      estimatedMinutes,
+      timeUnit = "minutes",
+      gift_product_id,
+    } = req.body;
 
     if (!["accept", "decline"].includes(action)) {
       return res.status(400).json({
@@ -508,6 +514,34 @@ export const respondToDeliveryOrder = async (req, res) => {
     const shopDisplayName = merchant?.shop_name || merchant?.name || "The store";
 
     if (action === "accept") {
+      // Optional complimentary gift validation & attachment
+      let giftProduct = null;
+      if (gift_product_id) {
+        if (!mongoose.Types.ObjectId.isValid(gift_product_id)) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid gift_product_id format.",
+          });
+        }
+
+        giftProduct = await Product.findOne({
+          _id: gift_product_id,
+          merchant_id: merchantId,
+          is_deleted: false,
+        })
+          .select("name thumbnail price")
+          .lean();
+
+        if (!giftProduct) {
+          return res.status(404).json({
+            success: false,
+            message: "Gift product not found or does not belong to your store.",
+          });
+        }
+
+        order.gift_product_id = giftProduct._id;
+      }
+
       order.status = "accepted";
       const durationValue = Number(estimatedMinutes) || order.estimatedDeliveryTime?.value || 30;
       order.estimatedDeliveryTime = { value: durationValue, unit: timeUnit };
@@ -519,16 +553,22 @@ export const respondToDeliveryOrder = async (req, res) => {
 
       order.expectedDeliveryAt = new Date(now.getTime() + durationValue * multiplier);
 
+      const giftText = giftProduct ? ` Plus a free gift: ${giftProduct.name}!` : "";
+
       sendDeliveryNotification({
         recipientType: "User",
         recipientId: order.userId,
         title: "✅ Order Accepted!",
-        body: `${shopDisplayName} accepted your order! Estimated delivery in ~${durationValue} ${timeUnit}.`,
+        body: `${shopDisplayName} accepted your order! Estimated delivery in ~${durationValue} ${timeUnit}.${giftText}`,
         type: "DELIVERY_ORDER_ACCEPTED",
         orderId: order._id,
         extraData: {
           estimatedTime: `${durationValue} ${timeUnit}`,
           expectedDeliveryAt: order.expectedDeliveryAt.toISOString(),
+          ...(giftProduct && {
+            giftProductId: giftProduct._id.toString(),
+            giftProductName: giftProduct.name,
+          }),
         },
       }).catch((err) => console.error("Notification trigger error:", err.message));
     } else {
@@ -547,6 +587,7 @@ export const respondToDeliveryOrder = async (req, res) => {
     }
 
     await order.save();
+    await order.populate("gift_product_id", "name thumbnail price discounted_price unit_size");
 
     return res.status(200).json({
       success: true,
@@ -570,7 +611,13 @@ export const updateDeliveryOrderStatus = async (req, res) => {
   try {
     const merchantId = req.merchant._id;
     const { orderId } = req.params;
-    const { status, paymentStatus, estimatedMinutes, timeUnit = "minutes" } = req.body;
+    const {
+      status,
+      paymentStatus,
+      estimatedMinutes,
+      timeUnit = "minutes",
+      gift_product_id,
+    } = req.body;
 
     const order = await DeliveryOrder.findOne({ _id: orderId, merchantId });
     if (!order) {
@@ -592,6 +639,37 @@ export const updateDeliveryOrderStatus = async (req, res) => {
 
     if (paymentStatus) {
       order.paymentStatus = paymentStatus;
+    }
+
+    // Optional: attach or update complimentary gift product before/during status transition
+    if (gift_product_id !== undefined) {
+      if (gift_product_id === null || gift_product_id === "") {
+        order.gift_product_id = null;
+      } else {
+        if (!mongoose.Types.ObjectId.isValid(gift_product_id)) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid gift_product_id format.",
+          });
+        }
+
+        const giftProduct = await Product.findOne({
+          _id: gift_product_id,
+          merchant_id: merchantId,
+          is_deleted: false,
+        })
+          .select("_id name")
+          .lean();
+
+        if (!giftProduct) {
+          return res.status(404).json({
+            success: false,
+            message: "Gift product not found or does not belong to your store.",
+          });
+        }
+
+        order.gift_product_id = giftProduct._id;
+      }
     }
 
     if (estimatedMinutes) {
@@ -634,7 +712,8 @@ export const updateDeliveryOrderStatus = async (req, res) => {
       if (order.gift_product_id) {
         stockUpdates.push(
           Product.updateOne(
-            { _id: order.gift_product_id, stock: { $gte: 1 } }, {$inc: { stock: -1 } }
+            { _id: order.gift_product_id, stock: { $gte: 1 } },
+            { $inc: { stock: -1 } }
           ).then(async (result) => {
             if (result.modifiedCount === 0) {
               await Product.updateOne(
@@ -649,26 +728,43 @@ export const updateDeliveryOrderStatus = async (req, res) => {
       await Promise.allSettled(stockUpdates);
     }
 
+    await order.populate("gift_product_id", "name thumbnail price discounted_price unit_size");
+
     const merchant = await Merchant.findById(merchantId).select("name shop_name");
     const shopDisplayName = merchant?.shop_name || merchant?.name || "The store";
+    const giftSuffix = order.gift_product_id?.name
+      ? ` Includes free gift: ${order.gift_product_id.name}!`
+      : "";
 
     if (status === "dispatched") {
       sendDeliveryNotification({
         recipientType: "User",
         recipientId: order.userId,
         title: "🛵 Order Dispatched!",
-        body: `Your order from ${shopDisplayName} is out for delivery!`,
+        body: `Your order from ${shopDisplayName} is out for delivery!${giftSuffix}`,
         type: "DELIVERY_ORDER_DISPATCHED",
         orderId: order._id,
+        extraData: {
+          ...(order.gift_product_id && {
+            giftProductId: order.gift_product_id._id.toString(),
+            giftProductName: order.gift_product_id.name,
+          }),
+        },
       }).catch((err) => console.error("Notification trigger error:", err.message));
     } else if (status === "delivered") {
       sendDeliveryNotification({
         recipientType: "User",
         recipientId: order.userId,
         title: "🎉 Order Delivered!",
-        body: `Your order from ${shopDisplayName} has been delivered. Enjoy your purchase!`,
+        body: `Your order from ${shopDisplayName} has been delivered. Enjoy your purchase!${giftSuffix}`,
         type: "DELIVERY_ORDER_DELIVERED",
         orderId: order._id,
+        extraData: {
+          ...(order.gift_product_id && {
+            giftProductId: order.gift_product_id._id.toString(),
+            giftProductName: order.gift_product_id.name,
+          }),
+        },
       }).catch((err) => console.error("Notification trigger error:", err.message));
     }
 

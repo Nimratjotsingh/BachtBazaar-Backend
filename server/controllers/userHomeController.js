@@ -2228,7 +2228,7 @@ export const getNearbyBannersForUser = async (req, res) => {
  */
 export const getNearbyCalendarOffersForUser = async (req, res) => {
   try {
-    const { date, page = 1, limit = 10, category } = req.query;
+    const { date, page = 1, limit = 10, category, searchRadius } = req.query;
 
     // 1. Context & Authentication Verification Check
     if (!req.user) {
@@ -2254,7 +2254,7 @@ export const getNearbyCalendarOffersForUser = async (req, res) => {
       });
     }
 
-    // 2. Validate & Parse Single Target Date cleanly (avoiding UTC off-by-one day shift)
+    // 2. Validate & Parse Single Target Date cleanly using UTC day boundaries
     if (!date) {
       return res.status(400).json({
         success: false,
@@ -2272,8 +2272,8 @@ export const getNearbyCalendarOffersForUser = async (req, res) => {
       const month = Number(dateParts[2]);
       const day = Number(dateParts[3]);
 
-      targetDateStart = new Date(year, month - 1, day, 0, 0, 0, 0);
-      targetDateEnd = new Date(year, month - 1, day, 23, 59, 59, 999);
+      targetDateStart = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
+      targetDateEnd = new Date(Date.UTC(year, month - 1, day, 23, 59, 59, 999));
       formattedTargetDate = `${dateParts[1]}-${dateParts[2]}-${dateParts[3]}`;
     } else {
       const parsed = new Date(date);
@@ -2283,16 +2283,13 @@ export const getNearbyCalendarOffersForUser = async (req, res) => {
           message: "Provided 'date' is formatted as an invalid date timestamp.",
         });
       }
-      targetDateStart = new Date(parsed);
-      targetDateStart.setHours(0, 0, 0, 0);
-
-      targetDateEnd = new Date(parsed);
-      targetDateEnd.setHours(23, 59, 59, 999);
-
-      const y = targetDateStart.getFullYear();
-      const m = String(targetDateStart.getMonth() + 1).padStart(2, "0");
-      const d = String(targetDateStart.getDate()).padStart(2, "0");
-      formattedTargetDate = `${y}-${m}-${d}`;
+      targetDateStart = new Date(
+        Date.UTC(parsed.getUTCFullYear(), parsed.getUTCMonth(), parsed.getUTCDate(), 0, 0, 0, 0)
+      );
+      targetDateEnd = new Date(
+        Date.UTC(parsed.getUTCFullYear(), parsed.getUTCMonth(), parsed.getUTCDate(), 23, 59, 59, 999)
+      );
+      formattedTargetDate = targetDateStart.toISOString().split("T")[0];
     }
 
     if (isNaN(targetDateStart.getTime())) {
@@ -2302,9 +2299,10 @@ export const getNearbyCalendarOffersForUser = async (req, res) => {
       });
     }
 
-    const targetRadiusKm = 15;
+    const parsedRadius = Number(searchRadius);
+    const targetRadiusKm = parsedRadius > 0 ? parsedRadius : 15;
 
-    // --- GEOSPATIAL BOUNDING BOX CALCULATION MATRIX (15KM THRESHOLD) ---
+    // --- GEOSPATIAL BOUNDING BOX CALCULATION MATRIX ---
     const kmPerDegreeLat = 111.1;
     const kmPerDegreeLng = 111.1 * Math.cos(centerLat * (Math.PI / 180));
 
@@ -2333,6 +2331,9 @@ export const getNearbyCalendarOffersForUser = async (req, res) => {
         userLocation: { city: req.user.city, lat: centerLat, lng: centerLng },
         targetDate: formattedTargetDate,
         totalOffers: 0,
+        pages: 1,
+        currentPage: Number(page),
+        searchRadius: `${targetRadiusKm}km`,
         data: [],
       });
     }
@@ -2380,18 +2381,14 @@ export const getNearbyCalendarOffersForUser = async (req, res) => {
       });
     }
 
-    // 4. Build Single Date Active Timeline Filters Matrix
+    // 4. Strict Target-Date Window Filter in UTC
     const calendarQuery = {
       merchant_id: { $in: validMerchantIds },
       display_type: { $in: ["calendar"] },
       is_deleted: false,
       is_paused: false,
       start_date: { $lte: targetDateEnd },
-      $or: [
-        { end_date: { $exists: false } },
-        { end_date: null },
-        { end_date: { $gte: targetDateStart } },
-      ],
+      end_date: { $gte: targetDateStart },
     };
 
     const currentLimit = Number(limit);
