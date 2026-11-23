@@ -12,39 +12,42 @@ export const getNearbyCustomerRequestsForMerchant = async (req, res) => {
     const { page = 1, limit = 10 } = req.query;
 
     // 1. Context Check: Guard against unauthenticated merchant executions
-    // Assumes your merchant authentication middleware populates req.merchant
     if (!req.merchant) {
       return res.status(401).json({
         success: false,
-        message: "Access Denied: Missing authenticated merchant profile context."
+        message: "Access Denied: Missing authenticated merchant profile context.",
       });
     }
 
     // 2. Fetch the Merchant's unique shop profile to look up location & category parameters
-    const merchantShop = await MerchantShop.findOne({ merchantId: req.merchant._id });
+    const merchantShop = await MerchantShop.findOne({ merchantId: req.merchant._id })
+      .populate("categoryId", "label")
+      .lean();
 
     if (!merchantShop) {
       return res.status(404).json({
         success: false,
-        message: "Store profile configuration not found. Please set up your shop details first."
+        message: "Store profile configuration not found. Please set up your shop details first.",
       });
     }
 
     const centerLat = merchantShop.latitude;
     const centerLng = merchantShop.longitude;
-    const shopCategory = merchantShop.categoryId;
+    const shopCategory = merchantShop.categoryId?._id || merchantShop.categoryId;
 
     if (!centerLat || !centerLng) {
       return res.status(400).json({
         success: false,
-        message: "Store coordinates missing. Please pinpoint your store location map parameters to parse local requests."
+        message:
+          "Store coordinates missing. Please pinpoint your store location map parameters to parse local requests.",
       });
     }
 
     if (!shopCategory) {
       return res.status(400).json({
         success: false,
-        message: "Store category assignment missing. Your shop must be bound to a business vertical category to see relevant bids."
+        message:
+          "Store category assignment missing. Your shop must be bound to a business vertical category to see relevant bids.",
       });
     }
 
@@ -63,27 +66,37 @@ export const getNearbyCustomerRequestsForMerchant = async (req, res) => {
       categoryId: shopCategory,
       status: "active",
       expiresAt: { $gt: rightNow },
-      // Apply the rough bounding box numeric box parameters
       latitude: { $gte: centerLat - latDelta, $lte: centerLat + latDelta },
-      longitude: { $gte: centerLng - lngDelta, $lte: centerLng + lngDelta }
+      longitude: { $gte: centerLng - lngDelta, $lte: centerLng + lngDelta },
     };
 
-    // Pagination variables setup
     const currentLimit = Number(limit);
     const skip = (Math.max(1, Number(page)) - 1) * currentLimit;
 
     // Fetch candidate customer requests within that region frame
     const rawRequests = await BestPriceRequest.find(requestQuery)
       .populate("userId", "name profileImage")
-      .populate("categoryId", "label")
+      .populate("categoryId", "label value image")
+      .populate({
+        path: "productId",
+        select:
+          "name description price discounted_price thumbnail images unit_size stock specifications brand tags",
+      })
       .lean();
 
     if (rawRequests.length === 0) {
       return res.status(200).json({
         success: true,
-        shopDetails: { shopName: merchantShop.shopName, city: merchantShop.city },
+        shopDetails: {
+          shopName: merchantShop.shopName,
+          categoryApplied: merchantShop.categoryId?.label || "Store Category",
+          city: merchantShop.city,
+        },
         totalRequests: 0,
-        data: []
+        pages: 1,
+        currentPage: Number(page),
+        searchRadius: `${targetRadiusKm}km`,
+        data: [],
       });
     }
 
@@ -92,14 +105,17 @@ export const getNearbyCustomerRequestsForMerchant = async (req, res) => {
 
     rawRequests.forEach((request) => {
       if (request.latitude && request.longitude) {
-        const R = 6371; // Earth's mean radius constants in kilometers
+        const R = 6371;
         const dLat = (request.latitude - centerLat) * (Math.PI / 180);
         const dLng = (request.longitude - centerLng) * (Math.PI / 180);
-        
-        const a = 
+
+        const a =
           Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-          Math.cos(centerLat * (Math.PI / 180)) * Math.cos(request.latitude * (Math.PI / 180)) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
-          
+          Math.cos(centerLat * (Math.PI / 180)) *
+            Math.cos(request.latitude * (Math.PI / 180)) *
+            Math.sin(dLng / 2) *
+            Math.sin(dLng / 2);
+
         const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
         const distanceKm = R * c;
 
@@ -122,25 +138,24 @@ export const getNearbyCustomerRequestsForMerchant = async (req, res) => {
       shopDetails: {
         shopName: merchantShop.shopName,
         categoryApplied: merchantShop.categoryId?.label || "Store Category",
-        city: merchantShop.city
+        city: merchantShop.city,
       },
       totalRequests: totalWithinRadius,
       pages: Math.ceil(totalWithinRadius / currentLimit) || 1,
       currentPage: Number(page),
       searchRadius: `${targetRadiusKm}km`,
-      data: paginatedRequests
+      data: paginatedRequests,
     });
-
   } catch (error) {
     console.error("Merchant Proximity Request Extraction Exception:", error);
     return res.status(500).json({
       success: false,
-      message: "An internal processing error occurred while scanning for localized customer requests.",
-      error: error.message
+      message:
+        "An internal processing error occurred while scanning for localized customer requests.",
+      error: error.message,
     });
   }
 };
-
 import MerchantBid from "../models/MerchantBidModel.js";
 
 
@@ -318,33 +333,46 @@ export const getBidsForUserRequest = async (req, res) => {
     if (!req.user) {
       return res.status(401).json({
         success: false,
-        message: "Access Denied: Unauthenticated user configuration context."
+        message: "Access Denied: Unauthenticated user configuration context.",
       });
     }
 
     // Secure request confirmation with populated product details
-    const requestVerification = await BestPriceRequest.findOne({ 
-      _id: requestId, 
-      userId: req.user._id 
+    const requestVerification = await BestPriceRequest.findOne({
+      _id: requestId,
+      userId: req.user._id,
     })
-      .populate("productId", "name description price discounted_price thumbnail images unit_size specifications stock")
+      .populate(
+        "productId",
+        "name description price discounted_price thumbnail images unit_size specifications stock"
+      )
       .lean();
 
     if (!requestVerification) {
       return res.status(403).json({
         success: false,
-        message: "Access Forbidden: You do not possess access credentials for this request log."
+        message: "Access Forbidden: You do not possess access credentials for this request log.",
       });
     }
 
     const incomingBids = await MerchantBid.find({ requestId })
       .populate({
         path: "shopId",
-        select: "shopName address city phone logo banner latitude longitude"
+        select: "shopName address city phone logo banner latitude longitude",
+      })
+      .populate({
+        path: "gift_product_id",
+        select:
+          "name description price discounted_price thumbnail images unit_size specifications stock",
       })
       .populate("quickTemplateIds", "title messageContent")
       .sort({ offerPrice: 1 }) // List the cheapest offer price configurations first
       .lean();
+
+    const formattedBids = incomingBids.map((bid) => ({
+      ...bid,
+      giftProduct: bid.gift_product_id || null,
+    }));
 
     return res.status(200).json({
       success: true,
@@ -358,18 +386,17 @@ export const getBidsForUserRequest = async (req, res) => {
         formattedAddress: requestVerification.formattedAddress || "",
         city: requestVerification.city || "",
         // Attached catalog product reference details (null if request was custom-created)
-        product: requestVerification.productId || null
+        product: requestVerification.productId || null,
       },
-      totalBidsReceived: incomingBids.length,
-      data: incomingBids
+      totalBidsReceived: formattedBids.length,
+      data: formattedBids,
     });
-
   } catch (error) {
     console.error("Get Customer Request Bids Segment Error:", error);
     return res.status(500).json({
       success: false,
       message: "Failed to extract active inbound bids for this request profile.",
-      error: error.message
+      error: error.message,
     });
   }
 };
