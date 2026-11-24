@@ -190,6 +190,7 @@ app.use('/api/user/bottom-navbar',userNavbarRoutes);
 //Merchant Routes
 app.use("/api/merchant/combo-offers", comboOfferRoutes);
 app.use('/api/merchant/bottom-navbar',merchantNavbarRoutes);
+app.use('/api/merchant/user-offer-reviews',merchantUserOffferReviewRoutes)
 
 app.use("/api/merchant/auth", merchantAuthRoutes);
 app.use("/api/merchants", merchantAuthRoutes);
@@ -235,7 +236,7 @@ app.use("/api/merchant-bids", MerchantBidRoutes);
 app.use("/api/quick-offer-routes", QuickOfferRoutes);
 app.use('/api/offer-redemption/user', offerRedemptionRoutes);
 app.use('/api/offer-redemption/merchant', offerRedemptionMerchantRoutes);
-app.use('/api/merchant/user-offer-reviews',merchantUserOffferReviewRoutes)
+
 app.use('/api/merchant/analytics', merchantAnalyticRoutes);
 
 app.use('/api/merchant/goals', goalsRoutes);

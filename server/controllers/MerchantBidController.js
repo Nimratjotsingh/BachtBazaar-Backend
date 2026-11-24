@@ -170,7 +170,14 @@ import MerchantBid from "../models/MerchantBidModel.js";
  */
 export const submitMerchantBid = async (req, res) => {
   try {
-    const { requestId, offerPrice, additionalOfferNotes, quickTemplateIds } = req.body;
+    const {
+      requestId,
+      offerPrice,
+      additionalOfferNotes,
+      quickTemplateIds,
+      productId,
+      gift_product_id,
+    } = req.body;
 
     // 1. Context Authorization Check
     if (!req.merchant) {
@@ -184,6 +191,13 @@ export const submitMerchantBid = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Missing parameters. Required fields: requestId, offerPrice.",
+      });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(requestId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid requestId format.",
       });
     }
 
@@ -209,7 +223,10 @@ export const submitMerchantBid = async (req, res) => {
       });
     }
 
-    if (targetRequest.status !== "active" || (targetRequest.expiresAt && targetRequest.expiresAt < new Date())) {
+    if (
+      targetRequest.status !== "active" ||
+      (targetRequest.expiresAt && targetRequest.expiresAt < new Date())
+    ) {
       return res.status(400).json({
         success: false,
         message: "This price request pipeline is no longer active or has expired.",
@@ -225,27 +242,106 @@ export const submitMerchantBid = async (req, res) => {
       });
     }
 
-    // 5. Create new bid record
+    // 5. Validate optional offered productId & gift_product_id against merchant's catalog
+    let validatedProductId = null;
+    if (productId) {
+      if (!mongoose.Types.ObjectId.isValid(productId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid productId format.",
+        });
+      }
+
+      const offeredProduct = await Product.findOne({
+        _id: productId,
+        merchant_id: req.merchant._id,
+        is_deleted: false,
+      })
+        .select("_id")
+        .lean();
+
+      if (!offeredProduct) {
+        return res.status(404).json({
+          success: false,
+          message: "Offered product not found or does not belong to your store.",
+        });
+      }
+
+      validatedProductId = offeredProduct._id;
+    }
+
+    let validatedGiftProduct = null;
+    if (gift_product_id) {
+      if (!mongoose.Types.ObjectId.isValid(gift_product_id)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid gift_product_id format.",
+        });
+      }
+
+      validatedGiftProduct = await Product.findOne({
+        _id: gift_product_id,
+        merchant_id: req.merchant._id,
+        is_deleted: false,
+      })
+        .select("_id name thumbnail price discounted_price unit_size")
+        .lean();
+
+      if (!validatedGiftProduct) {
+        return res.status(404).json({
+          success: false,
+          message: "Gift product not found or does not belong to your store.",
+        });
+      }
+    }
+
+    // Sanitize quickTemplateIds array to prevent CastErrors on invalid IDs
+    const sanitizedTemplateIds = Array.isArray(quickTemplateIds)
+      ? quickTemplateIds.filter((id) => mongoose.Types.ObjectId.isValid(id))
+      : [];
+
+    // 6. Create new bid record
     const newBid = new MerchantBid({
       requestId,
       merchantId: req.merchant._id,
       shopId: shop._id,
+      productId: validatedProductId,
+      gift_product_id: validatedGiftProduct ? validatedGiftProduct._id : null,
       offerPrice: Number(offerPrice),
       additionalOfferNotes: additionalOfferNotes || "",
-      quickTemplateIds: Array.isArray(quickTemplateIds) ? quickTemplateIds : [],
+      quickTemplateIds: sanitizedTemplateIds,
       status: "submitted",
     });
 
     await newBid.save();
 
-    // 6. Asynchronously trigger user push notification in background
-    await  notifyUserForNewBid({
+    await newBid.populate([
+      {
+        path: "productId",
+        select: "name description price discounted_price thumbnail images unit_size stock",
+      },
+      {
+        path: "gift_product_id",
+        select: "name description price discounted_price thumbnail images unit_size stock",
+      },
+      {
+        path: "quickTemplateIds",
+        select: "title messageContent",
+      },
+    ]);
+
+    // 7. Trigger user push notification
+    await notifyUserForNewBid({
       userId: targetRequest.userId,
       requestTitle: targetRequest.title,
       offerPrice: newBid.offerPrice,
       shopName: shop.shopName || "A nearby store",
       requestId: targetRequest._id,
       bidId: newBid._id,
+      ...(validatedGiftProduct && {
+        giftProductId: validatedGiftProduct._id.toString(),
+        giftProductName: validatedGiftProduct.name,
+      }),
     }).catch((err) => console.error("Background User Bid Notification Error:", err.message));
 
     return res.status(201).json({
@@ -360,12 +456,23 @@ export const getBidsForUserRequest = async (req, res) => {
         path: "shopId",
         select: "shopName address city phone logo banner latitude longitude",
       })
+      .populate({
+        path: "productId",
+        select:
+          "name description price discounted_price thumbnail images unit_size specifications stock",
+      })
+      .populate({
+        path: "gift_product_id",
+        select:
+          "name description price discounted_price thumbnail images unit_size specifications stock",
+      })
       .populate("quickTemplateIds", "title messageContent")
       .sort({ offerPrice: 1 }) // List the cheapest offer price configurations first
       .lean();
 
     const formattedBids = incomingBids.map((bid) => ({
       ...bid,
+      product: bid.productId || null,
       giftProduct: bid.gift_product_id || null,
     }));
 
