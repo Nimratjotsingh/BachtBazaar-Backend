@@ -360,11 +360,6 @@ export const getBidsForUserRequest = async (req, res) => {
         path: "shopId",
         select: "shopName address city phone logo banner latitude longitude",
       })
-      .populate({
-        path: "gift_product_id",
-        select:
-          "name description price discounted_price thumbnail images unit_size specifications stock",
-      })
       .populate("quickTemplateIds", "title messageContent")
       .sort({ offerPrice: 1 }) // List the cheapest offer price configurations first
       .lean();
