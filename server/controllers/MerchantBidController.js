@@ -1,7 +1,7 @@
 import BestPriceRequest from "../models/BestPriceModel.js";
 import MerchantShop from "../models/merchantShopModel.js";
 import { notifyUserForNewBid } from "../utils/bidNotificationHelper.js ";
-
+import mongoose from "mongoose";
 /**
  * GET /api/merchant/nearby-customer-requests
  * Scans for active user price requests within a 20km radius of the merchant's storefront location
