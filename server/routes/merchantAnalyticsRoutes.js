@@ -26,5 +26,4 @@ router.get('/offers/highest-redemption',protectMerchant,getHighestRedemptionDay)
 router.get("/offers/:offerId", protectMerchant, getOfferClickDetailsByOfferId);
 
 
-
 export default router;

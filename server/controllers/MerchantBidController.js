@@ -157,7 +157,7 @@ export const getNearbyCustomerRequestsForMerchant = async (req, res) => {
   }
 };
 import MerchantBid from "../models/MerchantBidModel.js";
-
+import QuickOfferTemplate from "../models/QuickOfferTemplateModel.js";
 
 
 // ==========================================
@@ -168,6 +168,8 @@ import MerchantBid from "../models/MerchantBidModel.js";
  * POST /api/bids/submit
  * Allows an authenticated merchant to submit a price counter-offer/bid for a customer request
  */
+
+import Product from "../models/productModel.js";
 export const submitMerchantBid = async (req, res) => {
   try {
     const {

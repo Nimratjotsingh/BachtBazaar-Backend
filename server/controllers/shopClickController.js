@@ -335,6 +335,8 @@ export const recordOfferRedemption = async (req, res) => {
  *   - page: number (default 1)
  *   - limit: number (default 20)
  */
+
+import OfferClick from "../models/offerClickModel.js";
 export const getOfferClickDetailsByOfferId = async (req, res) => {
   try {
     const merchantId = req.merchant?._id;
