@@ -6,6 +6,8 @@ import {
   getOfferAnalytics,
   getTopPerformingOffers
 } from "../controllers/merchantAnalyticsController.js";
+
+import {getOfferClickDetailsByOfferId} from '../controllers/shopClickController.js'
 import { protectMerchant } from "../middleware/authMiddleware.js";
 
 
@@ -21,7 +23,7 @@ router.get('/offers/top-performing',protectMerchant, getTopPerformingOffers);
 
 router.get('/offers/highest-redemption',protectMerchant,getHighestRedemptionDay);
 
-router.get("/offers/:offerId", protectMerchant, getOfferAnalytics);
+router.get("/offers/:offerId", protectMerchant, getOfferClickDetailsByOfferId);
 
 
 

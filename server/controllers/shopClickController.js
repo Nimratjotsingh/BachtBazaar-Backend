@@ -325,3 +325,191 @@ export const recordOfferRedemption = async (req, res) => {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
+
+/**
+ * GET /api/merchant/offer-clicks/:offerId
+ * Optional query params:
+ *   - type: "Offer" | "ComboOffer"
+ *   - startDate: "YYYY-MM-DD"
+ *   - endDate: "YYYY-MM-DD"
+ *   - page: number (default 1)
+ *   - limit: number (default 20)
+ */
+export const getOfferClickDetailsByOfferId = async (req, res) => {
+  try {
+    const merchantId = req.merchant?._id;
+    const { offerId } = req.params;
+    const { type, startDate, endDate, page = 1, limit = 20 } = req.query;
+
+    if (!merchantId) {
+      return res.status(401).json({
+        success: false,
+        message: "Access Denied: Merchant authentication required.",
+      });
+    }
+
+    if (!offerId || !mongoose.Types.ObjectId.isValid(offerId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid Offer or Combo Offer ID format.",
+      });
+    }
+
+    // 1. Verify ownership: ensure the Offer or ComboOffer belongs to this merchant
+    let resolvedModel = "Offer";
+    let campaign = null;
+
+    if (type === "ComboOffer") {
+      campaign = await ComboOffer.findOne({
+        _id: offerId,
+        merchantId,
+        is_deleted: false,
+      })
+        .select("name description products tags start_date end_date")
+        .lean();
+      resolvedModel = "ComboOffer";
+    } else if (type === "Offer") {
+      campaign = await Offer.findOne({
+        _id: offerId,
+        merchant_id: merchantId,
+        is_deleted: false,
+      })
+        .select("title description thumbnail discount_percentage discount_value start_date end_date")
+        .lean();
+      resolvedModel = "Offer";
+    } else {
+      // Auto-resolve: Check Offer first, then fall back to ComboOffer
+      campaign = await Offer.findOne({
+        _id: offerId,
+        merchant_id: merchantId,
+        is_deleted: false,
+      })
+        .select("title description thumbnail discount_percentage discount_value start_date end_date")
+        .lean();
+
+      if (campaign) {
+        resolvedModel = "Offer";
+      } else {
+        campaign = await ComboOffer.findOne({
+          _id: offerId,
+          merchantId,
+          is_deleted: false,
+        })
+          .select("name description products tags start_date end_date")
+          .lean();
+        resolvedModel = "ComboOffer";
+      }
+    }
+
+    if (!campaign) {
+      return res.status(404).json({
+        success: false,
+        message: "Offer or Combo Offer not found or does not belong to your merchant account.",
+      });
+    }
+
+    // 2. Build OfferClick query scoped to merchantId, offerId, and offerModel
+    const clickQuery = {
+      merchantId: new mongoose.Types.ObjectId(merchantId),
+      offerId: new mongoose.Types.ObjectId(offerId),
+      offerModel: resolvedModel,
+    };
+
+    if (startDate || endDate) {
+      clickQuery.date = {};
+      if (startDate) {
+        const parsedStart = new Date(`${startDate}T00:00:00.000Z`);
+        if (!isNaN(parsedStart.getTime())) clickQuery.date.$gte = parsedStart;
+      }
+      if (endDate) {
+        const parsedEnd = new Date(`${endDate}T23:59:59.999Z`);
+        if (!isNaN(parsedEnd.getTime())) clickQuery.date.$lte = parsedEnd;
+      }
+    }
+
+    // 3. Fetch daily click logs with populated clickedUsers
+    const clickDocs = await OfferClick.find(clickQuery)
+      .populate("clickedUsers.userId", "name email phone profileImage")
+      .sort({ date: -1 })
+      .lean();
+
+    // 4. Aggregate totals, daily breakdown, and flattened clicked user logs
+    let totalClicks = 0;
+    const uniqueUserIdsSet = new Set();
+    const allClickEvents = [];
+
+    const dailyBreakdown = clickDocs.map((doc) => {
+      totalClicks += doc.totalClicks || 0;
+
+      const usersOnDay = (doc.clickedUsers || []).map((entry) => {
+        const uIdStr = entry.userId?._id?.toString();
+        if (uIdStr) uniqueUserIdsSet.add(uIdStr);
+
+        const formattedUserClick = {
+          date: doc.date,
+          clickedAt: entry.clickedAt,
+          user: entry.userId
+            ? {
+                _id: entry.userId._id,
+                name: entry.userId.name || "BachatBazarr User",
+                email: entry.userId.email || null,
+                phone: entry.userId.phone || null,
+                profileImage: entry.userId.profileImage || null,
+              }
+            : null,
+        };
+
+        allClickEvents.push(formattedUserClick);
+        return formattedUserClick;
+      });
+
+      return {
+        date: doc.date,
+        totalClicks: doc.totalClicks || 0,
+        uniqueUsersCount: usersOnDay.length,
+        clickedUsers: usersOnDay,
+      };
+    });
+
+    // Sort all click events newest first and paginate
+    allClickEvents.sort((a, b) => new Date(b.clickedAt) - new Date(a.clickedAt));
+
+    const pageNum = Math.max(1, Number(page));
+    const limitNum = Math.max(1, Number(limit));
+    const skip = (pageNum - 1) * limitNum;
+    const paginatedUsers = allClickEvents.slice(skip, skip + limitNum);
+
+    return res.status(200).json({
+      success: true,
+      offer: {
+        _id: campaign._id,
+        offerModel: resolvedModel,
+        title: resolvedModel === "ComboOffer" ? campaign.name : campaign.title,
+        description: campaign.description || "",
+        thumbnail:
+          resolvedModel === "ComboOffer"
+            ? campaign.products?.[0]?.image || null
+            : campaign.thumbnail || null,
+      },
+      summary: {
+        totalClicks,
+        uniqueUsersCount: uniqueUserIdsSet.size,
+        activeDaysCount: dailyBreakdown.length,
+      },
+      dailyBreakdown,
+      clickedUsers: {
+        total: allClickEvents.length,
+        page: pageNum,
+        totalPages: Math.ceil(allClickEvents.length / limitNum) || 1,
+        data: paginatedUsers,
+      },
+    });
+  } catch (error) {
+    console.error("Get Offer Click Details By Offer ID Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to retrieve click analytics for this offer.",
+      error: error.message,
+    });
+  }
+};
