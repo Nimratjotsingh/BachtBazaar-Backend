@@ -222,7 +222,7 @@ export const createProduct = async (req, res) => {
               title: "Merchant Offer Creation Submitted",
               message: `${data.name || "A merchant"} product has been created`,
               category: "product_review",
-              referenceId: data.merchant._id
+              referenceId: req.merchant._id
             });
 
     return res.status(201).json({

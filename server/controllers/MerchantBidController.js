@@ -2,6 +2,8 @@ import BestPriceRequest from "../models/BestPriceModel.js";
 import MerchantShop from "../models/merchantShopModel.js";
 import { notifyUserForNewBid } from "../utils/bidNotificationHelper.js ";
 import mongoose from "mongoose";
+import MerchantBid from "../models/MerchantBidModel.js";
+import QuickOfferTemplate from "../models/QuickOfferTemplateModel.js";
 /**
  * GET /api/merchant/nearby-customer-requests
  * Scans for active user price requests within a 20km radius of the merchant's storefront location
@@ -51,6 +53,18 @@ export const getNearbyCustomerRequestsForMerchant = async (req, res) => {
       });
     }
 
+    // Fetch IDs of requests this merchant has already bid on
+    // Replace `MerchantBid` and `requestId` with your actual bid model and reference field
+    const existingBids = await MerchantBid.find({ merchantId: req.merchant._id })
+      .select("requestId")
+      .lean();
+
+    const biddedRequestIds = new Set(
+      existingBids
+        .map((bid) => bid.requestId?.toString())
+        .filter(Boolean)
+    );
+
     const rightNow = new Date();
     const targetRadiusKm = 20; // 20km Business Sector Matrix Target Radius
 
@@ -61,8 +75,9 @@ export const getNearbyCustomerRequestsForMerchant = async (req, res) => {
     const latDelta = targetRadiusKm / kmPerDegreeLat;
     const lngDelta = targetRadiusKm / kmPerDegreeLng;
 
-    // 3. Build Core Query targeting active, unexpired requests matching the shop's category
+    // 3. Build Core Query targeting active, unexpired, un-bidded requests in the shop's category
     const requestQuery = {
+      _id: { $nin: Array.from(biddedRequestIds) },
       categoryId: shopCategory,
       status: "active",
       expiresAt: { $gt: rightNow },
@@ -70,8 +85,9 @@ export const getNearbyCustomerRequestsForMerchant = async (req, res) => {
       longitude: { $gte: centerLng - lngDelta, $lte: centerLng + lngDelta },
     };
 
-    const currentLimit = Number(limit);
-    const skip = (Math.max(1, Number(page)) - 1) * currentLimit;
+    const currentLimit = Math.max(1, Number(limit) || 10);
+    const currentPage = Math.max(1, Number(page) || 1);
+    const skip = (currentPage - 1) * currentLimit;
 
     // Fetch candidate customer requests within that region frame
     const rawRequests = await BestPriceRequest.find(requestQuery)
@@ -94,7 +110,7 @@ export const getNearbyCustomerRequestsForMerchant = async (req, res) => {
         },
         totalRequests: 0,
         pages: 1,
-        currentPage: Number(page),
+        currentPage,
         searchRadius: `${targetRadiusKm}km`,
         data: [],
       });
@@ -104,6 +120,8 @@ export const getNearbyCustomerRequestsForMerchant = async (req, res) => {
     const validRequestsInRadius = [];
 
     rawRequests.forEach((request) => {
+      if (biddedRequestIds.has(request._id.toString())) return;
+
       if (request.latitude && request.longitude) {
         const R = 6371;
         const dLat = (request.latitude - centerLat) * (Math.PI / 180);
@@ -142,7 +160,7 @@ export const getNearbyCustomerRequestsForMerchant = async (req, res) => {
       },
       totalRequests: totalWithinRadius,
       pages: Math.ceil(totalWithinRadius / currentLimit) || 1,
-      currentPage: Number(page),
+      currentPage,
       searchRadius: `${targetRadiusKm}km`,
       data: paginatedRequests,
     });
@@ -156,8 +174,7 @@ export const getNearbyCustomerRequestsForMerchant = async (req, res) => {
     });
   }
 };
-import MerchantBid from "../models/MerchantBidModel.js";
-import QuickOfferTemplate from "../models/QuickOfferTemplateModel.js";
+
 
 
 // ==========================================
